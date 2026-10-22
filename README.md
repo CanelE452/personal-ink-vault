@@ -4,6 +4,8 @@
 
 현재 앱 코드·실행 파일·설치 절차는 없습니다. PWA와 Flutter/Saber 확장 중 어느 쪽도 확정하지 않았습니다.
 
+공개 저장소: [CanelE452/personal-ink-vault](https://github.com/CanelE452/personal-ink-vault). 기본 브랜치는 `main`입니다.
+
 ## 문서
 
 - [요구사항과 완료 기준](docs/requirements.md)
