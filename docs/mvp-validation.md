@@ -1,5 +1,16 @@
 # MVP 개발판 검증 기록
 
+## Android 설치 파일 공개 — 2026-10-30
+
+- [확인] 태블릿에서 받을 수 있도록 [v0.1.0-preview.1](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.1)을 prerelease로 게시했다. [APK 직접 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.1.0-preview.1/personal-ink-vault-android-preview.apk)는 인증 없는 HTTP HEAD에서 200과 파일 크기 일치를 확인했다.
+- [확인] 새 빌드 exit0, 141.9초. 앱 버전 `0.1.0`, versionCode `136031`, package `io.github.canele452.personalinkvault`, minSdk24, targetSdk36. debug 미리보기이며 ARM64·ARMv7·x86_64를 포함한다. ARM64 전용 APK라는 뜻은 아니다.
+- [확인] APK `personal-ink-vault-android-preview.apk`: **143077302 bytes**, SHA-256 `9599e0ee8dfb922c57957802e2c601a69d2181f854c9fd8c5a8b40355d16f010`. 로컬 해시와 업로드 후 GitHub asset digest가 같다. v2 서명 검증 통과, 인증서 SHA-1은 기존 Google 등록값과 같다.
+- 대응 소스는 `5181020983a6fa84540cfb916950d78a176f7550`. 빌드 시 `--debug --target-platform android-arm64 --no-pub --build-name 0.1.0 --build-number 136031`과 기존 공개 Web client ID define을 사용했다. 새 서명 키·토큰·개인 노트는 생성하거나 포함하지 않았다. 앱 소스 변경 없이 버전 인자만 지정했으며 이 작업에서 전체 단위시험을 반복하지 않았다. 같은 날 앞선 Dart51·Flutter237/105skip·분석0 결과는 아래 이력과 구분한다.
+- APK ZIP CRC·공개 Web ID 포함·사적 설정/노트 파일명 부재와 실제 자격증명 payload 패턴 부재를 검사했다. 암호화 라이브러리의 PEM header 파서 상수는 비밀 키 본문이 아니다. 실제 S9+ 설치·펜·로그인·Drive 왕복 성공은 여전히 미검증이다.
+- README의 PC 절대 경로를 실제 HTTPS 다운로드 링크와 저장소 상대 문서 링크로 교체했다. 아래는 2026-10-23까지의 이전 빌드 검증 기록이다.
+
+## 이전 개발판 검증 — 2026-10-23
+
 기준일: 2026-10-23. **개발을 시작한 검증판이며 전체 MVP 수용 기준 통과를 선언하지 않는다.** Windows C++ 도구 설치·Release 빌드와 Cloud OAuth 등록을 추가 완료했다. 앱에서의 실제 계정 동의·기기 왕복·Windows 실행 수용 시험은 남아 있다.
 
 ## 분석에서 구현으로
@@ -20,7 +31,7 @@
 
 로그는 Git 제외 경로 `build/validation/`에 남긴다. Cloud 프로젝트/client 등록과 앱의 실제 사용자 OAuth 동의·토큰 발급은 구분한다. 개인 노트 업로드·commit/push는 하지 않았다.
 
-최종 APK는 `build/app/outputs/flutter-apk/app-debug.apk`, **185664855 bytes**, SHA-256 `5009fce4be7342eab41c1c75e23478fdcd150d73b07018c6caf0ae2363116dd8`이다. 앱 ID는 `io.github.canele452.personalinkvault`이며 upstream 앱과 분리된다. 디버그 검증용 산출물이다.
+2026-10-23의 이전 APK는 `build/app/outputs/flutter-apk/app-debug.apk`, **185664855 bytes**, SHA-256 `5009fce4be7342eab41c1c75e23478fdcd150d73b07018c6caf0ae2363116dd8`이었다. 위 2026-10-30 다운로드 빌드와 구분한다. 앱 ID는 `io.github.canele452.personalinkvault`이며 upstream 앱과 분리된다.
 
 Windows는 `build/windows/x64/runner/Release/personal_ink_vault.exe`를 같은 폴더의 DLL·data와 함께 실행한다. 전체 묶음은 `build/validation/personal-ink-vault-windows-x64.zip`, **21265032 bytes**, SHA-256 `b1cb7fc05b7ff63255a697d0c97655287912c810f69505dd50650c82826410e3`이다. 공개 Desktop client ID는 AOT snapshot에서 확인했다. exe 단독 복사는 지원하지 않는다.
 

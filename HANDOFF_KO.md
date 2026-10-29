@@ -1,5 +1,7 @@
 # Personal Ink Vault — Windows Codex 인계
 
+**추가 — 2026-10-30:** 사용자가 태블릿에서 받을 APK 공개를 요청해 [Android 미리보기 릴리스](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.1)를 게시했다. README 상단은 실제 HTTPS APK 다운로드 링크다. 0.1.0/versionCode136031/debug 서명이며 기존 Google 인증서 지문을 유지한다. 실제 기기 설치·필기·OAuth 왕복 수용은 미검증이다. 아래 APK 로컬 유지 기록은 릴리스 요청 전 상태다.
+
 ## 개발 시작 — 아래 초기 기록보다 우선
 
 사용자가 Saber·StarNote·Obsidian 조사 결과 반영과 Android·Windows·Drive MVP 개발 시작을 승인했습니다. `codex/mvp-foundation` 브랜치에 첫 검증판을 구현했습니다. 2026-10-23 최신 결과는 **기본 Flutter 237개 통과/105개 명시적 skip, 전체 분석 문제 0, Android ARM64 debug APK 빌드·서명 검증 및 Windows Release 빌드 성공**입니다. 순수 Dart 51개는 10월 22일 통과했고 이후 패키지는 변경하지 않았습니다. [검증 기록](docs/mvp-validation.md)에 산출물 해시·로그·선택 검사와 한계를 남겼습니다.

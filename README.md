@@ -2,14 +2,17 @@
 
 개인 PDF 필기와 Markdown 정리를 연결하는 Flutter 앱입니다. **첫 MVP는 Galaxy Tab S9+ PDF 필기 → Windows에서 필기를 보며 Markdown 정리 → Drive 자동 동기화**입니다. iPhone·iPad는 후속 목표입니다.
 
-## 실행·설치 바로가기
+## Android 태블릿에 설치
 
-아래 링크는 **이 PC에 만들어 둔 로컬 파일**을 엽니다. 빌드 파일은 Git에 포함하지 않으므로 GitHub 웹에서는 다운로드 링크로 동작하지 않습니다.
+**[Android APK 다운로드 — Galaxy Tab S9+](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.1.0-preview.1/personal-ink-vault-android-preview.apk)**
 
-- [Windows 실행 파일](C:/Users/User/Documents/Codex/2026-10-22/task-4/personal-ink-vault/build/windows/x64/runner/Release/personal_ink_vault.exe) — 같은 폴더의 DLL·data와 함께 사용합니다.
-- [Windows 전체 ZIP](C:/Users/User/Documents/Codex/2026-10-22/task-4/personal-ink-vault/build/validation/personal-ink-vault-windows-x64.zip) — 압축을 풀고 `personal_ink_vault.exe`를 실행하세요.
-- [Android APK](C:/Users/User/Documents/Codex/2026-10-22/task-4/personal-ink-vault/build/app/outputs/flutter-apk/app-debug.apk) — Galaxy Tab S9+에 전달해 설치하세요.
-- [Drive 로그인·동기화 설정 안내](C:/Users/User/Documents/Codex/2026-10-22/task-4/personal-ink-vault/docs/drive-setup.md)
+1. 태블릿에서 위 **Android APK 다운로드**를 누릅니다.
+2. 다운로드한 `personal-ink-vault-android-preview.apk` 파일을 열어 설치합니다.
+3. 앱을 열고 Drive 연결은 [로그인·동기화 설정 안내](docs/drive-setup.md)를 따릅니다.
+
+현재 파일은 **0.1.0 개발 미리보기 APK**, 약 **143MB**, ARM64 지원, Android 7.0 이상용입니다. 기존 Google OAuth 등록과 같은 debug 서명을 사용합니다. Drive 로그인은 등록된 테스트 계정으로 진행하며 실제 S9+ 필기·두 기기 동기화 수용 시험은 남아 있습니다.
+
+[릴리스·파일 목록·체크섬](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.1) · [Windows 개발판 빌드·실행 안내](docs/mvp-validation.md)
 
 ## 프로젝트 현황
 
@@ -30,6 +33,8 @@ Saber 고정 소스 기반 검증판과 자체 불변 저장·Drive 모듈을 �
 ## 코드와 개인 데이터
 
 GitHub는 공개 코드·문서·합성 시험 자료만 관리합니다. 개인 PDF·필기·첨부·백업은 비공개 Drive와 저장소 밖 로컬 vault에 둡니다. APK·외부 앱 추출물·토큰·서명 키도 Git에 넣지 않습니다. [.gitignore](.gitignore)는 공개 전 파일 검토를 대신하지 않습니다.
+
+설치용 앱 APK는 위 GitHub Releases의 첨부파일로 제공합니다. 개인 노트·OAuth 토큰·서명 키는 릴리스에도 포함하지 않습니다.
 
 Drive 자동 동기화와 독립 백업/복원을 함께 구현합니다. portable 개발 도구를 준비했으며 Google OAuth 동의·개인자료 업로드는 아직 하지 않았습니다. 토큰은 OS 보안 저장소에만 두고 백업·로그·Git에서 제외합니다.
 
