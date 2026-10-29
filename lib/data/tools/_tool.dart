@@ -1,0 +1,20 @@
+import 'package:flutter/foundation.dart';
+import 'package:saber/data/prefs.dart';
+import 'package:sbn/tool_id.dart';
+
+abstract class Tool {
+  @protected
+  @visibleForTesting
+  const new();
+
+  /// An identifier for the tool,
+  /// used to save the last-used tool in [stows.lastTool].
+  ToolId get toolId;
+
+  static const Tool textEditing = _TextEditingTool();
+}
+
+class const _TextEditingTool() extends Tool {
+  @override
+  ToolId get toolId => .textEditing;
+}

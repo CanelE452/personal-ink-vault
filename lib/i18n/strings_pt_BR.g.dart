@@ -1,0 +1,973 @@
+///
+/// Generated file. Do not edit.
+///
+// coverage:ignore-file
+// ignore_for_file: type=lint, unused_import
+// dart format off
+
+import 'package:flutter/widgets.dart';
+import 'package:intl/intl.dart';
+import 'package:slang/generated.dart';
+import 'strings.g.dart';
+import 'strings_pt.g.dart';
+
+// Path: <root>
+class TranslationsPtBr extends TranslationsPt with BaseTranslations<AppLocale, Translations> {
+	/// You can call this constructor and build your own translation instance of this locale.
+	/// Constructing via the enum [AppLocale.build] is preferred.
+	TranslationsPtBr({Map<String, Node>? overrides, PluralResolver? cardinalResolver, PluralResolver? ordinalResolver, TranslationMetadata<AppLocale, Translations>? meta})
+		: assert(overrides == null, 'Set "translation_overrides: true" in order to enable this feature.'),
+		  _meta = meta ?? TranslationMetadata(
+		    locale: AppLocale.ptBr,
+		    overrides: overrides ?? {},
+		    cardinalResolver: cardinalResolver,
+		    ordinalResolver: ordinalResolver,
+		  ),
+		  super(cardinalResolver: cardinalResolver, ordinalResolver: ordinalResolver);
+
+	/// Metadata for the translations of <pt-BR>.
+	final TranslationMetadata<AppLocale, Translations> _meta;
+	@override TranslationMetadata<AppLocale, Translations> get $meta => _meta;
+
+	late final TranslationsPtBr _root = this; // ignore: unused_field
+
+	@override 
+	TranslationsPtBr $copyWith({TranslationMetadata<AppLocale, Translations>? meta}) => TranslationsPtBr(meta: meta ?? this.$meta);
+
+	// Translations
+	@override late final _Translations$common$pt_BR common = _Translations$common$pt_BR._(_root);
+	@override late final _Translations$home$pt_BR home = _Translations$home$pt_BR._(_root);
+	@override late final _Translations$sentry$pt_BR sentry = _Translations$sentry$pt_BR._(_root);
+	@override late final _Translations$settings$pt_BR settings = _Translations$settings$pt_BR._(_root);
+	@override late final _Translations$logs$pt_BR logs = _Translations$logs$pt_BR._(_root);
+	@override late final _Translations$login$pt_BR login = _Translations$login$pt_BR._(_root);
+	@override late final _Translations$profile$pt_BR profile = _Translations$profile$pt_BR._(_root);
+	@override late final _Translations$appInfo$pt_BR appInfo = _Translations$appInfo$pt_BR._(_root);
+	@override late final _Translations$update$pt_BR update = _Translations$update$pt_BR._(_root);
+	@override late final _Translations$editor$pt_BR editor = _Translations$editor$pt_BR._(_root);
+}
+
+// Path: common
+class _Translations$common$pt_BR extends Translations$common$pt {
+	_Translations$common$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get done => 'Feito';
+	@override String get continueBtn => 'Continue';
+	@override String get cancel => 'Cancelar';
+}
+
+// Path: home
+class _Translations$home$pt_BR extends Translations$home$pt {
+	_Translations$home$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override late final _Translations$home$tabs$pt_BR tabs = _Translations$home$tabs$pt_BR._(_root);
+	@override late final _Translations$home$titles$pt_BR titles = _Translations$home$titles$pt_BR._(_root);
+	@override late final _Translations$home$tooltips$pt_BR tooltips = _Translations$home$tooltips$pt_BR._(_root);
+	@override late final _Translations$home$create$pt_BR create = _Translations$home$create$pt_BR._(_root);
+	@override String get welcome => 'Bem-vindo(a) ao Saber';
+	@override String get invalidFormat => 'O arquivo que você selecionou não é suportado. Por favor selecione um arquivo .sbn, .sbn2, .sba ou .pdf.';
+	@override String get noFiles => 'Nenhum arquivo encontrado';
+	@override String get noPreviewAvailable => 'Nenhuma prévia disponível';
+	@override String get createNewNote => 'Toque no botão + para criar uma nova nota';
+	@override String get backFolder => 'Retornar para a pasta anterior';
+	@override late final _Translations$home$newFolder$pt_BR newFolder = _Translations$home$newFolder$pt_BR._(_root);
+	@override late final _Translations$home$renameNote$pt_BR renameNote = _Translations$home$renameNote$pt_BR._(_root);
+	@override late final _Translations$home$moveNote$pt_BR moveNote = _Translations$home$moveNote$pt_BR._(_root);
+	@override String get deleteNote => 'Apagar nota';
+	@override late final _Translations$home$deleteNoteDialog$pt_BR deleteNoteDialog = _Translations$home$deleteNoteDialog$pt_BR._(_root);
+	@override late final _Translations$home$renameFolder$pt_BR renameFolder = _Translations$home$renameFolder$pt_BR._(_root);
+	@override late final _Translations$home$deleteFolder$pt_BR deleteFolder = _Translations$home$deleteFolder$pt_BR._(_root);
+	@override late final _Translations$home$sort$pt_BR sort = _Translations$home$sort$pt_BR._(_root);
+	@override late final _Translations$home$layout$pt_BR layout = _Translations$home$layout$pt_BR._(_root);
+}
+
+// Path: sentry
+class _Translations$sentry$pt_BR extends Translations$sentry$pt {
+	_Translations$sentry$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override late final _Translations$sentry$consent$pt_BR consent = _Translations$sentry$consent$pt_BR._(_root);
+}
+
+// Path: settings
+class _Translations$settings$pt_BR extends Translations$settings$pt {
+	_Translations$settings$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override late final _Translations$settings$prefCategories$pt_BR prefCategories = _Translations$settings$prefCategories$pt_BR._(_root);
+	@override late final _Translations$settings$prefLabels$pt_BR prefLabels = _Translations$settings$prefLabels$pt_BR._(_root);
+	@override late final _Translations$settings$prefDescriptions$pt_BR prefDescriptions = _Translations$settings$prefDescriptions$pt_BR._(_root);
+	@override late final _Translations$settings$themeModes$pt_BR themeModes = _Translations$settings$themeModes$pt_BR._(_root);
+	@override late final _Translations$settings$layoutSizes$pt_BR layoutSizes = _Translations$settings$layoutSizes$pt_BR._(_root);
+	@override late final _Translations$settings$accentColorPicker$pt_BR accentColorPicker = _Translations$settings$accentColorPicker$pt_BR._(_root);
+	@override String get systemLanguage => 'Idioma do sistema';
+	@override List<String> get axisDirections => [
+		'Em cima',
+		'Direita',
+		'Embaixo',
+		'Esquerda',
+	];
+	@override late final _Translations$settings$reset$pt_BR reset = _Translations$settings$reset$pt_BR._(_root);
+	@override late final _Translations$settings$customDataDir$pt_BR customDataDir = _Translations$settings$customDataDir$pt_BR._(_root);
+	@override String get autosaveDisabled => 'Nunca';
+	@override String get shapeRecognitionDisabled => 'Nunca';
+	@override String get openDataDir => 'Abra a pasta Saber';
+	@override String get resyncEverything => 'Resync tudo';
+}
+
+// Path: logs
+class _Translations$logs$pt_BR extends Translations$logs$pt {
+	_Translations$logs$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get logs => 'Registros';
+	@override String get useTheApp => 'Os logs aparecerão aqui enquanto você usa o aplicativo';
+	@override String get viewLogs => 'Ver logs';
+	@override String get debuggingInfo => 'Os logs contêm informações úteis para depuração e desenvolvimento';
+	@override String get noLogs => 'Nenhum registro aqui!';
+}
+
+// Path: login
+class _Translations$login$pt_BR extends Translations$login$pt {
+	_Translations$login$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Login';
+	@override late final _Translations$login$form$pt_BR form = _Translations$login$form$pt_BR._(_root);
+	@override TextSpan signup({required InlineSpanBuilder linkToSignup}) => TextSpan(children: [
+		const TextSpan(text: 'Ainda não tem uma conta? '),
+		linkToSignup('Registre-se agora'),
+		const TextSpan(text: '!'),
+	]);
+	@override late final _Translations$login$status$pt_BR status = _Translations$login$status$pt_BR._(_root);
+	@override late final _Translations$login$ncLoginStep$pt_BR ncLoginStep = _Translations$login$ncLoginStep$pt_BR._(_root);
+	@override late final _Translations$login$encLoginStep$pt_BR encLoginStep = _Translations$login$encLoginStep$pt_BR._(_root);
+	@override TextSpan notYou({required InlineSpanBuilder undoLogin}) => TextSpan(children: [
+		undoLogin('Você não'),
+	]);
+}
+
+// Path: profile
+class _Translations$profile$pt_BR extends Translations$profile$pt {
+	_Translations$profile$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Meu perfil';
+	@override String get logout => 'Sair';
+	@override late final _Translations$profile$quickLinks$pt_BR quickLinks = _Translations$profile$quickLinks$pt_BR._(_root);
+	@override List<dynamic> get faq => [
+		_Translations$profile$faq$0$pt_BR._(_root),
+		_Translations$profile$faq$1$pt_BR._(_root),
+		_Translations$profile$faq$2$pt_BR._(_root),
+		_Translations$profile$faq$3$pt_BR._(_root),
+	];
+	@override String quotaUsage({required Object used, required Object total, required Object percent}) => 'Você está usando ${used} de ${total} (${percent}%)';
+	@override String get connectedTo => 'Conectado a';
+	@override String get faqTitle => 'Perguntas frequentes';
+	@override String quotaUsageUncapped({required Object used}) => 'Você está usando ${used}';
+}
+
+// Path: appInfo
+class _Translations$appInfo$pt_BR extends Translations$appInfo$pt {
+	_Translations$appInfo$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String licenseNotice({required Object buildYear}) => 'Saber  Copyright © 2022-${buildYear}  Adil Hanney\nEste programa vem sem absolutamente nenhuma garantia. Este é um software livre e você pode redistribuí-lo sob certas condições.';
+	@override String get debug => 'DEBUG';
+	@override String get sponsorButton => 'Toque aqui para me patrocinar ou comprar mais armazenamento';
+	@override String get licenseButton => 'Toque aqui para ver mais informações de licença';
+	@override String get privacyPolicyButton => 'Toque aqui para ver a política de privacidade';
+}
+
+// Path: update
+class _Translations$update$pt_BR extends Translations$update$pt {
+	_Translations$update$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get updateAvailable => 'Atualização disponível';
+	@override String get updateAvailableDescription => 'Uma nova versão do aplicativo está disponível, com estas mudanças:';
+	@override String get update => 'Atualizar';
+	@override String get downloadNotAvailableYet => 'O download ainda não está disponível para sua plataforma. Verifique novamente em breve.';
+}
+
+// Path: editor
+class _Translations$editor$pt_BR extends Translations$editor$pt {
+	_Translations$editor$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override late final _Translations$editor$toolbar$pt_BR toolbar = _Translations$editor$toolbar$pt_BR._(_root);
+	@override late final _Translations$editor$pens$pt_BR pens = _Translations$editor$pens$pt_BR._(_root);
+	@override late final _Translations$editor$penOptions$pt_BR penOptions = _Translations$editor$penOptions$pt_BR._(_root);
+	@override late final _Translations$editor$colors$pt_BR colors = _Translations$editor$colors$pt_BR._(_root);
+	@override late final _Translations$editor$imageOptions$pt_BR imageOptions = _Translations$editor$imageOptions$pt_BR._(_root);
+	@override late final _Translations$editor$selectionBar$pt_BR selectionBar = _Translations$editor$selectionBar$pt_BR._(_root);
+	@override late final _Translations$editor$menu$pt_BR menu = _Translations$editor$menu$pt_BR._(_root);
+	@override late final _Translations$editor$readOnlyBanner$pt_BR readOnlyBanner = _Translations$editor$readOnlyBanner$pt_BR._(_root);
+	@override late final _Translations$editor$versionTooNew$pt_BR versionTooNew = _Translations$editor$versionTooNew$pt_BR._(_root);
+	@override late final _Translations$editor$quill$pt_BR quill = _Translations$editor$quill$pt_BR._(_root);
+	@override late final _Translations$editor$hud$pt_BR hud = _Translations$editor$hud$pt_BR._(_root);
+	@override String get pages => 'Páginas';
+	@override String get untitled => 'Sem título';
+	@override String get needsToSaveBeforeExiting => 'Salvando as suas alterações… Você pode sair do editor com segurança quando isto terminar';
+}
+
+// Path: home.tabs
+class _Translations$home$tabs$pt_BR extends Translations$home$tabs$pt {
+	_Translations$home$tabs$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get home => 'Início';
+	@override String get browse => 'Explorar';
+	@override String get whiteboard => 'Quadro branco';
+	@override String get settings => 'Configurações';
+}
+
+// Path: home.titles
+class _Translations$home$titles$pt_BR extends Translations$home$titles$pt {
+	_Translations$home$titles$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get home => 'Notas recentes';
+	@override String get browse => 'Navegar';
+	@override String get whiteboard => 'Quadro branco';
+	@override String get settings => 'Configurações';
+}
+
+// Path: home.tooltips
+class _Translations$home$tooltips$pt_BR extends Translations$home$tooltips$pt {
+	_Translations$home$tooltips$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get newNote => 'Nova nota';
+	@override String get showUpdateDialog => 'Mostrar caixa de diálogo de atualização';
+	@override String get exportNote => 'Exportar nota';
+}
+
+// Path: home.create
+class _Translations$home$create$pt_BR extends Translations$home$create$pt {
+	_Translations$home$create$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get newNote => 'Nova nota';
+	@override String get importNote => 'Importar nota';
+}
+
+// Path: home.newFolder
+class _Translations$home$newFolder$pt_BR extends Translations$home$newFolder$pt {
+	_Translations$home$newFolder$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get newFolder => 'Nova pasta';
+	@override String get folderName => 'Nome da pasta';
+	@override String get create => 'Criar';
+	@override String get folderNameEmpty => 'O nome da pasta não pode estar vazio';
+	@override String get folderNameContainsSlash => 'O nome da pasta não pode conter uma barra';
+	@override String get folderNameExists => 'A pasta já existe';
+}
+
+// Path: home.renameNote
+class _Translations$home$renameNote$pt_BR extends Translations$home$renameNote$pt {
+	_Translations$home$renameNote$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get renameNote => 'Renomear nota';
+	@override String get noteName => 'Nome da nota';
+	@override String get rename => 'Renomear';
+	@override String get noteNameEmpty => 'O nome da nota não pode estar vazio';
+	@override String get noteNameExists => 'Já existe uma nota com este nome';
+	@override String get noteNameForbiddenCharacters => 'Nome da nota contem caracteres proibidos';
+	@override String get noteNameReserved => 'Nome da nota reservado';
+}
+
+// Path: home.moveNote
+class _Translations$home$moveNote$pt_BR extends Translations$home$moveNote$pt {
+	_Translations$home$moveNote$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get moveNote => 'Mover a nota';
+	@override String moveNotes({required Object n}) => 'Mova ${n} notas';
+	@override String moveName({required Object f}) => 'Mover ${f}';
+	@override String get move => 'Mover';
+	@override String renamedTo({required Object newName}) => 'A nota será renomeada para ${newName}';
+	@override String get multipleRenamedTo => 'As notas a seguir serão renomeadas:';
+	@override String numberRenamedTo({required Object n}) => '${n} notas serão renomeadas para evitar conflitos';
+}
+
+// Path: home.deleteNoteDialog
+class _Translations$home$deleteNoteDialog$pt_BR extends Translations$home$deleteNoteDialog$pt {
+	_Translations$home$deleteNoteDialog$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String deleteNotes({required Object n}) => 'Deletar ${n} notas';
+	@override String deleteName({required Object f}) => 'Deletar ${f}';
+	@override String confirmDelete({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('pt'))(n,
+		one: 'Deletar a nota selecionada permanentemente?',
+	);
+	@override String get delete => 'Deletar';
+}
+
+// Path: home.renameFolder
+class _Translations$home$renameFolder$pt_BR extends Translations$home$renameFolder$pt {
+	_Translations$home$renameFolder$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get renameFolder => 'Renomear pasta';
+	@override String get folderName => 'Nome da pasta';
+	@override String get rename => 'Renomear';
+	@override String get folderNameEmpty => 'O nome da pasta não pode estar vazio';
+	@override String get folderNameContainsSlash => 'O nome da pasta não pode conter uma barra';
+	@override String get folderNameExists => 'Já existe uma pasta com este nome';
+}
+
+// Path: home.deleteFolder
+class _Translations$home$deleteFolder$pt_BR extends Translations$home$deleteFolder$pt {
+	_Translations$home$deleteFolder$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get deleteFolder => 'Apagar pasta';
+	@override String deleteName({required Object f}) => 'Apagar ${f}';
+	@override String get delete => 'Apagar';
+	@override String get alsoDeleteContents => 'Apagar também todas as notas dentro desta pasta';
+}
+
+// Path: home.sort
+class _Translations$home$sort$pt_BR extends Translations$home$sort$en {
+	_Translations$home$sort$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get sortBy => 'Ordenar por';
+	@override String get nameAToZ => 'Nome (A-Z)';
+	@override String get nameZToA => 'Nome (Z-A)';
+	@override String get lastModifiedNewToOld => 'Editado (Mais recente primeiro)';
+	@override String get lastModifiedOldToNew => 'Editado (Mais antigo)';
+}
+
+// Path: home.layout
+class _Translations$home$layout$pt_BR extends Translations$home$layout$en {
+	_Translations$home$layout$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get layout => 'Layout';
+	@override String get simpleGrid => 'Grid simples';
+	@override String get masonryGrid => 'Grade de alvenaria';
+}
+
+// Path: sentry.consent
+class _Translations$sentry$consent$pt_BR extends Translations$sentry$consent$pt {
+	_Translations$sentry$consent$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Ajudar a melhorar Saber?';
+	@override late final _Translations$sentry$consent$description$pt_BR description = _Translations$sentry$consent$description$pt_BR._(_root);
+	@override late final _Translations$sentry$consent$answers$pt_BR answers = _Translations$sentry$consent$answers$pt_BR._(_root);
+}
+
+// Path: settings.prefCategories
+class _Translations$settings$prefCategories$pt_BR extends Translations$settings$prefCategories$pt {
+	_Translations$settings$prefCategories$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get general => 'Geral';
+	@override String get writing => 'Escrita';
+	@override String get editor => 'editor';
+	@override String get performance => 'Performance';
+	@override String get advanced => 'Avançado';
+}
+
+// Path: settings.prefLabels
+class _Translations$settings$prefLabels$pt_BR extends Translations$settings$prefLabels$pt {
+	_Translations$settings$prefLabels$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get locale => 'Idioma do aplicativo';
+	@override String get appTheme => 'Tema do aplicativo';
+	@override String get platform => 'Tipo do tema';
+	@override String get layoutSize => 'Tipo de leiaute';
+	@override String get customAccentColor => 'Cor de destaque personalizada';
+	@override String get hyperlegibleFont => 'Fonte hiperlegível';
+	@override String get shouldCheckForUpdates => 'Verificar automaticamente as atualizações do Saber';
+	@override String get shouldAlwaysAlertForUpdates => 'Atualizações mais rápidas';
+	@override String get allowInsecureConnections => 'Permitir conexões inseguras';
+	@override String get editorToolbarAlignment => 'Alinhamento da barra de ferramentas do editor';
+	@override String get editorToolbarShowInFullscreen => 'Mostrar a barra de ferramentas do editor no modo de tela cheia';
+	@override String get editorAutoInvert => 'Inverter as notas no modo escuro';
+	@override String get preferGreyscale => 'Preferir as cores em escala de cinza';
+	@override String get maxImageSize => 'Tamanho máximo da imagem';
+	@override String get autoClearWhiteboardOnExit => 'Limpar o quadro branco depois de sair do aplicativo';
+	@override String get disableEraserAfterUse => 'Desativar automaticamente a borracha';
+	@override String get hideFingerDrawingToggle => 'Ocultar o botão de desenho com o dedo';
+	@override String get autoDisableFingerDrawingWhenStylusDetected => 'Auto-disabilitar desenho com os dedos';
+	@override String get editorPromptRename => 'Solicitar que você renomeie novas notas';
+	@override String get recentColorsDontSavePresets => 'Não salvar as cores predefinidas nas cores recentes';
+	@override String get recentColorsLength => 'Quantas cores recentes guardar';
+	@override String get printPageIndicators => 'Imprimir os indicadores de página';
+	@override String get autosave => 'Auto-salvar';
+	@override String get shapeRecognitionDelay => 'Atraso no reconhecimento de formatos';
+	@override String get autoStraightenLines => 'Auto alinhamento de linhas';
+	@override String get customDataDir => 'Pasta Saber personalizada';
+	@override String get sentry => 'Reportar erro';
+}
+
+// Path: settings.prefDescriptions
+class _Translations$settings$prefDescriptions$pt_BR extends Translations$settings$prefDescriptions$pt {
+	_Translations$settings$prefDescriptions$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get hyperlegibleFont => 'Atkinson Hyperlegible aumenta a legibilidade para leitores com baixa visão';
+	@override String get allowInsecureConnections => '(Não recomendado) Permitir que o Saber se conecte a servidores com certificados autoassinados/não-confiáveis';
+	@override String get preferGreyscale => 'Para telas e-ink';
+	@override String get autoClearWhiteboardOnExit => 'Ainda será sincronizado com seus outros dispositivos';
+	@override String get disableEraserAfterUse => 'Voltar automaticamente para a caneta depois de usar a borracha';
+	@override String get maxImageSize => 'Imagens maiores que isso serão compactadas';
+	@override late final _Translations$settings$prefDescriptions$hideFingerDrawing$pt_BR hideFingerDrawing = _Translations$settings$prefDescriptions$hideFingerDrawing$pt_BR._(_root);
+	@override String get autoDisableFingerDrawingWhenStylusDetected => 'Desativar desenho à mão quando uma stylus for detectada';
+	@override String get editorPromptRename => 'Você pode sempre renomear as notas mais tarde';
+	@override String get printPageIndicators => 'Mostrar os indicadores de página nas exportações';
+	@override String get autosave => 'Salvar automaticamente após um curto intervalo, ou nunca';
+	@override String get shapeRecognitionDelay => 'Com que frequência atualizar a pré-visualização da forma';
+	@override String get autoStraightenLines => 'Endireita linhas longas sem precisar usar a caneta de formas';
+	@override String get shouldAlwaysAlertForUpdates => 'Conte-me sobre atualizações assim que elas estiverem disponíveis';
+	@override late final _Translations$settings$prefDescriptions$sentry$pt_BR sentry = _Translations$settings$prefDescriptions$sentry$pt_BR._(_root);
+}
+
+// Path: settings.themeModes
+class _Translations$settings$themeModes$pt_BR extends Translations$settings$themeModes$pt {
+	_Translations$settings$themeModes$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get system => 'Sistema';
+	@override String get light => 'Claro';
+	@override String get dark => 'Escuro';
+}
+
+// Path: settings.layoutSizes
+class _Translations$settings$layoutSizes$pt_BR extends Translations$settings$layoutSizes$pt {
+	_Translations$settings$layoutSizes$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get auto => 'Automático';
+	@override String get phone => 'Celular';
+	@override String get tablet => 'Tablet';
+}
+
+// Path: settings.accentColorPicker
+class _Translations$settings$accentColorPicker$pt_BR extends Translations$settings$accentColorPicker$pt {
+	_Translations$settings$accentColorPicker$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get pickAColor => 'Selecionar uma cor';
+}
+
+// Path: settings.reset
+class _Translations$settings$reset$pt_BR extends Translations$settings$reset$pt {
+	_Translations$settings$reset$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Redefinir esta configuração?';
+	@override String get button => 'Redefinir';
+}
+
+// Path: settings.customDataDir
+class _Translations$settings$customDataDir$pt_BR extends Translations$settings$customDataDir$pt {
+	_Translations$settings$customDataDir$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get cancel => 'Cancelar';
+	@override String get mustBeDoneSyncing => 'Certifique-se de que a sincronização esteja concluída antes de alterar a pasta.';
+	@override String get unsupported => 'Este recurso atualmente é apenas para desenvolvedores. Usá-lo provavelmente resultará em perda de dados.';
+	@override String get select => 'Selecione';
+	@override String get mustBeEmpty => 'O diretório selecionado deve estar vazio';
+}
+
+// Path: login.form
+class _Translations$login$form$pt_BR extends Translations$login$form$pt {
+	_Translations$login$form$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override TextSpan agreeToPrivacyPolicy({required InlineSpanBuilder linkToPrivacyPolicy}) => TextSpan(children: [
+		const TextSpan(text: 'Ao fazer login, você concorda com a '),
+		linkToPrivacyPolicy('Política de Privacidade'),
+		const TextSpan(text: '.'),
+	]);
+}
+
+// Path: login.status
+class _Translations$login$status$pt_BR extends Translations$login$status$pt {
+	_Translations$login$status$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get loggedOut => 'Desconectado';
+	@override String get tapToLogin => 'Toque para fazer login com o Nextcloud';
+	@override String get loggedIn => 'Logado com o Nextcloud';
+	@override String hi({required Object u}) => 'Olá, ${u}!';
+	@override String get almostDone => 'Quase pronto para sincronização, toque para finalizar o login';
+}
+
+// Path: login.ncLoginStep
+class _Translations$login$ncLoginStep$pt_BR extends Translations$login$ncLoginStep$pt {
+	_Translations$login$ncLoginStep$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get saberNcServer => 'Servidor Nextcloud de Saber';
+	@override String get serverUrl => 'URL do servidor';
+	@override late final _Translations$login$ncLoginStep$loginFlow$pt_BR loginFlow = _Translations$login$ncLoginStep$loginFlow$pt_BR._(_root);
+	@override String get whereToStoreData => 'Escolha onde deseja armazenar seus dados:';
+	@override String get otherNcServer => 'Outro servidor Nextcloud';
+	@override String get loginWithSaber => 'Faça login com Saber';
+	@override String get loginWithNextcloud => 'Faça login com Nextcloud';
+}
+
+// Path: login.encLoginStep
+class _Translations$login$encLoginStep$pt_BR extends Translations$login$encLoginStep$pt {
+	_Translations$login$encLoginStep$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get encFaqTitle => 'Perguntas frequentes';
+	@override String get enterEncPassword => 'Para proteger seus dados, digite sua senha de criptografia:';
+	@override String get newToSaber => 'Novo no Saber';
+	@override String get encPassword => 'Senha de criptografia';
+	@override String get wrongEncPassword => 'A descriptografia falhou com a senha fornecida. Por favor, tente inseri-lo novamente.';
+	@override String get connectionFailed => 'Algo deu errado ao conectar-se ao servidor. Por favor, tente novamente mais tarde.';
+	@override List<dynamic> get encFaq => [
+		_Translations$login$encLoginStep$encFaq$0$pt_BR._(_root),
+		_Translations$login$encLoginStep$encFaq$1$pt_BR._(_root),
+		_Translations$login$encLoginStep$encFaq$2$pt_BR._(_root),
+	];
+}
+
+// Path: profile.quickLinks
+class _Translations$profile$quickLinks$pt_BR extends Translations$profile$quickLinks$pt {
+	_Translations$profile$quickLinks$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get serverHomepage => 'Página inicial do servidor';
+	@override String get deleteAccount => 'Apagar conta';
+}
+
+// Path: profile.faq.0
+class _Translations$profile$faq$0$pt_BR extends Translations$profile$faq$0$en {
+	_Translations$profile$faq$0$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get q => 'Eu perderei as minhas notas se eu sair da minha conta?';
+	@override String get a => 'Não. As suas notas permanecerão tanto no seu dispositivo quanto no servidor. Elas não serão sincronizadas com o servidor até você fazer login novamente. Tenha certeza de que a sincronização foi finalizada antes de sair, de modo que você não perca nenhum dado (veja o progresso da sincronização na tela inicial).';
+}
+
+// Path: profile.faq.1
+class _Translations$profile$faq$1$pt_BR extends Translations$profile$faq$1$en {
+	_Translations$profile$faq$1$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get q => 'Como eu mudo a minha senha do Nextcloud?';
+	@override String get a => 'Vá para o website do seu servidor e faça login. Então vá para Configurações > Segurança > Mudar senha. Você precisará sair da conta e fazer login novamente no Saber depois de mudar a sua senha.';
+}
+
+// Path: profile.faq.2
+class _Translations$profile$faq$2$pt_BR extends Translations$profile$faq$2$en {
+	_Translations$profile$faq$2$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get q => 'Como eu mudo a minha senha de criptografia?';
+	@override String get a => '1. Saia da sua conta do Saber. Tenha certeza de que a sincronização foi finalizada antes de sair, de modo que você não perca nenhum dado (veja o progresso da sincronização na tela inicial).\n2. Vá para o website do seu servidor e apague a sua pasta do Saber. Isso apagará todas as suas notas do servidor.\n3. Faça login na sua conta do Saber. Você pode escolher uma nova senha de criptografia quando fizer login.\n4. Não se esqueça de sair e fazer login novamente no Saber em seus outros dispositivos também.';
+}
+
+// Path: profile.faq.3
+class _Translations$profile$faq$3$pt_BR extends Translations$profile$faq$3$en {
+	_Translations$profile$faq$3$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get q => 'Como eu posso apagar a minha conta?';
+	@override String get a => 'Toque no "${_root.profile.quickLinks.deleteAccount}" botão acima, e faça login se necessário.\nSe você estiver usando o servidor oficial do Saber, a sua conta será apagada depois de um período de carência de uma semana. Você pode entrar em contato comigo em adilhanney@disroot.org durante esse período para cancelar a exclusão.\nSe você estiver usando um servidor de terceiros, pode ser que não haja uma opção de apagar a sua conta: você precisará consultar a política de privacidade do servidor para mais informações.';
+}
+
+// Path: editor.toolbar
+class _Translations$editor$toolbar$pt_BR extends Translations$editor$toolbar$pt {
+	_Translations$editor$toolbar$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get toggleColors => 'Paleta de cores (Ctrl C)';
+	@override String get select => 'Selecionar';
+	@override String get toggleEraser => 'Borracha (Ctrl E)';
+	@override String get photo => 'Imagens';
+	@override String get text => 'Texto';
+	@override String get toggleFingerDrawing => 'Desenhar com o dedo (Ctrl F)';
+	@override String get undo => 'Desfazer';
+	@override String get redo => 'Refazer';
+	@override String get export => 'Exportar (Ctrl Shift S)';
+	@override String get exportAs => 'Exportar como:';
+	@override String get fullscreen => 'Tela cheia (F11)';
+}
+
+// Path: editor.pens
+class _Translations$editor$pens$pt_BR extends Translations$editor$pens$pt {
+	_Translations$editor$pens$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get fountainPen => 'Caneta tinteiro';
+	@override String get ballpointPen => 'Caneta esferográfica';
+	@override String get highlighter => 'Marcador';
+	@override String get laserPointer => 'Apontador laser';
+	@override String get pencil => 'Lápis';
+	@override String get shapePen => 'Caneta de forma';
+}
+
+// Path: editor.penOptions
+class _Translations$editor$penOptions$pt_BR extends Translations$editor$penOptions$pt {
+	_Translations$editor$penOptions$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get size => 'Tamanho';
+}
+
+// Path: editor.colors
+class _Translations$editor$colors$pt_BR extends Translations$editor$colors$pt {
+	_Translations$editor$colors$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get colorPicker => 'Seletor de cores';
+	@override String get black => 'Preto';
+	@override String get darkGrey => 'Cinza escuro';
+	@override String get grey => 'Cinza';
+	@override String get lightGrey => 'Cinza claro';
+	@override String get white => 'Branco';
+	@override String get red => 'Vermelho';
+	@override String get green => 'Verde';
+	@override String get blue => 'Azul';
+	@override String get yellow => 'Amarelo';
+	@override String get purple => 'Roxo';
+	@override String get orange => 'Laranja';
+	@override String get pastelRed => 'Vermelho pastel';
+	@override String get pastelOrange => 'Laranja pastel';
+	@override String get pastelYellow => 'Amarelo pastel';
+	@override String get pastelGreen => 'Verde pastel';
+	@override String get pastelCyan => 'Ciano pastel';
+	@override String get pastelBlue => 'Azul pastel';
+	@override String get pastelPurple => 'Roxo pastel';
+	@override String get pastelPink => 'Rosa pastel';
+	@override String customBrightnessHue({required Object b, required Object h}) => 'Personalizado ${b} ${h}';
+	@override String customHue({required Object h}) => '${h} personalizado';
+	@override String get dark => 'escuro';
+	@override String get light => 'luz';
+	@override String get cyan => 'Ciano';
+	@override String get pink => 'Rosa';
+}
+
+// Path: editor.imageOptions
+class _Translations$editor$imageOptions$pt_BR extends Translations$editor$imageOptions$pt {
+	_Translations$editor$imageOptions$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Opções de imagem';
+	@override String get invertible => 'Invertível';
+	@override String get download => 'Download';
+	@override String get setAsBackground => 'Definir como plano de fundo';
+	@override String get removeAsBackground => 'Remover como plano de fundo';
+	@override String get delete => 'Excluir';
+}
+
+// Path: editor.selectionBar
+class _Translations$editor$selectionBar$pt_BR extends Translations$editor$selectionBar$pt {
+	_Translations$editor$selectionBar$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get delete => 'Excluir';
+	@override String get duplicate => 'Duplicação';
+}
+
+// Path: editor.menu
+class _Translations$editor$menu$pt_BR extends Translations$editor$menu$pt {
+	_Translations$editor$menu$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String clearPage({required Object page, required Object totalPages}) => 'Limpar a página ${page}/${totalPages}';
+	@override String get clearAllPages => 'Limpar todas as páginas';
+	@override String get insertPage => 'Inserir página abaixo';
+	@override String get duplicatePage => 'Duplicar página';
+	@override String get deletePage => 'Apagar página';
+	@override String get lineHeight => 'Altura da linha';
+	@override String get backgroundImageFit => 'Ajustar a imagem de plano de fundo';
+	@override String get backgroundPattern => 'Padrão de plano de fundo';
+	@override String get import => 'Importar';
+	@override late final _Translations$editor$menu$boxFits$pt_BR boxFits = _Translations$editor$menu$boxFits$pt_BR._(_root);
+	@override late final _Translations$editor$menu$bgPatterns$pt_BR bgPatterns = _Translations$editor$menu$bgPatterns$pt_BR._(_root);
+	@override String get lineThickness => 'Espessura da linha';
+	@override String get lineThicknessDescription => 'Espessura da linha de fundo';
+	@override String get watchServer => 'Fique atento às atualizações no servidor';
+	@override String get watchServerReadOnly => 'A edição está desativada enquanto observa o servidor';
+	@override String get lineHeightDescription => 'Também controla o tamanho do texto para notas digitadas';
+}
+
+// Path: editor.readOnlyBanner
+class _Translations$editor$readOnlyBanner$pt_BR extends Translations$editor$readOnlyBanner$pt {
+	_Translations$editor$readOnlyBanner$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Modo somente leitura';
+	@override String get corrupted => 'Falha ao carregar a nota. Ele pode estar corrompido ou ainda sendo baixado.';
+	@override String get watchingServer => 'No momento, você está aguardando atualizações no servidor. A edição está desabilitada neste modo.';
+}
+
+// Path: editor.versionTooNew
+class _Translations$editor$versionTooNew$pt_BR extends Translations$editor$versionTooNew$pt {
+	_Translations$editor$versionTooNew$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Esta nota foi editada usando uma versão mais recente do Saber';
+	@override String get subtitle => 'A edição desta nota pode resultar na perda de algumas informações. Deseja ignorar isso e editá-la mesmo assim?';
+	@override String get allowEditing => 'Permitir edição';
+}
+
+// Path: editor.quill
+class _Translations$editor$quill$pt_BR extends Translations$editor$quill$pt {
+	_Translations$editor$quill$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get typeSomething => 'Digite algo aqui…';
+}
+
+// Path: editor.hud
+class _Translations$editor$hud$pt_BR extends Translations$editor$hud$pt {
+	_Translations$editor$hud$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get unlockZoom => 'Desbloquear zoom';
+	@override String get lockZoom => 'Bloquear zoom';
+	@override String get unlockSingleFingerPan => 'Ativar rolagem com um dedo';
+	@override String get lockSingleFingerPan => 'Desativar rolagem com um dedo';
+	@override String get unlockAxisAlignedPan => 'Desbloqueie a rolagem para horizontal ou vertical';
+	@override String get lockAxisAlignedPan => 'Bloqueie a rolagem para horizontal ou vertical';
+}
+
+// Path: sentry.consent.description
+class _Translations$sentry$consent$description$pt_BR extends Translations$sentry$consent$description$pt {
+	_Translations$sentry$consent$description$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get question => 'Você gostaria de reportar automaticamente erros inesperados? Isso me ajuda a identificar e corrigir erros mais rápido.';
+	@override String get scope => 'Os reportes podem conter informações sobre os erros e o seu dispositivo. Eu tentei o máximo possível remover todas as informações pessoais, mas algumas talvez continuem.';
+	@override String get currentlyOff => 'Se você dar consentimento, os reportes de erro serão ativados após a reinicialização do app.';
+	@override String get currentlyOn => 'Se você revogar o consentimento, por favor reinicie o app para desativar os reportes de erro.';
+	@override TextSpan learnMoreInPrivacyPolicy({required InlineSpanBuilder link}) => TextSpan(children: [
+		const TextSpan(text: 'Veja mais em: '),
+		link('privacy policy'),
+		const TextSpan(text: '.'),
+	]);
+}
+
+// Path: sentry.consent.answers
+class _Translations$sentry$consent$answers$pt_BR extends Translations$sentry$consent$answers$pt {
+	_Translations$sentry$consent$answers$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get yes => 'Sim';
+	@override String get no => 'Não';
+	@override String get later => 'Me pergunte depois';
+}
+
+// Path: settings.prefDescriptions.hideFingerDrawing
+class _Translations$settings$prefDescriptions$hideFingerDrawing$pt_BR extends Translations$settings$prefDescriptions$hideFingerDrawing$pt {
+	_Translations$settings$prefDescriptions$hideFingerDrawing$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get shown => 'Evitar alternância acidental';
+	@override String get fixedOn => 'O desenho com o dedo está ativado';
+	@override String get fixedOff => 'O desenho com o dedo está desativado';
+}
+
+// Path: settings.prefDescriptions.sentry
+class _Translations$settings$prefDescriptions$sentry$pt_BR extends Translations$settings$prefDescriptions$sentry$pt {
+	_Translations$settings$prefDescriptions$sentry$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get active => 'Ativo';
+	@override String get inactive => 'Inativo';
+	@override String get activeUntilRestart => 'Ativo até você reiniciar o aplicativo';
+	@override String get inactiveUntilRestart => 'Inativo até você reiniciar o aplicativo';
+}
+
+// Path: login.ncLoginStep.loginFlow
+class _Translations$login$ncLoginStep$loginFlow$pt_BR extends Translations$login$ncLoginStep$loginFlow$pt {
+	_Translations$login$ncLoginStep$loginFlow$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get pleaseAuthorize => 'Autorize o Saber a acessar sua conta Nextcloud';
+	@override String get followPrompts => 'Por favor, siga as instruções no seu navegador.';
+	@override String get browserDidntOpen => 'O navegador não abriu';
+}
+
+// Path: login.encLoginStep.encFaq.0
+class _Translations$login$encLoginStep$encFaq$0$pt_BR extends Translations$login$encLoginStep$encFaq$0$en {
+	_Translations$login$encLoginStep$encFaq$0$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get q => 'O que é uma senha de criptografia?';
+	@override String get a => 'A senha de criptografia é usada para criptografar os seus dados antes de eles serem enviados ao servidor. Você a escolhe quando faz login pela primeira vez no Saber, e ela não está relacionada à sua conta/senha do Nextcloud.\nNinguém pode acessar as suas notas no servidor sem a sua senha de criptografia. Isso também significa que, se você esquecer a sua senha de criptografia, perderá o acesso aos seus dados.';
+}
+
+// Path: login.encLoginStep.encFaq.1
+class _Translations$login$encLoginStep$encFaq$1$pt_BR extends Translations$login$encLoginStep$encFaq$1$en {
+	_Translations$login$encLoginStep$encFaq$1$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get q => 'Por que usar duas senhas?';
+	@override String get a => 'A senha do Nextcloud é usada para acessar a nuvem. A senha de criptografia "embaralha" os seus dados antes que eles cheguem à nuvem.\nMesmo que alguém obtenha acesso à sua conta do Nextcloud, as suas notas permanecerão seguras e criptografadas com uma senha separada. Isso fornece uma segunda camada de segurança para proteger os seus dados.';
+}
+
+// Path: login.encLoginStep.encFaq.2
+class _Translations$login$encLoginStep$encFaq$2$pt_BR extends Translations$login$encLoginStep$encFaq$2$en {
+	_Translations$login$encLoginStep$encFaq$2$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get q => 'Posso usar a mesma senha para ambos?';
+	@override String get a => 'Sim, mas isso é menos seguro. Como a sua senha do Nextcloud é enviada ao servidor, alguém com acesso ao servidor poderá descriptografar as suas notas. Use a mesma senha apenas se você confiar no proprietário do servidor. ';
+}
+
+// Path: editor.menu.boxFits
+class _Translations$editor$menu$boxFits$pt_BR extends Translations$editor$menu$boxFits$pt {
+	_Translations$editor$menu$boxFits$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get fill => 'Esticar';
+	@override String get cover => 'Cobrir';
+	@override String get contain => 'Conter';
+}
+
+// Path: editor.menu.bgPatterns
+class _Translations$editor$menu$bgPatterns$pt_BR extends Translations$editor$menu$bgPatterns$pt {
+	_Translations$editor$menu$bgPatterns$pt_BR._(TranslationsPtBr root) : this._root = root, super.internal(root);
+
+	final TranslationsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get none => 'Em branco';
+	@override String get college => 'Pautado com margem';
+	@override String get collegeRtl => 'Pautado com margem (Invertido)';
+	@override String get lined => 'Pautado';
+	@override String get grid => 'Grade';
+	@override String get dots => 'Pontos';
+	@override String get staffs => 'Pentagrama';
+	@override String get tablature => 'Tablatura';
+	@override String get cornell => 'Cornell';
+}

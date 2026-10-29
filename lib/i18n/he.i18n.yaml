@@ -1,0 +1,377 @@
+common:
+  done: סיום
+  continueBtn: המשך
+  cancel: ביטול
+home:
+  tabs:
+    home: בית
+    browse: עיון
+    whiteboard: לוח מחיק
+    settings: הגדרות
+  titles:
+    home: פתקים אחרונים
+    browse: עיון
+    whiteboard: לוח מחיק
+    settings: הגדרות
+  tooltips:
+    newNote: פתק חדש
+    showUpdateDialog: הצגת חלונית עדכון
+    exportNote: ייצוא פתק
+  create:
+    newNote: פתק חדש
+    importNote: ייבוא פתק
+  welcome: ברוך בואך אל Saber
+  invalidFormat: הקובץ שבחרת אינו נתמך. נא לבחור בקובץ sbn,‏ sbn2,‏ sba, או pdf.
+  noFiles: לא נמצאו קבצים
+  noPreviewAvailable: אין תצוגה מקדימה זמינה
+  createNewNote: יש להקיש על הכפתור „+” בשביל ליצור פתק חדש
+  backFolder: חזרה לתיקייה הקודמת
+  newFolder:
+    newFolder: תיקייה חדשה
+    folderName: שם התיקייה
+    create: יצירה
+    folderNameEmpty: שם התיקייה אינו יכול להיות ריק
+    folderNameContainsSlash: שם התיקייה אינו יכול להכיל קו נטוי
+    folderNameExists: התיקייה כבר קיימת
+  renameNote:
+    renameNote: שינוי שם הפתק
+    noteName: שם הפתק
+    rename: שינוי שם
+    noteNameEmpty: שם הפתק אינו יכול להיות ריק
+    noteNameExists: כבר קיים פתק בשם זה
+    noteNameForbiddenCharacters: שם הפתק מכיל תווים אסורים
+    noteNameReserved: שם הפתק שמור
+  moveNote:
+    moveNote: העברת פתק
+    moveNotes: העברת $n פתקים
+    moveName: העברת $f
+    move: העברה
+    renamedTo: שם הפתק ישתנה לשם $newName
+    multipleRenamedTo: "ישתנה שמם של הפתקים הבאים:"
+    numberRenamedTo: ישתנה שמם של $n פתקים בשביל להימנע מהתנגשויות
+  deleteNote: מחיקת פתק
+  deleteNoteDialog:
+    deleteNotes: מחיקת $n פתקים
+    deleteName: מחיקת $f
+    confirmDelete:
+      one: למחוק את הפתק שנבחר לצמיתות?
+      other: למחוק את הפתקים שנבחרו לצמיתות?
+    delete: מחיקה
+  renameFolder:
+    renameFolder: שינוי שם התיקייה
+    folderName: שם התיקייה
+    rename: שינוי שם
+    folderNameEmpty: שם התיקייה אינו יכול להיות ריק
+    folderNameContainsSlash: שם התיקייה אינו יכול להכיל קו נטוי
+    folderNameExists: כבר קיימת תיקייה בשם זה
+  deleteFolder:
+    deleteFolder: מחיקת תיקייה
+    deleteName: מחיקת $f
+    delete: מחיקה
+    alsoDeleteContents: מחיקה גם של כל הפתקים בתיקייה זו
+  sort:
+    sortBy: מיון לפי
+    nameAToZ: שם (א-ת)
+    nameZToA: שם (ת-א)
+    lastModifiedNewToOld: עריכה אחרונה (הזמן הקרוב ביותר תחילה)
+    lastModifiedOldToNew: עריכה אחרונה (הזמן הרחוק ביותר תחילה)
+  layout:
+    layout: פריסה
+    masonryGrid: רשת בנייה
+    simpleGrid: רשת פשוטה
+sentry:
+  consent:
+    title: האם לעזור בשיפור Saber?
+    description:
+      question: האם ברצונך לדווח אוטומטית על שגיאות לא צפויות? זה יעזור לי לזהות ולתקן בעיות יותר מהר.
+      scope: הדיווחים עשויים להכיל מידע על השגיאה ועל מכשירך. עשיתי כל מאמץ על מנת לסנן החוצה נתונים אישיים, אבל ייתכן כי חלק יישארו בדיווח.
+      currentlyOff: אם הסכמתך תוענק, הדיווח על השגיאות יופעל בעת פתיחת היישום מחדש.
+      currentlyOn: אם הסכמתך תישלל, נא לפתוח מחדש את היישום בשביל להשבית את הדיווח על השגיאות.
+      learnMoreInPrivacyPolicy(rich): מידע נוסף ניתן למצוא ב${link(מדיניות הפרטיות)}.
+    answers:
+      yes: כן
+      no: לא
+      later: ברצוני להישאל מאוחר יותר
+settings:
+  prefCategories:
+    general: הגדרות כלליות
+    writing: כתיבה
+    editor: מצב עריכה
+    performance: ביצועים
+    advanced: הגדרות מתקדמות
+  prefLabels:
+    locale: שפת התוכנה
+    appTheme: ערכת הנושא של האפליקציה
+    platform: סוג ערכת הנושא
+    layoutSize: סוג פריסה
+    customAccentColor: צבע הדגשה מותאם אישית
+    hyperlegibleFont: גופן Atkinson Hyperreadible
+    shouldCheckForUpdates: לבדוק אם יש עדכונים ל־Saber
+    shouldAlwaysAlertForUpdates: עדכונים מהירים יותר
+    allowInsecureConnections: לאפשר חיבורים לא מאובטחים
+    editorToolbarAlignment: מיקום סרגל הכלים
+    editorToolbarShowInFullscreen: הצגת סרגל הכלים במצב מסך מלא
+    editorAutoInvert: היפוך צבעי הפתקים במצב כהה
+    preferGreyscale: העדפת גוונים אפורים
+    maxImageSize: גודל תמונה מרבי
+    autoClearWhiteboardOnExit: נקה אוטומטית את הלוח הלבן
+    disableEraserAfterUse: השבת אוטומטית את המחק
+    hideFingerDrawingToggle: הסתרת מתג הציור עם האצבע
+    autoDisableFingerDrawingWhenStylusDetected: השבתה אוטומטית של הציור עם האצבע
+    editorPromptRename: חלונית לבקשת שינוי שם לפתקים חדשים
+    recentColorsDontSavePresets: לא לשמור צבעי מערך בצבעים אחרונים
+    recentColorsLength: כמה צבעים אחרונים לשמור
+    printPageIndicators: הדפסת מספורי עמודים
+    autosave: שמירה אוטומטית
+    shapeRecognitionDelay: השהיה לפני זיהוי צורות
+    autoStraightenLines: יישור קווים אוטומטי
+    customDataDir: תיקייה מותאמת אישית ל־Saber
+    sentry: דיווח על שגיאות
+  prefDescriptions:
+    hyperlegibleFont: מגביר את הקריאות למשתמשים עם ראייה לקויה
+    allowInsecureConnections: (לא מומלץ) לאפשר ל־Saber להתחבר לשרתים עם חתימה עצמית או תעודות שאינן מהימנות
+    preferGreyscale: עבור תצוגות דיו אלקטרוני
+    autoClearWhiteboardOnExit: מנקה את לוח הציור לאחר היציאה מהאפליקציה
+    disableEraserAfterUse: מעבר אוטומטי חזרה לעט לאחר שימוש במחק
+    maxImageSize: תמונות גדולות יותר יידחסו
+    hideFingerDrawing:
+      shown: מונע החלפת מצב בשוגג
+      fixedOn: הציור עם האצבע זמין באופן קבוע
+      fixedOff: הציור עם האצבע מושבת באופן קבוע
+    autoDisableFingerDrawingWhenStylusDetected: כיבוי הציור עם האצבע כאשר מזוהה חיבור של עט
+    editorPromptRename: תמיד תוכל לשנות את שם הפתקים מאוחר יותר
+    printPageIndicators: הצגת מספורי עמודים בקבצים מיוצאים
+    autosave: שמירה אוטומטית לאחר פרק זמן קצר, או אף פעם
+    shapeRecognitionDelay: כל כמה זמן לעדכן את התצוגה המקדימה של הצורות
+    autoStraightenLines: מיישר קווים ארוכים ללא צורך להשתמש בעט הצורות
+    shouldAlwaysAlertForUpdates: ספר לי על עדכונים ברגע שהם יהיו זמינים
+    sentry:
+      active: פעיל
+      inactive: לא פעיל
+      activeUntilRestart: פעיל עד לפתיחת היישום מחדש
+      inactiveUntilRestart: לא פעיל עד לפתיחת היישום מחדש
+  themeModes:
+    system: מערכת
+    light: בהיר
+    dark: כהה
+  layoutSizes:
+    auto: אוטומטי
+    phone: טלפון
+    tablet: טאבלט
+  accentColorPicker:
+    pickAColor: בחר צבע
+  systemLanguage: ברירת מחדל
+  axisDirections:
+  - למעלה
+  - ימין
+  - למטה
+  - שמאל
+  reset:
+    title: אפס הגדרה זו?
+    button: אפס
+  resyncEverything: סנכרון מחדש של הכול
+  openDataDir: פתיחת תיקיית Saber
+  customDataDir:
+    cancel: ביטול
+    select: בחירה
+    mustBeEmpty: על התיקייה שנבחרה להיות ריקה
+    mustBeDoneSyncing: יש לוודא שהסנכרון הושלם לפני שמשנים את התיקייה
+    unsupported: תכונה זו מיועדת כרגע רק למפתחים. השימוש בה יגרום ככל הנראה אובדן נתונים.
+  autosaveDisabled: אף פעם
+  shapeRecognitionDisabled: אף פעם
+logs:
+  logs: יומן
+  viewLogs: הצגת היומן
+  debuggingInfo: היומן מכיל מידע שימושי לניפוי שגיאות ולפיתוח
+  noLogs: אין כאן פלט יומן!
+  useTheApp: פלט היומן יופיע כאן ככל שייעשה ביישום יותר שימוש
+login:
+  title: התחבר
+  form:
+    agreeToPrivacyPolicy(rich): ההתחברות מבטאת את הסכמתך ל${linkToPrivacyPolicy(מדיניות הפרטיות)}.
+  signup(rich): אין לך עוד משתמש ${linkToSignup(הירשם עכשיו)}!
+  notYou(rich): זה לא חשבונך? אפשר ${undoLogin(לבחור חשבון אחר)}.
+  status:
+    loggedOut: מנותק
+    tapToLogin: יש ללחוץ כדי להיכנס עם Nextcloud
+    hi: אהלן, $u!
+    almostDone: הסנכרון כמעט מוכן, יש ללחוץ בשביל להשלים את ההתחברות
+    loggedIn: נכנסת עם Nextcloud
+  ncLoginStep:
+    whereToStoreData: "נא לבחור היכן ברצונך לאחסן את הנתונים:"
+    saberNcServer: שרת ה־Nextcloud של Saber
+    otherNcServer: שרת Nextcloud אחר
+    serverUrl: כתובת שרת
+    loginWithSaber: התחברות עם Saber
+    loginWithNextcloud: התחברות עם Nextcloud
+    loginFlow:
+      pleaseAuthorize: נא לתת ל־Saber הרשאה לגשת לחשבון Nextcloud שלך
+      followPrompts: נא לעקוב אחר ההוראות הבאות בממשק של Nextcloud
+      browserDidntOpen: עמוד ההתחברות לא נפתח? נא ללחוץ כאן
+  encLoginStep:
+    enterEncPassword: "לצורך הגנה על הנתונים שלך, נא להקליד את סיסמת ההצפנה שלך:"
+    newToSaber: פעם ראשונה ב־Saber? אפשר פשוט להקליד סיסמת הצפנה חדשה.
+    encPassword: סיסמת הצפנה
+    encFaqTitle: שאלות ותשובות
+    wrongEncPassword: פענוח ההצפנה עם הסיסמה שסופקה נכשל. נא לנסות להקליד אותה שוב.
+    connectionFailed: משהו השתבש בעת ההתחברות לשרת. נא לנסות שוב מאוחר יותר.
+    encFaq:
+    - q: מהי סיסמת הצפנה? מדוע להשתמש בשתי סיסמאות?
+      a: |-
+        הסיסמה ל־Nextcloud משמשת לגישה לענן. סיסמת ההצפנה „מבלגנת” את הנתונים שלך ביישום לפני שהם מגיעים לענן.
+        אפילו אם מישהו משיג גישה לחשבון ה־Nextcloud שלך, הפתקים שלך יישארו בטוחים ומוצפנים עם סיסמה נפרדת. דבר זה מעניק לך שכבת אבטחה שנייה להגנה על הנתונים שלך.
+        ללא סיסמת ההצפנה שלך, לאף אחד לא תהיה גישה לפתקים שלך בשרת, אך זה גם אומר שאם סיסמת ההצפנה שלך תישכח, לא תהיה לך יותר גישה לנתונים.
+    - q: עדיין לא הגדרתי סיסמת הצפנה? היכן מקבלים אחת?
+      a: |-
+        נא לבחור סיסמת הצפנה חדשה ולהקליד אותה למעלה.
+        ‏Saber ייצור את מפתחות ההצפנה שלך באופן אוטומטי מסיסמה זו.
+    - q: האם אפשר להשתמש באותה סיסמה כמו לחשבון Nextcloud שלי?
+      a: כן, אך יש לקחת בחשבון שיהיה יותר קל למנהלי השרת או לאנשים אחרים לגשת לפתקים שלך אם הם משיגים גישה לחשבונך ב־Nextcloud.
+profile:
+  title: הפרופיל שלי
+  logout: התנתק
+  quotaUsage: נעשה שימוש ב־$used מתוך $total (‏$percent‏%)
+  quotaUsageUncapped: נעשה שימוש ב־$used
+  connectedTo: התחברת אל
+  quickLinks:
+    serverHomepage: עמוד הבית של השרת
+    deleteAccount: מחק משתמש
+  faqTitle: שאלות ותשובות
+  faq:
+  - q: אני אאבד את הפתקים שלי אם אני אתנתק?
+    a: לא. ההערות שלך יישארו גם במכשיר וגם בשרת. הם לא יסונכרנו עם השרת עד שתתחבר חזרה. ודא שהסנכרון הושלם לפני היציאה כדי שלא תאבד נתונים (ראה את התקדמות הסנכרון במסך הבית).
+  - q: איך לשנות את הסיסמה שלי ל־Nextcloud?
+    a: עבור לאתר השרת שלך והתחבר. לאחר מכן עבור אל הגדרות > אבטחה > שנה סיסמה. תצטרך להתנתק ולהיכנס שוב ל-Saber לאחר שינוי הסיסמה שלך.
+  - q: איך אני משנה את הסיסמא המוצפנת שלי?
+    a: |-
+      0. לוודא שהסנכרון הושלם (ניתן לראות את התקדמות הסנכרון במסך הבית).
+      1. להתנתק מ־Saber.
+      2. לעבור לאתר האינטרנט של השרת ולמחוק את תיקיית ‚Saber’ שלך. פעולה זו תמחק את כל הפתקים שלך מהשרת.
+      3. להתחבר שוב אל Saber. אפשר לבחור סיסמת הצפנה חדשה בעת הכניסה.
+      4. לא לשכוח להתנתק ולהתחבר שוב אל Saber גם במכשירים האחרים שלך.
+  - q: איך אני יכול למחוק את החשבון שלי?
+    a: |-
+      יש להקיש על הכפתור „@:profile.quickLinks.deleteAccount” ולהתחבר במידת הצורך.
+      אם משתמשים בשרת הרשמי של Saber, החשבון שיוצרים יימחק לאחר תקופת חסד של שבוע. אפשר ליצור איתי קשר בכתובת adilhanney@disroot.org במהלך תקופה זו כדי לבטל את המחיקה.
+      אם משתמשים בשרת צד שלישי, ייתכן שאין אפשרות למחוק את החשבון: יש לעיין במדיניות הפרטיות של השרת למידע נוסף.
+appInfo:
+  licenseNotice: |-
+    Saber  כל הזכויות שמורות © 2022-$buildYear  עַאדִל האני
+    תוכנית זו מגיעה ללא כל אחריות. זוהי תוכנה חופשית ואפשר להפיץ אותה מחדש בתנאים מסוימים.
+  debug: דִּיבָּג
+  sponsorButton: אפשר להקיש כאן כדי לתת לי חסות או לקנות שטח אחסון נוסף
+  licenseButton: אפשר להקיש כאן כדי להציג פרטי רישיון נוספים
+  privacyPolicyButton: אפשר להקיש כאן כדי להציג את מדיניות הפרטיות
+update:
+  updateAvailable: עדכון זמין
+  updateAvailableDescription: "גרסה חדשה של היישום זמינה עם שינויים אלה:"
+  update: עדכן
+  downloadNotAvailableYet: ההורדה עדיין אינה זמינה לפלטפורמה שלך. נא לבדוק שוב בעוד זמן קצר.
+editor:
+  toolbar:
+    toggleColors: החלפת מצב צבע (Ctrl C)
+    select: בחר
+    toggleEraser: הפעלת/כיבוי מחק (Ctrl E)
+    photo: תמונות
+    text: טקסט
+    toggleFingerDrawing: הפעלת/כיבוי ציור עם האצבע (Ctrl F)
+    undo: ביטול פעולה
+    redo: ביצוע מחדש
+    export: יצא (Ctrl Shift S)
+    exportAs: "יצא כ:"
+    fullscreen: הפעלת/כיבוי מצב מסך מלא (F11)
+  pens:
+    fountainPen: עט נובע
+    ballpointPen: עט כדורי
+    highlighter: מדגוש
+    pencil: עיפרון
+    shapePen: עט צורות
+    laserPointer: סמן לייזר
+  penOptions:
+    size: גודל
+  colors:
+    colorPicker: בורר צבעים
+    customBrightnessHue: בהתאמה אישית $b $h
+    customHue: בהתאמה אישית $h
+    dark: כהה
+    light: בהיר
+    black: שחור
+    darkGrey: עפור ככה
+    grey: עפור
+    lightGrey: עפור בהיר
+    white: לבן
+    red: אדום
+    green: ירוק
+    cyan: ציאן
+    blue: כחול
+    yellow: צהוב
+    purple: סגול
+    pink: ורוד
+    orange: כתום
+    pastelRed: אדום פסטל
+    pastelOrange: כתום פסטל
+    pastelYellow: צהוב פסטל
+    pastelGreen: ירוק פסטל
+    pastelCyan: תכלת פסטל
+    pastelBlue: כחול פסטל
+    pastelPurple: סגול פסטל
+    pastelPink: ורוד פסטל
+  imageOptions:
+    title: אפשרויות תמונה
+    invertible: הפיך
+    download: הורד
+    setAsBackground: הגדר כרקע
+    removeAsBackground: הסר כרקע
+    delete: מחק
+  selectionBar:
+    delete: מחיקה
+    duplicate: שכפול
+  menu:
+    clearPage: ניקוי העמוד $page/$totalPages
+    clearAllPages: ניקוי כל העמודים
+    insertPage: הוספת עמוד למטה
+    duplicatePage: שכפול עמוד
+    deletePage: מחיקת עמוד
+    lineHeight: גובה הקו
+    lineHeightDescription: משפיע גם על גודל הטקסט בפתקים שבהם הוקלד מלל
+    lineThickness: עובי קו
+    lineThicknessDescription: עובי קו רקע
+    backgroundImageFit: התאמת תמונת רקע
+    backgroundPattern: תבנית רקע
+    import: יבוא
+    watchServer: מעקב אחר עדכונים בשרת
+    watchServerReadOnly: העריכה מושתת בעת מעקב אחר השרת
+    boxFits:
+      fill: מתיחה
+      cover: כיסוי
+      contain: מכיל
+    bgPatterns:
+      none: ריק
+      college: שורות עם קו בצד שמאל
+      collegeRtl: שורות עם קו בצד ימין
+      lined: שורות
+      grid: משבצות
+      dots: נקודות
+      staffs: תווים
+      tablature: טבלטורה (מספורי תווים מוזיקליים)
+      cornell: קורנל
+  readOnlyBanner:
+    title: מצב צפייה בלבד
+    watchingServer: כרגע מתבצע מעקב אחר עדכונים בשרת. העריכה מושבתת במצב זה.
+    corrupted: טעינת הפתק נכשלה. ייתכן שהוא פגום או שהורדתו עדיין לא הסתיימה.
+  versionTooNew:
+    title: הערה זו נערכה באמצעות גרסה חדשה יותר של Saber
+    subtitle: עריכת פתק זה עלולה לגרום לאיבוד מידע מסוים. להתעלם ולערוך בכל זאת?
+    allowEditing: אפשר עריכה
+  quill:
+    typeSomething: אפשר להקליד כאן משהו…
+  hud:
+    unlockZoom: בטל נעילת זום
+    lockZoom: נעיל זום
+    unlockSingleFingerPan: הפיכת גלילה רציפה באצבע אחת לזמינה
+    lockSingleFingerPan: הפיכת גלילה רציפה באצבע אחת ללא זמינה
+    unlockAxisAlignedPan: ביטול נעילה של גלילה רציפה לאופקית או אנכית
+    lockAxisAlignedPan: נעילת גלילה רציפה לאופקית או אנכית
+  pages: עמודים
+  untitled: חסר כותרת
+  needsToSaveBeforeExiting: השינויים נשמרים… אפשר לצאת בבטחה מהעורך בעת סיום השמירה

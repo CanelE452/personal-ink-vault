@@ -1,0 +1,377 @@
+common:
+  done: Kész
+  continueBtn: Folytatás
+  cancel: Mégse
+home:
+  tabs:
+    home: Kezdőlap
+    browse: Böngészés
+    whiteboard: Tábla
+    settings: Beállítások
+  titles:
+    home: Legutóbbi jegyzetek
+    browse: Böngészés
+    whiteboard: Tábla
+    settings: Beállítások
+  tooltips:
+    newNote: Új jegyzet
+    showUpdateDialog: Frissítési párbeszédablak megjelenítése
+    exportNote: Jegyzet exportálása
+  create:
+    newNote: Új jegyzet
+    importNote: Jegyzet importálása
+  welcome: Üdvözli a Saber
+  invalidFormat: A kiválasztott fájl nem támogatott. Kérjük, válasszon egy sbn, sbn2, sba vagy pdf fájlt.
+  noFiles: Nem található fájl
+  noPreviewAvailable: Nincs elérhető előnézet
+  createNewNote: Kattintson a + gombra egy új jegyzet létrehozásához
+  backFolder: Vissza az előző mappához
+  newFolder:
+    newFolder: Új mappa
+    folderName: Mappa neve
+    create: Létrehozás
+    folderNameEmpty: Mappa neve nem lehet üres
+    folderNameContainsSlash: Mappa neve nem tartalmazhat perjelet
+    folderNameExists: Mappa már létezik
+  renameNote:
+    renameNote: Jegyzet átnevezése
+    noteName: Jegyzet neve
+    rename: Átnevezés
+    noteNameEmpty: Jegyzet neve nem lehet üres
+    noteNameExists: Már létezik egy jegyzet ezen a néven
+    noteNameForbiddenCharacters: Jegyzet neve tiltott karaktereket tartalmaz
+    noteNameReserved: A jegyzet neve foglalt
+  moveNote:
+    moveNote: Jegyzet áthelyezése
+    moveNotes: $n jegyzet áthelyezése
+    moveName: $f áthelyezése
+    move: Áthelyezés
+    renamedTo: "A jegyzet át lesz nevezve erre: $newName"
+    multipleRenamedTo: "A következő jegyzetek át lesznek nevezve:"
+    numberRenamedTo: $n jegyzet át lesz nevezve az ütközések elkerülése érdekében
+  deleteNote: Jegyzet törlése
+  deleteNoteDialog:
+    deleteNotes: $n jegyzet törlése
+    deleteName: $f törlése
+    confirmDelete:
+      one: Véglegesen törli a kiválasztott jegyzetet?
+      other: Véglegesen törli a kiválasztott jegyzeteket?
+    delete: Törlés
+  renameFolder:
+    renameFolder: Mappa átnevezése
+    folderName: Mappa neve
+    rename: Átnevezés
+    folderNameEmpty: Mappa neve nem lehet üres
+    folderNameContainsSlash: Mappa neve nem tartalmazhat perjelet
+    folderNameExists: Már létezik egy mappa ezzel a névvel
+  deleteFolder:
+    deleteFolder: Mappa törlése
+    deleteName: $f törlése
+    delete: Törlés
+    alsoDeleteContents: A mappában lévő összes jegyzet is törlődjön
+  sort:
+    sortBy(OUTDATED): Rendezés szerint
+    nameAToZ(OUTDATED): Név (A-Z)
+    nameZToA(OUTDATED): Név (A-Z)
+    lastModifiedNewToOld(OUTDATED): Szerkesztett (Legújabb előre)
+    lastModifiedOldToNew(OUTDATED): "Szerkesztett (Időrendben: legidősebb először)"
+  layout:
+    layout(OUTDATED): Elrendezés
+    masonryGrid(OUTDATED): Murvai rács
+    simpleGrid(OUTDATED): Egyszerű rács
+sentry:
+  consent:
+    title: Segít a Saber fejlesztésében?
+    description:
+      question: Szeretné automatikusan jelenteni a váratlan hibákat? Ez segít a problémák gyorsabb azonosításában és javításában.
+      scope: A jelentések tartalmazhatnak információkat a hibáról és az eszközéről. Minden tőlem telhetőt megtettem a személyes adatok kiszűrésére, de előfordulhat, hogy néhány mégis megmarad.
+      currentlyOff: Ha hozzájárul, a hibajelentés az alkalmazás újraindítása után engedélyezve lesz.
+      currentlyOn: Ha visszavonja a hozzájárulást, kérjük, indítsa újra az alkalmazást a hibajelentés kikapcsolásához.
+      learnMoreInPrivacyPolicy(rich): További részletek az ${link(adatvédelmi szabályzatban)} (angolul).
+    answers:
+      yes: Igen
+      no: Nem
+      later: Kérdezz meg később
+settings:
+  prefCategories:
+    general: Általános
+    writing: Írás
+    editor: Szerkesztés
+    performance: Teljesítmény
+    advanced: Speciális
+  prefLabels:
+    locale: Alkalmazás nyelve
+    appTheme: Alkalmazás témája
+    platform: Téma típusa
+    layoutSize: Elrendezési mód
+    customAccentColor: Egyéni hangsúlyszín
+    hyperlegibleFont: Atkinson Hyperlegible betűtípus
+    shouldCheckForUpdates: Automatikusan ellenőrzi a Saber frissítéseket
+    shouldAlwaysAlertForUpdates: Gyorsabb értesítések a frissítésekről
+    allowInsecureConnections: Nem biztonságos kapcsolatok engedélyezése
+    editorToolbarAlignment: A szerkesztő eszköztár igazítása
+    editorToolbarShowInFullscreen: A szerkesztő eszköztár megjelenítése teljes képernyős módban
+    editorAutoInvert: Jegyzetek színének felcserélése sötét módban
+    preferGreyscale: Szürkeárnyalatos színek előnyben részesítése
+    maxImageSize: Maximális képméret
+    autoClearWhiteboardOnExit: A tábla törlése az alkalmazásból való kilépés után
+    disableEraserAfterUse: Radír automatikus kikapcsolása
+    hideFingerDrawingToggle: Az ujjal rajzolás kapcsoló elrejtése
+    autoDisableFingerDrawingWhenStylusDetected: Az ujjal történő rajzolás automatikus kikapcsolása
+    editorPromptRename: Új jegyzetek átnevezésére való felszólítás
+    recentColorsDontSavePresets: Ne mentse az előre beállított színeket a legutóbbi színek között
+    recentColorsLength: Hány legutóbbi színt tároljon
+    printPageIndicators: Oldalszámok nyomtatása
+    autosave: Automatikus mentés
+    shapeRecognitionDelay: Alakfelismerés késleltetése
+    autoStraightenLines: Vonalak automatikus kiegyenesítése
+    customDataDir: Egyéni Saber mappa
+    sentry: Hibajelentés
+  prefDescriptions:
+    hyperlegibleFont: Az Atkinson Hyperlegible növeli az olvashatóságot a gyengén látók számára
+    allowInsecureConnections: (Nem ajánlott) Engedélyezi, hogy a Saber ön-aláírt vagy nem megbízható tanúsítványokat használó szerverekhez csatlakozzon
+    preferGreyscale: E-tinta kijelzőkhöz
+    autoClearWhiteboardOnExit: A tábla törlésre kerül, amikor kilép az alkalmazásból
+    disableEraserAfterUse: Automatikusan visszavált a tollra, miután a radírt használta
+    maxImageSize: Az ennél nagyobb képek tömörítve lesznek
+    hideFingerDrawing:
+      shown: Elkerüli a véletlen átkapcsolást
+      fixedOn: Az ujjal rajzolás mindig engedélyezett
+      fixedOff: Az ujjal rajzolás soha nem engedélyezett
+    autoDisableFingerDrawingWhenStylusDetected: Kapcsolja ki az ujjal történő rajzolást, ha ceruza van érzékelve
+    editorPromptRename: A jegyzeteket később bármikor átnevezheti
+    printPageIndicators: Oldalszámok megjelenítése az exportokban
+    autosave: Automatikus mentés rövid idő után, vagy soha
+    shapeRecognitionDelay: Milyen gyakran frissüljön az alakzat előnézete
+    autoStraightenLines: Automatikusan kiegyenesíti a hosszú vonalakat anélkül, hogy az alakzat tollat kellene használni
+    shouldAlwaysAlertForUpdates: Értesítsen a frissítésekről, amint elérhetővé válnak
+    sentry:
+      active: Aktív
+      inactive: Inaktív
+      activeUntilRestart: Aktív az alkalmazás újraindításáig
+      inactiveUntilRestart: Inaktív az alkalmazás újraindításáig
+  themeModes:
+    system: Rendszer
+    light: Világos
+    dark: Sötét
+  layoutSizes:
+    auto: Automatikus
+    phone: Telefon
+    tablet: Tablet
+  accentColorPicker:
+    pickAColor: Szín kiválasztása
+  systemLanguage: Automatikus
+  axisDirections:
+  - Fel
+  - Jobbra
+  - Le
+  - Balra
+  reset:
+    title: Visszaállítsa ezt a beállítást?
+    button: Visszaállítás
+  resyncEverything: Minden újraszinkronizálása
+  openDataDir: Saber mappa megnyitása
+  customDataDir:
+    cancel: Mégse
+    select: Kiválasztás
+    mustBeEmpty: A kiválasztott mappának üresnek kell lennie
+    mustBeDoneSyncing: Győződjön meg arról, hogy a szinkronizálás befejeződött, mielőtt módosítja a mappát
+    unsupported: Ez a funkció jelenleg csak fejlesztőknek való. Használata adatvesztést okozhat.
+  autosaveDisabled: Soha
+  shapeRecognitionDisabled: Soha
+logs:
+  logs: Naplók
+  viewLogs: Naplók megtekintése
+  debuggingInfo: A naplók hibakereséshez és fejlesztéshez hasznos információkat tartalmaznak
+  noLogs: Itt nincsenek naplók!
+  useTheApp: A naplók itt jelennek meg az alkalmazás használata során
+login:
+  title: Bejelentkezés
+  form:
+    agreeToPrivacyPolicy(rich): A bejelentkezéssel elfogadja a ${linkToPrivacyPolicy(Adatvédelmi irányelvek)}.
+  signup(rich): Még nincsen fiókja? ${linkToSignup(Regisztrálás)}!
+  notYou(rich): Nem Ön az? ${undoLogin(Fiókváltás)}.
+  status:
+    loggedOut: Kijelentkezve
+    tapToLogin: Kattintson a Nextclouddal való bejelentkezéshez
+    hi: Üdv, $u!
+    almostDone: Majdnem készen áll a szinkronizálásra, koppintson a bejelentkezés befejezéséhez
+    loggedIn: Bejelentkezve a Nextclouddal
+  ncLoginStep:
+    whereToStoreData: "Válassza ki, hol szeretné tárolni az adatait:"
+    saberNcServer: A Saber Nextcloud szervere
+    otherNcServer: Másik Nextcloud szerver
+    serverUrl: Szerver URL
+    loginWithSaber: Bejelentkezés Saber-rel
+    loginWithNextcloud: Bejelentkezés Nextcloud-dal
+    loginFlow:
+      pleaseAuthorize: Kérjük, engedélyezze a Saber számára a Nextcloud-fiókjához való hozzáférést
+      followPrompts: Kérjük, kövesse a Nextcloud felületén megjelenő utasításokat
+      browserDidntOpen: Nem nyílt meg a bejelentkezési oldal? Kattintson ide
+  encLoginStep:
+    enterEncPassword: "Az adatai védelme érdekében kérjük, adja meg a titkosítási jelszavát:"
+    newToSaber: Először használja a Saber-t? Adjon meg egy új titkosítási jelszót.
+    encPassword: Titkosítási jelszó
+    encFaqTitle: Gyakran ismételt kérdések
+    wrongEncPassword: A megadott jelszóval a visszafejtés nem sikerült. Kérjük, próbálja meg újra megadni.
+    connectionFailed: Hiba történt a szerverhez való csatlakozás során. Kérjük, próbálja újra később.
+    encFaq:
+    - q: Mi az a titkosítási jelszó? Miért van szükség két jelszóra?
+      a: |-
+        A Nextcloud jelszó a felhőhöz való hozzáféréshez szükséges. A titkosítási jelszó már azelőtt „összekeveri” az adatait, hogy azok a felhőbe kerülnének.
+        Még ha valaki hozzá is fér a Nextcloud-fiókjához, a jegyzetei továbbra is biztonságban maradnak, mivel külön titkosítási jelszó védi őket. Ez egy második védelmi réteget biztosít az adatai számára.
+        A szerveren senki sem férhet hozzá a jegyzeteihez a titkosítási jelszó nélkül, de ez azt is jelenti, hogy ha elfelejti a titkosítási jelszavát, elveszíti a hozzáférést az adataihoz.
+    - q: Még nem állítottam be titkosítási jelszót. Hol szerezhetem meg?
+      a: |-
+        Válasszon egy új titkosítási jelszót, és adja meg fent.
+        A Saber automatikusan létrehozza a titkosítási kulcsokat ebből a jelszóból.
+    - q: Használhatom ugyanazt a jelszót, mint a Nextcloud-fiókomhoz?
+      a: Igen, de fontos figyelembe venni, hogy így a szerver adminisztrátora vagy más személy könnyebben hozzáférhet a jegyzeteihez, ha hozzájut a Nextcloud-fiókjához.
+profile:
+  title: Profilom
+  logout: Kijelentkezés
+  quotaUsage: "Felhasználva: $used / $total ($percent%)"
+  connectedTo: "Csatlakozva:"
+  quickLinks:
+    serverHomepage: Szerver kezdőlapja
+    deleteAccount: Fiók törlése
+  faqTitle: Gyakran ismételt kérdések
+  faq:
+  - q: Elveszítem a jegyzeteimet, ha kijelentkezem?
+    a: Nem. A jegyzetei mind az eszközén, mind a szerveren megmaradnak. A szerverrel csak akkor lesznek szinkronizálva, ha újra bejelentkezik. Mielőtt kijelentkezik, győződjön meg arról, hogy a szinkronizálás befejeződött, különben adatvesztés történhet (a kezdőképernyőn látható a szinkronizálás állapota).
+  - q: Hogyan változtatom meg a Nextcloud jelszavamat?
+    a: Nyissa meg a szerver weboldalát, és jelentkezzen be. Ezután menjen a Beállítások > Biztonság > Jelszó módosítása menüpontra. A jelszó módosítása után ki kell jelentkeznie a Saberből, majd újra be kell jelentkeznie.
+  - q: Hogyan változtatom meg a titkosítási jelszavamat?
+    a: |-
+      0. Győződjön meg arról, hogy a szinkronizálás befejeződött (a szinkronizálás állapotát a kezdőképernyőn láthatja).
+      1. Jelentkezzen ki a Saberből.
+      2. Nyissa meg a szerver weboldalát, és törölje a „Saber” mappát. Ez minden jegyzetét törli a szerverről.
+      3. Jelentkezzen be újra a Saberbe. Bejelentkezéskor új titkosítási jelszót választhat.
+      4. Ne felejtkezzen el kijelentkezni, majd újra bejelentkezni a Saberbe a többi eszközén is.
+  - q: Hogyan törölhetem a fiókomat?
+    a: |-
+      Koppintson a fenti „@:profile.quickLinks.deleteAccount” gombra, és szükség esetén jelentkezzen be.
+      Ha a hivatalos Saber szervert használja, a fiókja 1 hetes türelmi idő után törlésre kerül. Ebben az időszakban a törlés visszavonásához vegye fel a kapcsolatot a következő e-mail címen: adilhanney@disroot.org.
+      Ha harmadik féltől származó szervert használ, előfordulhat, hogy nincs lehetőség a fiók törlésére: további információért tekintse meg a szerver adatvédelmi szabályzatát.
+  quotaUsageUncapped(OUTDATED): Használod a $used-t
+appInfo:
+  licenseNotice: |-
+    Saber Copyright © 2022-$buildYear Adil Hanney
+    Ez a program nem tartalmaz semmilyen garanciát. Ez egy szabad szoftver, és bizonyos feltételek mellett szabadon terjeszthető.
+  debug: DEBUG
+  sponsorButton: Ide kattintva támogathat engem vagy vásárolhat több tárhelyet
+  licenseButton: További licencinformációk megtekintéséhez kattintson ide
+  privacyPolicyButton: Kattintson ide az adatvédelmi nyilatkozat megtekintéséhez
+update:
+  updateAvailable: Frissítés elérhető
+  updateAvailableDescription: "Az alkalmazás új verziója elérhető:"
+  update: Frissítés
+  downloadNotAvailableYet: A letöltés még nem érhető el a platformján. Kérjük, próbálja meg később.
+editor:
+  toolbar:
+    toggleColors: Színek váltása (Ctrl+C)
+    select: Kiválasztás
+    toggleEraser: Radír ki-be kapcsolása (Ctrl+E)
+    photo: Képek
+    text: Szöveg
+    toggleFingerDrawing: Ujjal való rajzolásra váltása (Ctrl+F)
+    undo: Visszavonás
+    redo: Mégis
+    export: Exportálás (Ctrl+Shift+S)
+    exportAs: "Exportálás mint:"
+    fullscreen: Teljes képernyő bekapcsolása (F11)
+  pens:
+    fountainPen: Töltőtoll
+    ballpointPen: Golyóstoll
+    highlighter: Kiemelő
+    pencil: Ceruza
+    shapePen: Alakzat toll
+    laserPointer: Lézermutató
+  penOptions:
+    size: Méret
+  colors:
+    colorPicker: Színválasztó
+    customBrightnessHue: Egyéni $b $h
+    customHue: Egyéni $h
+    dark: sötét
+    light: világos
+    black: Fekete
+    darkGrey: Sötétszürke
+    grey: Szürke
+    lightGrey: Világosszürke
+    white: Fehér
+    red: Piros
+    green: Zöld
+    cyan: Cián
+    blue: Kék
+    yellow: Sárga
+    purple: Lila
+    pink: Rózsaszín
+    orange: Narancs
+    pastelRed: Pasztell piros
+    pastelOrange: Pasztell narancs
+    pastelYellow: Pasztell sárga
+    pastelGreen: Pasztell zöld
+    pastelCyan: Pasztell cián
+    pastelBlue: Pasztell kék
+    pastelPurple: Pasztell lila
+    pastelPink: Pasztell rózsaszín
+  imageOptions:
+    title: Kép opciók
+    invertible: Megfordítható
+    download: Letöltés
+    setAsBackground: Beállítás háttérképként
+    removeAsBackground: Eltávolítás háttérként
+    delete: Törlés
+  selectionBar:
+    delete: Törlés
+    duplicate: Duplikálás
+  menu:
+    clearPage: "Oldal törlése: $page/$totalPages"
+    clearAllPages: Összes oldal törlése
+    insertPage: Oldal beszúrása alá
+    duplicatePage: Oldal duplikálása
+    deletePage: Oldal törlése
+    lineHeight: Vonalmagasság
+    lineHeightDescription: A begépelt jegyzetek szövegméretét is szabályozza
+    lineThickness: Vonalvastagság
+    lineThicknessDescription: Háttérvonalak vastagsága
+    backgroundImageFit: Háttérkép illesztése
+    backgroundPattern: Háttérminta
+    import: Importálás
+    watchServer: Frissítések figyelése a szerveren
+    watchServerReadOnly: A szerver figyelése közben a szerkesztés le van tiltva
+    boxFits:
+      fill: Nyújtás
+      cover: Kitöltés
+      contain: Igazítás
+    bgPatterns:
+      none: Üres
+      college: Margós vonalazás
+      collegeRtl: Margós vonalazás (fordított)
+      lined: Vonalas
+      grid: Kockás
+      dots: Pontozott
+      staffs: Ötvonalas kottavonal
+      tablature: Tabulatúra
+      cornell: Cornell
+  readOnlyBanner:
+    title: Csak olvasható mód
+    watchingServer: Jelenleg a szerver frissítéseit figyeli. Ebben a módban a szerkesztés le van tiltva.
+    corrupted: Nem sikerült betölteni a jegyzetet. Lehet, hogy sérült, vagy még letöltés alatt áll.
+  versionTooNew:
+    title: Ez a jegyzet a Saber egy újabb verziójával lett szerkesztve
+    subtitle: A jegyzet szerkesztése bizonyos információk elvesztését eredményezheti. Szeretné ezt figyelmen kívül hagyni, és mégis szerkeszteni?
+    allowEditing: Szerkesztés engedélyezése
+  quill:
+    typeSomething: Gépeljen ide valamit…
+  hud:
+    unlockZoom: Nagyítás feloldása
+    lockZoom: Nagyítás rögzítése
+    unlockSingleFingerPan: Egyujjas lapozás engedélyezése
+    lockSingleFingerPan: Egyujjas lapozás letiltása
+    unlockAxisAlignedPan: Pásztázás feloldása vízszintes vagy függőleges irányban
+    lockAxisAlignedPan: Pásztázás rögzítése vízszintes vagy függőleges irányban
+  pages: Oldalak
+  untitled: Névtelen
+  needsToSaveBeforeExiting: A módosítások mentése folyamatban… A szerkesztőt biztonságosan bezárhatja, ha elkészült

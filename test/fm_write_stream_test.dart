@@ -1,0 +1,65 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:saber/data/file_manager/file_manager.dart';
+import 'package:saber/data/flavor_config.dart';
+
+import 'utils/test_mock_channel_handlers.dart';
+
+void main() {
+  group('File write stream:', () {
+    final List<FileOperation> events = [];
+    StreamSubscription<FileOperation>? subscription;
+
+    FlavorConfig.setup();
+
+    setUp(() async {
+      events.clear();
+      await subscription?.cancel();
+      subscription = FileManager.fileWriteStream.stream.listen(events.add);
+    });
+    tearDown(() async {
+      await subscription?.cancel();
+    });
+
+    test('broadcastFileWrite', () async {
+      // broadcast a write event
+      FileManager.broadcastFileWrite(FileOperationType.write, '/test.sbn2');
+
+      // wait for the event to be broadcast
+      await null;
+
+      // check that the event was received
+      expect(events, hasLength(1));
+      expect(events.last.filePath, '/test'); // without the extension
+      expect(events.last.type, FileOperationType.write);
+    });
+
+    test('system directory watch', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      setupMockPathProvider();
+
+      await FileManager.init();
+
+      final rootDir = FileManager.documentsDirectory;
+      final file = File('$rootDir/test.sbn2');
+
+      // write to file
+      await file.create(recursive: true);
+      await file.writeAsString('test_content');
+      await Future.delayed(const Duration(milliseconds: 1));
+      expect(events, hasLength(greaterThanOrEqualTo(2)));
+      expect(events.last.filePath, '/test'); // without the extension
+      expect(events.last.type, FileOperationType.write);
+      events.clear();
+
+      // delete file
+      await file.delete();
+      await Future.delayed(const Duration(milliseconds: 1));
+      expect(events, hasLength(greaterThanOrEqualTo(1)));
+      expect(events.last.filePath, '/test'); // without the extension
+      expect(events.last.type, FileOperationType.delete);
+    });
+  });
+}

@@ -1,4 +1,8 @@
-# 아키텍처 후보 — 미선정
+# 아키텍처 후보와 후속 검토
+
+2026-10-22 후속: Android·Windows·Drive 자동 동기화가 MVP로 확정됐으며, 사용자 승인으로 [Saber 소스 검토](saber-reuse-review.md)에 따른 전체 기반 Flutter 검증판 개발을 시작했습니다. 아래는 초기 후보 비교이며 최신 경계/조건부 채택 기준은 [설계](mvp-design.md), [계획](roadmap.md), [실행 결과](mvp-validation.md)를 따릅니다. PWA·독립 Flutter는 검증 실패 시 재비교할 대안입니다.
+
+## 아래는 초기 후보 비교
 
 먼저 두 후보의 입력·저장·복원을 같은 합성 노트로 검증합니다. 문서상 API 지원이나 기존 앱의 배포 여부만으로 우리 앱의 품질을 확정하지 않습니다. 출처는 [호환성 조사](compatibility-research.md)에 모았습니다.
 

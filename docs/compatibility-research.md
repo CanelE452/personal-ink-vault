@@ -1,5 +1,13 @@
 # 호환성 조사
 
+## 후속 결과 — 2026-10-22
+
+세 분석 결과를 [MVP 설계](mvp-design.md)에 반영하고 Flutter/Saber 검증판 개발을 시작했습니다. [Obsidian 조사](obsidian-investigation.md)와 [빌드·시험 결과](mvp-validation.md)를 추가로 확인하세요. 아래 초기 조사에서 '코드 통합/SDK 없음'은 당시 상태이며 실제 기기·계정 호환 검증은 계속 별도 gate입니다.
+
+[Saber 소스 검토](saber-reuse-review.md), [StarNote 1.5.4 공식 APK 정적 조사](starnote-investigation.md)를 추가했습니다. 이번 대화의 REA 도구 207개 노출과 APK archive inventory 실행을 확인했습니다. Android 코드 provider는 JADX JAR 미설정으로 실패했습니다. 앱 실행·.note 호환은 미검증입니다. 아래는 설치/분석 전 초기 기록이며 '역공학 스킬 미제공/미설치'는 당시 상태입니다.
+
+## 초기 공식 자료 조사
+
 조사일: 2026-10-22. **문서 확인**은 공식 자료를 읽었다는 뜻이며 실기기·성능·변환 성공을 뜻하지 않습니다. 앱/변환기/스킬은 설치·실행하지 않았습니다.
 
 ## Obsidian 기능 참고

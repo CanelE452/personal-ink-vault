@@ -1,45 +1,136 @@
-# 개발 계획
+# Android·Windows·Drive Implementation Plan
 
-2026-10-22 현재 준비 문서 단계입니다. 아래 기능은 계획이며 구현 완료 표시가 아닙니다.
+> For agentic workers: use superpowers:subagent-driven-development or superpowers:executing-plans task-by-task. Checkboxes track actual results. User instructions prohibit commit/push without an explicit request.
 
-## 0. 이번 준비
+**Goal:** Galaxy Tab S9+ PDF 필기 → Windows Markdown 정리 → Drive 자동 동기화 MVP.
 
-- 충돌 없는 새 폴더와 README·요구사항·후보 비교·호환성 조사·제외 규칙 작성.
-- 로컬 Git `main` 초기화, 문서 링크/비밀정보/제외 패턴 검사.
-- 사용자 최신 승인에 따라 기존 GitHub 인증의 소유자 확인 후 공개 원격 생성·push를 진행합니다. 실제 결과는 작업 인계에서 보고하며, 인증 문제 때 새 토큰/OAuth를 만들지 않습니다. 개인 데이터는 업로드 대상이 아닙니다.
-- 관련 AGENTS.md와 `.agents/skills`를 확인합니다. 앱/역공학 스킬/SDK는 설치하지 않습니다.
+**Architecture:** Saber 고정 커밋 편집기를 유지한 검증판에 완전한 로컬 snapshot, 고정 ID, 새 Drive 동기화를 붙인다. 로컬 저장·원격 전송·UI를 분리한다.
 
-## 1. 첫 개발 전에 필요한 결정 두 가지
+**Tech Stack:** Flutter/Dart, Saber `55eec16ad6f858bc68b7c229e497c5ed44d7c5fd`, BSON/첨부, Markdown 원문, 불변 파일 저장소와 재구축 인덱스, Drive API v3와 플랫폼별 OAuth다. SQLite는 데이터량 실측 뒤 캐시로 검토한다.
 
-1. **첫 비교 프로토타입 경로:** PWA와 Flutter/Saber 중 무엇을 먼저 시험할지 선택합니다. Windows 활용의 빠른 확인과 태블릿 필기 품질 중 우선순위를 함께 정하며, 이 결정은 최종 기술 스택 확정과 구분합니다.
-2. **Drive의 첫 역할:** 먼저 단방향 백업/복원으로 시작할지, 초기 버전부터 양방향 동기화가 필요한지 선택합니다. 전자는 비교적 작은 범위이며 후자는 충돌·삭제·오프라인 재합류 설계가 선행되어야 합니다.
+**Spec:** [MVP 설계](mvp-design.md), [Saber 소스 검토](saber-reuse-review.md), [StarNote 조사](starnote-investigation.md), [Obsidian 조사](obsidian-investigation.md). 사용자가 분석 반영과 개발 시작을 승인했다. 아래 완료 표시는 실제 시험 결과로만 갱신한다.
 
-실험 준비 때 실제 기기/OS/펜과 iOS 빌드·서명 환경 확보 가능 여부도 확인합니다. StarNote 호환성 개발에는 사용자 소유의 개인정보 없는 대표 `.note` 샘플과 원본 화면, 보기/PDF 변환과 편집/왕복 중 필요한 수준이 필요합니다. 샘플 없이도 독립 노트 기능은 설계할 수 있습니다.
+## 실행 현황 — 2026-10-23
 
-## 2. 입력·저장·복원 비교 실험
+- 개발은 `codex/mvp-foundation`에서 기존 미커밋 문서를 보존하며 진행했다. 2026-10-30 사용자가 현재 개발 변경을 `main`에 commit/push하도록 승인했다. 공개 범위는 앱 소스·문서·공개 시험 자료이며 APK·ZIP·계정 설정은 로컬에 유지한다.
+- [확인] Saber 고정 소스의 Android/Windows·편집기·자산·시험을 도입했고 Nextcloud 자동 연결 및 upstream 전송 경계를 분리했다. 독립 격리 검토와 시험 3개를 통과했다.
+- [확인] portable Flutter 3.47.7/Dart 3.13.5, JDK 25, Android SDK 37/build-tools 37/NDK 29 설치·실행. 전역 PATH·Codex 설정은 변경하지 않았다.
+- [확인] 순수 Dart 저장/백업/Drive 시험 **51개**(10월 22일, 이후 패키지 미변경), 최신 기본 Flutter 시험 **237개 통과/105개 명시적 skip**, 전체 분석 문제 0, Android ARM64 debug APK 빌드·서명 및 Windows Release 빌드 성공. 이것은 실제 계정·실기기 왕복 결과가 아니다.
+- [확인] 통합 검토의 편집/전환/종료 경합, Windows watcher/archive handle, 초기 오류 화면 종료 문제를 수정하고 재검토를 통과했다. 기존 upstream 전용 검사는 opt-in으로 보존했다. 상세 결과와 APK 식별자는 [검증 기록](mvp-validation.md)에 남긴다.
+- [확인] Build Tools 2022 17.14.42·Windows SDK 10.0.26100.0·ATL 준비, C++ `/utf-8` 추가, 제거된 Android startup provider 수정. 새 Cloud 프로젝트의 Drive API·3종 OAuth client·External Testing·본인 테스트 사용자와 세 범위를 등록하고 공개 ID를 두 빌드에 포함했다.
+- 미검증: 앱의 실제 Google 로그인/권한 동의·Drive 계정 왕복, S9+ 펜/PDF 좌표·종료 복구, Windows 네이티브 실행 수용 시험. Desktop secret은 필요하면 본인이 앱에서 입력한다.
 
-선택한 경로에서 합성 노트로 펜·형광펜·지우개·PDF 주석을 시험합니다. 상대 후보가 필요하면 같은 절차로 비교합니다. 기기별 지연·압력·팜리젝션·손실을 기록하고, 사용자가 수용할 기준을 정한 뒤 기술 스택을 확정합니다.
+현재 구현 경계는 아래 예상 파일보다 `packages/ink_vault_core`의 순수 Dart 저장·Drive 모듈과 Flutter 어댑터로 나눈다. P0–P5의 수용 기준은 그대로 유지한다. 한 작업의 단위시험 통과를 단계 전체 완료로 표시하지 않는다.
 
-통과 기준: 오프라인 편집→강제 종료→재열기, 전체 백업→빈 저장소 복원에서 페이지·획·첨부가 보존됩니다. 저장소 축출·용량 부족·일부 파일 손상을 복구 경로와 함께 시험합니다.
+## Global Constraints
 
-## 3. 최소 개인용 앱
+- 공개 저장소와 개인 vault/PDF/백업/APK/키를 분리하고 합성 자료로 검증한다.
+- 명시 요청 전 commit/push/배포/개인자료 업로드를 하지 않는다. 실제 OAuth 계정 동의는 사용자가 수행한다.
+- 조사 upstream은 위 SHA, Dart `^3.13.0`, Flutter `>=3.47.0`, Flutter submodule `abaf9c523780a608bd46686fd5e53740a07077f8`이다. SDK/lock 재현부터 확인한다.
+- ID는 경로/제목과 독립한다. 시각 기반 승자·불완전 세대 활성화·충돌 사본 자동 폐기를 하지 않는다.
+- StarNote 분석은 별도 조사이며 앱 개발의 선행 조건이 아니다. AI/OCR/그래프/iOS/실시간 공동 편집은 후속이다.
+- 검증판은 GPL과 고지를 유지해 구현한다. 최종 제품 채택·외부 배포는 품질 gate와 배포 감사 뒤 판단한다. E2E 후순위·기기별 편집 역할 제한은 설계 선택이며 새 요구가 생기면 변경한다.
 
-안정된 ID·스키마 버전·로컬 저장, 필기/PDF/Markdown·수식, 링크·역링크·태그·본문 검색을 구현합니다. 원본을 변경하지 않는 별도 설명 영역부터 만들고 AI 공급자 연결은 뒤로 둡니다.
+## Review Focus
 
-통과 기준: 제목을 바꿔도 링크 유지, 인덱스 삭제 후 재구성, PDF 회전/재열기 좌표 보존, 설명 수정 후 원본 해시 유지. 핵심 저장/복원 로직에 의미 있는 자동 검증을 추가합니다.
+1. PDF 회전/CropBox/혼합 크기에서 필기 위치 유지(P1/P4).
+2. 저장/발행 직전 종료, 편집 중 원격 수신, 응답 유실 후 재시도(P1/P3).
+3. 시계 차이·동시 수정·노트 삭제 대 자식 객체 오프라인 수정 보존(P3).
+4. 인증 취소·권한/용량 부족·change token 무효화(P2/P3).
+5. Markdown HTML/URL·손상 백업이 원본/현재 vault에 미치는 영향(P4/P5).
 
-## 4. StarNote 가져오기 — 샘플 제공 후
+## 예정 파일 구조
 
-[네 단계](requirements.md)의 파싱→보기/변환→편집→왕복을 각각 별도 완료 기준으로 관리합니다. 원본은 읽기 전용 복사본으로 보존하고 형식/앱 버전, 누락 기능, 변환 결과를 기록합니다. 읽기 전용 변환만 필요하다면 편집·왕복은 보류할 수 있습니다.
+upstream의 lib/packages/test/android/windows 구조에 다음 경계를 둔다.
 
-변환기 개발자 설명은 참고 근거입니다. 실행 전 소스·의존성·권한·라이선스·외부 전송을 검토하고, 미지원 기능을 감추지 않습니다.
+```text
+packages/ink_vault_core/lib/{ink_vault_core,drive}.dart
+packages/ink_vault_core/lib/src/{repository,revision,backup}.dart
+packages/ink_vault_core/lib/src/drive/
+lib/data/vault/  lib/data/drive/drive_auth.dart
+lib/pages/workspace/{study_workspace,markdown_editor}.dart
+test/vault/  test/drive/  test/workspace/
+integration_test/android_windows_flow_test.dart
+```
 
-## 5. 그래프·AI·기기 간 동기화
+### P0 — Saber 검증판과 채택 판정
 
-그래프는 링크 인덱스 위에 추가합니다. AI는 원본 리비전과 연결된 별도 기록으로 생성·보관하고, 외부 전송 여부와 키 보관 방식을 먼저 선택합니다. 개인 데이터의 Drive 백업/복원을 먼저 검증하고, 양방향 동기화는 별도 단계로 설계합니다. Drive 연결 권한과 토큰 보관은 그 단계에서 검토합니다.
+**Files:** 도입할 upstream pubspec/lock, Android signing, Windows 사전 패치, main/flavor, 플랫폼 ID/아이콘. 새 `docs/upstream-provenance.md`, LICENSE/고지 목록은 실제 통합 시 확정한다.
 
-통과 기준: 양쪽 기기 동시 편집 보존, 첨부파일 중단 전송 재개/해시 확인, 시계가 어긋난 기기, 삭제 후 복구, 오래 오프라인이던 기기 재합류. 동기화 성공만으로 백업 성공을 간주하지 않습니다.
+**Interfaces:** 이후 단계가 소비할 고정 소스/lock과 Android·Windows에서 실행되는 편집기를 산출한다.
 
-## 아직 하지 않은 일
+- [x] SDK·Android 도구·Windows C++ 도구의 기존 설치와 필요한 버전/경로를 기록한다. 전역 설정을 임의 변경하지 않는다.
+- [ ] 직접/전이/네이티브/자산 라이선스와 출처·수정·고지를 확인한다. 앱 이름/ID/저장소/개발 서명을 독립시킨다. upstream 개인 vault를 열지 않는다.
+- [x] Nextcloud 자동 연결/업로드와 upstream 서비스/업데이트 전송을 분리하고 telemetry는 명시 선택 전 전송하지 않는다. Android debug signing·Windows 사전 패치를 반영한다.
+- [x] `flutter pub get`, `flutter analyze`, `flutter test`, `flutter build apk --debug`, `flutter build windows --debug`를 실행하고 종료코드/실패를 남긴다. Windows 실패와 초기 전체 시험 실패도 검증 기록에 포함한다.
+- [ ] S9+ 실제 펜·OS를 기록하고 합성 PDF에서 압력·손바닥·줌·undo/redo·저장/Windows 재열기를 비교한다.
 
-앱 코드/빌드/설치, 실제 펜·PDF·iOS 테스트, StarNote 형식 검증, AI/OCR, Google Drive 연결/업로드/자동 동기화, 백업 구현, 배포는 없습니다. Fast 라우팅은 이번 요청에 지정되었다는 인계 정보만 있으며 실제 적용을 확인할 증거는 없습니다.
+**Gate:** 두 플랫폼 실행과 필기/PDF 가능성을 확인한다. 핵심 손실/좌표 오류가 두 차례 원인별 수정·재검증 후 남거나 코어 전면 재작성이 필요하면 독립 Flutter와 비용을 다시 비교한다.
+
+### P1 — 고정 ID와 완전한 로컬 저장
+
+**Files:** `packages/ink_vault_core/lib/src/{revision,repository}.dart`, `lib/data/vault/{saber_ink_adapter,workspace_store}.dart`; 수정 `lib/data/editor/page.dart`, `editor_core_info.dart`, `lib/pages/editor/editor.dart`, `lib/data/file_manager/file_manager.dart`; 패키지 `test/repository_test.dart`, 앱 `test/vault/`.
+
+**Interfaces:** `SaberInkAdapter.capture`는 EditorCoreInfo에서 native 본문과 논리 asset 이름→bytes를 캡처한다. `NoteRepository.commit`은 entity/kind/files/parentRevisionIds로 durable revision을 발행하고 `heads`/`readFiles`가 완전 세대를 연다. `NoteSession`이 노트별 편집 부모를 유지한다. 해시는 저장소가 계산한다.
+
+- [ ] 먼저 제목/페이지 재배치 후 ID, PDF 원본 해시, 본문/첨부 저장 실패 후 기존 세대, 인덱스 재구성 시험을 작성해 실패를 확인한다.
+- [x] 페이지 ID 직렬화·문서별 저장 직렬화·임시 세대 검증/발행을 구현한다. 기존 watcher가 작업본을 원격 enqueue하지 않게 한다.
+- [x] `flutter test test/vault`, `flutter analyze` 통과를 확인한다. 최종 전체 기본 시험에도 포함했다.
+- [ ] 회전 0/90/180/270도·CropBox·혼합 크기와 합성 100페이지/약 50MB PDF로 저장·종료·Windows 재열기를 시험한다.
+
+**Gate:** 저장 완료로 표시한 획을 보존하고 직전 완전 세대를 복구한다. 전송은 작업 파일 대신 이 리비전/blob 경계를 소비한다.
+
+### P2 — 두 기기 Drive 인증·전송
+
+**Files:** `lib/data/drive/{drive_auth,oauth_flow,drive_connection}.dart`, `lib/components/drive/drive_panel.dart`, `packages/ink_vault_core/lib/src/drive/drive_remote_store.dart`; 패키지 `test/drive/remote_store_test.dart`, 앱 `test/drive/`; [OAuth 설정](drive-setup.md).
+
+**Interfaces:** `putBlob(hash, bytes, intentFileId)`, `publishRevision(record, intentFileId)`, `readBlob(fileId)`, `readChanges(token)`은 fileId·재개 상태·다음 token을 명시한다. auth는 token을 로그/화면에 내놓지 않고 만료/취소 상태를 전달한다.
+
+- [ ] fake HTTP로 응답 유실 후 같은 ID 재시도, 재개 업로드, 401/403/429/5xx, 인증 취소/secure storage 실패 시험을 먼저 작성한다.
+- [ ] 같은 Cloud 프로젝트의 플랫폼 client와 drive.file로 Android의 한 vault를 Windows가 접근하는지 실증한다. 외부 OAuth 테스트 모드의 refresh token 수명/재로그인도 확인한다.
+- [ ] 플랫폼별 인증·보안 저장·전송을 구현한다. 실제 동의는 사용자가 하고 별도 시험 Drive 폴더에는 합성 자료만 쓴다.
+- [ ] 패키지에서 `dart test test/drive`, 앱에서 `flutter test test/drive`를 확인하고 실제 두 기기의 전송/수신 해시를 확인한다.
+
+**Gate:** 같은 vault 접근과 blob 재사용이 확인된다. 여기까지로 자동 동기화 완료는 아니다.
+
+### P3 — 자동 동기화·충돌·삭제
+
+**Files:** `packages/ink_vault_core/lib/src/drive/sync_coordinator.dart`, `lib/data/drive/drive_background.dart`; main·Repository listener·Nextcloud enqueue 접점; 패키지 `test/drive/sync_coordinator_test.dart`, 앱 `test/drive/`와 `test/workspace/`.
+
+**Interfaces:** `SyncCoordinator.syncOnce()`는 durable queue를 진행하고 SyncStatus를 방출한다. parentRevisionIds의 ancestry로 head를 판단하고 해결 리비전은 충돌 head를 부모로 삼는다. 노트 tombstone의 baseRefs는 자식 객체 head를 관측한 범위다. 열린 편집 세션은 baseHeads를 고정한다.
+
+- [ ] 먼저 두 fake device로 같은 부모 동시 수정, 시계 ±24시간, 노트 삭제 대 ink/Markdown 수정·새 자식 생성, 응답 유실, manifest 먼저 관측, blob 누락, 무효 token/재시작 시험을 작성한다.
+- [x] dirty 편집 중 원격 수신이 작업본을 덮지 않고, 다음 저장이 편집 시작 당시 baseHeads를 부모로 삼아 분기를 보존하는 시험을 추가한다.
+- [x] blob-first/manifest-last, 완전 세대 활성화, 지속 누락 큐/cursor, 충돌/tombstone·자식 범위 판정을 구현한다. 공유 head 덮어쓰기·시각 기반 승자를 넣지 않는다.
+- [ ] 저장 debounce·실행/복귀/재접속·실행 중 polling·Android WorkManager를 연결한다. Windows 종료 상태 작업은 추가하지 않는다.
+- [ ] `flutter test test/drive`, `flutter analyze`를 확인하고 오래된 기기의 재합류/삭제 충돌을 시험한다.
+- [ ] S9+→중단→재접속→Windows 자동 반영을 실행한다. 최초 업로드 이후 작은 변경 30초 목표는 제안값으로 측정하고 큰 파일은 따로 기록한다.
+
+**Gate:** 수동 새로고침 없이 전달되고 실패/충돌이 완료와 구분된다. 누락·조용한 덮어쓰기·불완전 PDF/필기 조합은 실패다.
+
+### P4 — Windows Markdown workspace
+
+**Files:** 새 `lib/pages/workspace/study_workspace.dart`, `markdown_editor.dart`; 수정 routes/home 목록; 시험 `test/workspace/markdown_editor_test.dart`, `page_link_test.dart`.
+
+**Interfaces:** Repository의 noteId/pageId/Markdown을 소비하고 `openPage(noteId, pageId)`로 PDF 위치를 연다. Markdown은 ownerNoteId를 갖는 별도 entity revision이며 Android는 읽기 전용이다.
+
+- [ ] 분할 화면·Markdown/수식 미리보기·본문 검색·제목/페이지 재배치 후 링크 유지 시험을 먼저 작성한다. HTML/스크립트·위험 URL 미실행도 포함한다.
+- [x] 원문·미리보기·문서/페이지 링크·검색을 구현한다. Quill Delta를 Markdown 원문으로 간주하지 않는다. OS 딥링크 등록은 후속이며 앱 안에서 링크를 해석한다.
+- [ ] `flutter test test/workspace`를 확인하고 Windows 정리→Android 자동 수신을 실행한다.
+
+**Gate:** 필기를 보며 정리할 수 있고 Markdown 저장이 PDF/ink hash를 바꾸지 않는다.
+
+### P5 — 백업·복원과 MVP 판정
+
+**Files:** `packages/ink_vault_core/lib/src/backup.dart`, 패키지 `test/backup_test.dart`; 로컬 내보내기/복원 UI `study_workspace.dart`. 기기 통합 시험은 후속 `integration_test/`이며 결과는 [검증 기록](mvp-validation.md)과 history에 기록한다.
+
+**Interfaces:** `BackupService.exportSnapshot(repository)`는 완전 리비전·blob을 버전 JSON/base64로 묶는다. `restoreToEmpty(bytes, destination)`는 빈 대상으로 새 vaultId를 만들고 내부 noteId/pageId를 보존한다. token/전송 상태는 포함하지 않는다.
+
+- [ ] 정상/첨부 누락/해시 불일치/미지원 schema/중간 실패/위험 archive 경로 시험을 먼저 작성한다. 손상 입력이 현재 vault를 바꾸면 실패다.
+- [ ] 전체 내보내기/빈 저장소 복원·별도 Drive 스냅샷을 구현한다. token/계정 설정은 백업하지 않는다.
+- [ ] `flutter test`, `flutter analyze`, 두 debug build 후 실제 오프라인 필기→중단/재시도→Windows 정리→Android 열람→빈 기기 복원을 실행한다.
+- [ ] OS·펜·앱/SDK·표본 크기·시간·원본/복원 해시·실패/미검증 범위를 기록한다. 표본 통과를 모든 PDF/기기 보장으로 확대하지 않는다.
+
+**MVP 완료 조건:** P0–P5를 실제 결과로 통과하고 사용자가 두 기기 흐름을 수용한 상태다. 기반 코드·기본 시험·Android 빌드·통합 검토를 통과했으나 Windows 실행·실제 OAuth·S9+ 수용 gate는 남아 있다. 기존 합의/구현을 처음부터 다시 시작하지 말고 남은 기기·계정 수용 시험을 이어간다.
+
+StarNote 정적 분석은 [별도 기록](starnote-investigation.md)으로 관리한다. .note 파싱·편집·왕복은 미검증이다.

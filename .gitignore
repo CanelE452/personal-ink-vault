@@ -14,10 +14,16 @@
 *.[nN][oO][tT][eE]
 *.sbn
 *.sbn2
+*.sbn2.[0-9]*
 *.sba
+*.apk
+*.apks
+*.xapk
+*.aab
 *.[pP][dD][fF]
 *.bak
 *.backup
+ink-vault-backup*.json
 *.zip
 *.7z
 *.tar
@@ -55,10 +61,16 @@ node_modules/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
+android/local.properties
+android/.kotlin/
+android/captures/
+android/.cxx/
+windows/flutter/ephemeral/
 .gradle/
 build/
 dist/
 coverage/
+test/failures/
 .venv/
 venv/
 __pycache__/
@@ -73,3 +85,19 @@ __pycache__/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Public test fixtures from the pinned Saber source, not personal vault data.
+# Keep this explicit allowlist; generated SBA files and new imports stay ignored.
+!test/sbn_examples/v11_image_svg.sbn
+!test/sbn_examples/v17_squiggles.sbn2
+!test/sbn_examples/v18_highlighter.sbn2
+!test/sbn_examples/v18_pencil.sbn2
+!test/sbn_examples/v19_pens.sbn2
+!test/sbn_examples/v19_quill_languages.sbn2
+!test/sbn_examples/v19_separate_assets.sbn2
+!test/sbn_examples/v19_separate_assets.sbn2.0
+!test/sbn_examples/v19_shape_strokes.sbn2
+!test/sbn_examples/v6_stress_test_179.sbn
+!test/sbn_examples/v9_low_point_count.sbn
+!test/sbn_examples/v9_quill.sbn
+!test/sbn_examples/v9_single_stroke.sbn
