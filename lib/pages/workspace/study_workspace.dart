@@ -111,6 +111,25 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     await controller!.flush();
   }
 
+  Future<void> _back() async {
+    if (_scaffold.currentState?.isDrawerOpen ?? false) {
+      _scaffold.currentState?.closeDrawer();
+      return;
+    }
+    final session = controller?.activeSession;
+    if (session == null) return;
+    await _run(() async {
+      await _save();
+      await controller!.closeNote(session: session);
+      if (!mounted) return;
+      _pendingPdf = null;
+      _targetPage = null;
+      markdownTab = false;
+      if (MediaQuery.sizeOf(context).width < 1000)
+        _scaffold.currentState?.openDrawer();
+    });
+  }
+
   Future<void> _open(VaultNote note) async {
     await _save();
     _pendingPdf = null;
@@ -511,6 +530,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           _targetPage = null;
           await c.cancelPendingImport(session: session);
         }),
+        onBack: () => unawaited(_back()),
       );
       final markdown = MarkdownEditor(
         key: ValueKey(session.note.id),
@@ -532,9 +552,9 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           : IndexedStack(index: markdownTab ? 1 : 0, children: [ink, markdown]);
     }
     return PopScope(
-      canPop: !c.dirty,
+      canPop: session == null && !busy && !c.dirty,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) _run(_save);
+        if (!didPop) unawaited(_back());
       },
       child: Scaffold(
         key: _scaffold,

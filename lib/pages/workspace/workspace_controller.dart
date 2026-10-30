@@ -196,6 +196,19 @@ class WorkspaceController extends ChangeNotifier {
     await refresh();
   }
 
+  Future<void> closeNote({required NoteSession session}) =>
+      _serialize(() async {
+        if (!identical(activeSession, session))
+          throw StateError('이 편집 세션은 이미 닫혔습니다.');
+        if (dirty) throw StateError('현재 작업을 저장한 뒤 노트 목록으로 돌아가세요.');
+        activeSession = null;
+        _pendingImportSession = null;
+        markdown = '';
+        remoteConflict = false;
+        editorGeneration++;
+        if (!_disposed) notifyListeners();
+      }).then((_) => refresh());
+
   Future<VaultNote> createNote(
     String title, {
     bool importingPdf = false,

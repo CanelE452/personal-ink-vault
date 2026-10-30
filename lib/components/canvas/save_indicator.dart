@@ -8,10 +8,16 @@ import 'package:saber/data/routes.dart';
 /// [AppBar.leading] widget in the [AppBar]
 /// to indicate the state of saving in the editor.
 class SaveIndicator extends StatelessWidget {
-  const new({super.key, required this.savingState, required this.triggerSave});
+  const new({
+    super.key,
+    required this.savingState,
+    required this.triggerSave,
+    this.onBack,
+  });
 
   final ValueNotifier<SavingState> savingState;
   final VoidCallback triggerSave;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -24,12 +30,15 @@ class SaveIndicator extends StatelessWidget {
               : const Duration(milliseconds: 300),
           child: IconButton(
             key: ValueKey(savingState.value),
-            onPressed: () => _onPressed(context),
-            icon: switch (savingState.value) {
-              .waitingToSave => const Icon(Icons.save),
-              .saving => const AdaptiveCircularProgressIndicator(),
-              .saved => const Icon(Icons.arrow_back),
-            },
+            onPressed: onBack ?? () => _onPressed(context),
+            tooltip: onBack == null ? null : '저장하고 노트 목록으로',
+            icon: onBack != null
+                ? const Icon(Icons.arrow_back)
+                : switch (savingState.value) {
+                    .waitingToSave => const Icon(Icons.save),
+                    .saving => const AdaptiveCircularProgressIndicator(),
+                    .saved => const Icon(Icons.arrow_back),
+                  },
           ),
         );
       },

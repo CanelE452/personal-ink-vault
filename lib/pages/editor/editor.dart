@@ -65,6 +65,7 @@ class Editor extends StatefulWidget {
     this.onBusyChanged,
     this.onLoaded,
     this.onCancelImport,
+    this.onBack,
     this.workspaceReadOnly = false,
   }) : initialPath = path != null
            ? Future.value(path)
@@ -82,6 +83,7 @@ class Editor extends StatefulWidget {
   final ValueChanged<bool>? onBusyChanged;
   final ValueChanged<EditorCoreInfo>? onLoaded;
   final Future<void> Function()? onCancelImport;
+  final VoidCallback? onBack;
   final bool workspaceReadOnly;
 
   /// The file extension used by the app.
@@ -1733,8 +1735,9 @@ class EditorState extends State<Editor> {
       builder: (context, savingState, child) {
         // don't allow user to go back until saving is done
         return PopScope(
-          canPop: savingState == .saved,
+          canPop: widget.onBack != null || savingState == .saved,
           onPopInvokedWithResult: (didPop, _) {
+            if (widget.onBack != null) return;
             switch (savingState) {
               case .waitingToSave:
                 assert(!didPop);
@@ -1773,6 +1776,7 @@ class EditorState extends State<Editor> {
                 leading: SaveIndicator(
                   savingState: savingState,
                   triggerSave: saveToFile,
+                  onBack: widget.onBack,
                 ),
                 actions: [
                   if (!coreInfo.readOnly) ...[
