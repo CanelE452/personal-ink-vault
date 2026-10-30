@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
@@ -31,6 +32,7 @@ class StudyWorkspace extends StatefulWidget {
 class _StudyWorkspaceState extends State<StudyWorkspace>
     with WidgetsBindingObserver, WindowListener {
   WorkspaceController? controller;
+  final _scaffold = GlobalKey<ScaffoldState>();
   var _editor = GlobalKey<EditorState>();
   String? _editorIdentity;
   String? _pendingPdf;
@@ -94,9 +96,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     try {
       await operation();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
+        _scaffold.currentState?.closeDrawer();
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('$e')));
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -112,7 +116,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     _pendingPdf = null;
     _targetPage = null;
     await controller!.openNote(note);
-    if (mounted) Navigator.maybePop(context);
+    _scaffold.currentState?.closeDrawer();
   }
 
   Future<void> _create({bool pdf = false}) async {
@@ -132,6 +136,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       path == null ? '새 노트' : p.basenameWithoutExtension(path),
       importingPdf: path != null,
     );
+    _scaffold.currentState?.closeDrawer();
   }
 
   Future<String> _retainPdf(String path) async {
@@ -462,7 +467,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         ),
       );
     final session = c.activeSession;
-    final desktop = !Platform.isAndroid;
+    final desktop = defaultTargetPlatform != TargetPlatform.android;
     final wide = MediaQuery.sizeOf(context).width >= 1000;
     Widget body;
     if (session == null) {
@@ -501,6 +506,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         onLoaded: (_) {
           if (identical(c.activeSession, session)) _pendingPdf = null;
         },
+        onCancelImport: () => _run(() async {
+          _pendingPdf = null;
+          _targetPage = null;
+          await c.cancelPendingImport(session: session);
+        }),
       );
       final markdown = MarkdownEditor(
         key: ValueKey(session.note.id),
@@ -527,6 +537,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         if (!didPop) _run(_save);
       },
       child: Scaffold(
+        key: _scaffold,
         appBar: AppBar(
           title: Text(session?.note.title ?? 'Personal Ink Vault'),
           actions: [

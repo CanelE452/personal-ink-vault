@@ -29,7 +29,10 @@ class PdfDocumentCache {
 
   void dispose() {
     for (final documentFuture in _cache.values) {
-      Future.value(documentFuture).then((document) => document.dispose());
+      Future.value(documentFuture).then<void>(
+        (document) => document.dispose(),
+        onError: (Object _, StackTrace _) {},
+      );
     }
     _cache.clear();
   }

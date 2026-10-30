@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
@@ -12,8 +12,9 @@ import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
-import 'package:saber/pages/workspace/workspace_controller.dart';
+import 'package:saber/pages/workspace/study_workspace.dart';
 
+import '../utils/test_editor.dart';
 import '../utils/test_mock_channel_handlers.dart';
 
 void main() {
@@ -33,12 +34,178 @@ void main() {
     );
   });
   tearDown(() async {
+    debugDefaultTargetPlatformOverride = null;
+    StudyWorkspace.pendingPdfImport.value = null;
     PdfrxEntryFunctions.instance = originalPdfBackend;
     await c.saveMarkdown();
     await c.repository.close();
     c.dispose();
     await temp.delete(recursive: true);
   });
+  testWidgets('Android new note closes the library and saves editable ink', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.android),
+          home: StudyWorkspace(controller: c),
+        ),
+      ),
+    );
+    await tester.pump();
+    final scaffold = tester.state<ScaffoldState>(find.byType(Scaffold).first);
+    scaffold.openDrawer();
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      tester
+          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '새 노트'))
+          .onPressed!();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    for (var i = 0; i < 200; i++) {
+      await tester.runAsync(() async {
+        await tester.pump();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      if (find.byType(Editor).evaluate().isNotEmpty &&
+          tester
+              .state<EditorState>(find.byType(Editor))
+              .coreInfo
+              .filePath
+              .isNotEmpty &&
+          !c.inkBusy &&
+          !c.dirty)
+        break;
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(scaffold.isDrawerOpen, isFalse);
+    final editor = tester.state<EditorState>(find.byType(Editor));
+    expect(
+      tester.widget<Editor>(find.byType(Editor)).workspaceReadOnly,
+      isFalse,
+    );
+    expect(
+      editor.coreInfo.readOnly,
+      isFalse,
+      reason:
+          '${editor.coreInfo.readOnlyReason}\n${tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).join('\n')}',
+    );
+    await tester.runAsync(() async {
+      editor.drawTestStroke();
+      await editor.saveToFile();
+      await c.flush();
+      final saved = await c.loadInk();
+      expect(saved.pages.first.strokes, isNotEmpty);
+      saved.dispose();
+    });
+    c.setInkDirty(true);
+    scaffold.openDrawer();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.runAsync(() async {
+      tester
+          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '새 노트'))
+          .onPressed!();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(() async {
+        await tester.pump();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(scaffold.isDrawerOpen, isFalse);
+    expect(find.textContaining('필기 또는 가져오기 작업을 마친 뒤'), findsOneWidget);
+    await tester.runAsync(() async {
+      c.setInkDirty(false);
+      await c.refresh();
+    });
+    await tester.pumpWidget(const SizedBox());
+    debugDefaultTargetPlatformOverride = null;
+  });
+  testWidgets(
+    'failed PDF import can be cancelled without deleting the source or saved ink',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => tester.pumpWidget(const SizedBox()));
+      final backend = DelayedPdfBackend();
+      PdfrxEntryFunctions.instance = backend;
+      final pdf = File('${temp.path}/broken.pdf');
+      final bytes = Uint8List.fromList('synthetic invalid PDF'.codeUnits);
+      await tester.runAsync(() => pdf.writeAsBytes(bytes));
+      await tester.pumpWidget(
+        TranslationProvider(
+          child: MaterialApp(
+            theme: ThemeData(platform: TargetPlatform.android),
+            home: StudyWorkspace(controller: c),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.runAsync(() async {
+        StudyWorkspace.pendingPdfImport.value = pdf.path;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      for (var i = 0; i < 30 && !backend.opened; i++) {
+        await tester.runAsync(() async {
+          await tester.pump();
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        });
+      }
+      expect(
+        c.activeSession,
+        isNotNull,
+        reason: tester
+            .widgetList<Text>(find.byType(Text))
+            .map((text) => text.data)
+            .join('\n'),
+      );
+      expect(backend.opened, isTrue);
+      final session = c.activeSession!;
+      final previous = List<String>.of(session.inkParents);
+      backend.release.completeError(StateError('cannot read PDF'));
+      for (var i = 0; i < 30; i++) {
+        await tester.runAsync(() async {
+          await tester.pump();
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        });
+        if (find.textContaining('필기를 열 수 없습니다').evaluate().isNotEmpty) {
+          break;
+        }
+      }
+      expect(c.dirty, isTrue);
+      expect(find.textContaining('필기를 열 수 없습니다'), findsOneWidget);
+      expect(find.text('PDF 가져오기 취소'), findsOneWidget);
+      await tester.runAsync(() async {
+        tester
+            .widget<TextButton>(find.widgetWithText(TextButton, 'PDF 가져오기 취소'))
+            .onPressed!();
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      for (var i = 0; i < 30 && c.dirty; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+      }
+      expect(c.dirty, isFalse);
+      expect(session.inkParents, previous);
+      expect(await tester.runAsync(pdf.readAsBytes), bytes);
+      final restored = await tester.runAsync(() => c.loadInk(session: session));
+      expect(restored!.pages, hasLength(1));
+      expect(restored.pages.single.isEmpty, isTrue);
+      restored.dispose();
+      final next = await tester.runAsync(
+        () => c.createNote('After cancelled PDF'),
+      );
+      expect(c.activeSession!.note.id, next!.id);
+      await tester.pumpWidget(const SizedBox());
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
   testWidgets(
     'delayed PDF import blocks switching, failed first commit retries same pages and bytes',
     (tester) async {
@@ -121,13 +288,18 @@ void main() {
 
 class DelayedPdfBackend implements PdfrxEntryFunctions {
   final release = Completer<PdfDocument>();
+  var opened = false;
   @override
   Future<PdfDocument> openFile(
     String filePath, {
     PdfPasswordProvider? passwordProvider,
     bool firstAttemptByEmptyPassword = true,
     bool useProgressiveLoading = false,
-  }) => release.future;
+  }) {
+    opened = true;
+    return release.future;
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

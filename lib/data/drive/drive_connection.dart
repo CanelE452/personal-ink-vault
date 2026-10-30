@@ -106,7 +106,7 @@ class DriveConnectionController extends ChangeNotifier {
   final Future<Directory> Function() directoryProvider;
   final DriveAuth Function(DriveConnectionSettings)? authFactory;
   final DriveRemoteStore Function(Future<String> Function()) remoteFactory;
-  late final Directory settingsDirectory;
+  late Directory settingsDirectory;
   late DriveConnectionSettings settings;
   DriveAuth? auth;
   SyncCoordinator? coordinator;
@@ -114,7 +114,7 @@ class DriveConnectionController extends ChangeNotifier {
   DriveSyncLease? _lease;
   StreamSubscription<SyncStatus>? _statuses;
   var status = const SyncStatus(SyncPhase.idle);
-  String? error;
+  String? error, recoveryBackupPath;
   var ready = false, busy = false, _closed = false, _foreground = true;
   Future<void> _tail = Future.value();
   new({
@@ -155,6 +155,7 @@ class DriveConnectionController extends ChangeNotifier {
   }
 
   Future<void> initialize() => run(() async {
+    if (ready) return;
     settingsDirectory = await directoryProvider();
     settings = await DriveConnectionSettings.load(settingsDirectory);
     ready = true;
@@ -170,6 +171,36 @@ class DriveConnectionController extends ChangeNotifier {
       settings.requireAccount(auth!.accountId);
       await _start();
     }
+  });
+  Future<void> recoverSettings() => run(() async {
+    if (ready) return;
+    final directory = await directoryProvider();
+    await directory.create(recursive: true);
+    await _stop();
+    if (Platform.isAndroid) await cancelDriveBackgroundWork();
+    final original = File('${directory.path}/connection.json');
+    if (original.existsSync()) {
+      final backup = await directory.createTemp('connection-backup-');
+      final preserved = await original.rename('${backup.path}/connection.json');
+      recoveryBackupPath = preserved.path;
+    }
+    final reset = DriveConnectionSettings();
+    try {
+      await reset.save(directory);
+    } catch (_) {
+      throw const OAuthFailure(
+        '연결 설정 복구를 완료하지 못했습니다. 보관된 원본과 기기 자료는 유지됩니다. 저장 공간과 접근 권한을 확인한 뒤 다시 시도하세요.',
+      );
+    }
+    settingsDirectory = directory;
+    settings = reset;
+    auth?.close();
+    auth = null;
+    status = const SyncStatus(
+      SyncPhase.idle,
+      message: '연결 설정을 복구했습니다. Google 로그인 후 기존 Drive vault를 다시 연결하세요.',
+    );
+    ready = true;
   });
   void _makeAuth() {
     auth?.close();

@@ -28,6 +28,8 @@ Drive의 파일별 권한과 동의 범위는 [Drive 인증 안내](https://deve
 
 ## Android
 
+태블릿에서 왼쪽 노트 목록 하단의 **Drive**를 누른다. 목록이 접혀 있으면 왼쪽 위 메뉴 버튼으로 먼저 연다. 업데이트 뒤에는 **Google 로그인 / 재연결**을 한 번 직접 실행한다. 이전 버전은 복원에 필요한 계정 식별자를 저장하지 않았으므로 기존 로그인만으로 자동 복원되지 않는다.
+
 Google Cloud에서 Android OAuth client를 등록한다. Package name은 `io.github.canele452.personalinkvault`이다. 실제 설치할 APK를 서명한 인증서 SHA-1을 등록한다.
 
 [확인] 이 PC에서 빌드한 debug APK의 공개 서명 인증서 SHA-1을 `apksigner verify --print-certs`로 확인했다. 아래 값은 비밀 키나 토큰이 아닌 인증서 지문이다.
@@ -50,6 +52,10 @@ Linux에서는 같은 명령의 경로를 `"$HOME/.android/debug.keystore"`로 �
 Android에서 Web client ID를 변경한 뒤에는 **설정 저장 → 앱 완전 종료 → 다시 실행 → Google 로그인 / 재연결** 순서로 진행한다. 현재 Google Sign-In singleton은 같은 Flutter engine에서 다른 serverClientId로 재초기화할 수 없다. 홈 화면으로 이동했다가 복귀하는 것만으로는 앱 프로세스가 종료되지 않을 수 있다.
 
 이 구분과 SHA·package·serverClientId 오류는 Flutter 공식 [google_sign_in_android 설정](https://pub.dev/packages/google_sign_in_android)에 근거한다. 로그인/권한 요청은 사용자 버튼에서만 시작한다. 기존 인증의 noninteractive token 요청이 실패한 백그라운드 작업은 재로그인 필요 상태를 기록하고 로컬 전송 큐를 보존한다.
+
+수동 로그인·권한 승인 성공 후 계정 ID·이메일·공개 Web client ID를 OS 보안 저장소에 기록한다. 자동 복원과 백그라운드 작업은 이 계정을 지정하고 `promptIfUnauthorized: false`로 토큰을 요청한다. 앱 시작 시 계정 선택창을 자동으로 열지 않으며 access token을 앱 파일에 영구 저장하지 않는다. 권한이 취소됐거나 설정이 다르면 재연결이 필요하다. 이 경로의 플랫폼 호출 회귀시험과 실제 기기 인증 성공은 별개다.
+
+설정을 읽지 못해도 Drive 창에서 오류를 확인하고 **설정 다시 읽기**를 누를 수 있다. 손상이 반복되면 **연결 설정 복구 → 원본 보관 후 복구**로 연결 정보만 초기화한다. 원본은 `drive/connection-backup-<고유값>/connection.json`에 보관하고 로컬 노트·PDF·Drive 자료·보안 저장 계정은 유지한다. 복구 자체는 로그인·폴더 생성·업로드를 실행하지 않는다. 이후 Google 로그인 후 **기존 Drive vault 연결**을 선택한다. Google 오류에는 진단용 코드만 표시하고 원문 응답·토큰은 표시하지 않는다.
 
 ## Windows
 
@@ -92,7 +98,7 @@ Android는 WorkManager의 연결된 네트워크 조건, 일회성 재시도와 
 
 전경/백그라운드 전송은 app-support에 기록한 loopback TCP port의 배타적 bind로 직렬화한다. 수신 payload는 없고 연결은 즉시 닫는다. Android isolate 간에는 POSIX 파일 lock이 배타성을 제공하지 않기 때문에 이 lease를 사용한다([Dart lock 문서](https://api.dart.dev/dart-io/RandomAccessFile/lock.html)). 다른 프로세스가 같은 포트를 점유하면 전송을 멈추고 재시도를 표시한다. 노트 파일을 자동 삭제하거나 lock 파일을 강제로 지우지 않는다.
 
-연결 설정과 폴더 생성 intent는 app-support `drive/connection.json`, 계정별 전송 상태는 `drive/state/<folderId>/`, 마지막 background 상태는 `drive/background-status.json`에 있다. 이 파일들은 Git이나 노트 백업에 넣지 않는다. Desktop refresh token·선택 secret은 OS 보안 저장소에만 두고 Android credential은 Google의 native SDK가 관리한다.
+연결 설정과 폴더 생성 intent는 app-support `drive/connection.json`, 계정별 전송 상태는 `drive/state/<folderId>/`, 마지막 background 상태는 `drive/background-status.json`에 있다. 이 파일들은 Git이나 노트 백업에 넣지 않는다. Desktop refresh token·선택 secret과 Android 복원용 계정 식별자는 OS 보안 저장소에만 둔다. Android credential은 Google의 native SDK가 관리한다.
 
 ## 실제 기기 수용 시험 — 아직 미실행
 

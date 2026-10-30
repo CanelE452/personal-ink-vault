@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart'
+    as google;
 import 'package:http/http.dart' as http;
 import 'package:saber/data/drive/oauth_flow.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -44,7 +46,7 @@ abstract class DriveAuth {
     DriveSecrets secrets = const OsDriveSecrets(),
   }) {
     if (Platform.isAndroid && androidServerClientId.trim().isNotEmpty) {
-      return AndroidDriveAuth(androidServerClientId.trim());
+      return AndroidDriveAuth(androidServerClientId.trim(), secrets: secrets);
     }
     if (Platform.isWindows && desktopClientId.trim().isNotEmpty) {
       return DesktopDriveAuth(
@@ -60,16 +62,16 @@ abstract class DriveAuth {
 
 class AndroidDriveAuth extends DriveAuth {
   final String serverClientId;
+  final DriveSecrets secrets;
   final GoogleSignIn _google = GoogleSignIn.instance;
-  GoogleSignInAccount? _account;
-  String? _lastToken;
+  String? _accountId, _email, _lastToken;
   var _initialized = false;
   // The platform singleton must be initialized exactly once per Flutter engine.
   static Future<void>? _initialization;
   static String? _initializedClient;
-  new(this.serverClientId);
+  new(this.serverClientId, {this.secrets = const OsDriveSecrets()});
   @override
-  String? get accountId => _account?.id;
+  String? get accountId => _accountId;
   Future<void> _initialize() async {
     if (_initialized) return;
     if (_initializedClient != null && _initializedClient != serverClientId) {
@@ -91,41 +93,98 @@ class AndroidDriveAuth extends DriveAuth {
 
   @override
   Future<void> restore() async {
-    await _initialize();
+    _accountId = _email = _lastToken = null;
     try {
-      _account = await _google.attemptLightweightAuthentication();
+      final stored = await secrets.read('drive.android.account');
+      if (stored == null) return;
+      final json = jsonDecode(stored) as Map<String, dynamic>;
+      if (json['clientId'] != serverClientId) return;
+      final id = json['accountId'], email = json['email'];
+      if (id is! String || id.isEmpty || email is! String || email.isEmpty) {
+        throw const FormatException();
+      }
+      await _initialize();
+      // Unlike lightweight authentication, this account-bound request never
+      // opens an account chooser and also works in a headless Android engine.
+      await _authorize(id, email);
+      _accountId = id;
+      _email = email;
+    } on google.GoogleSignInException catch (e) {
+      throw OAuthFailure(
+        'Google sign-in required (${e.code.name}). Open Drive settings to reconnect.',
+      );
+    } on OAuthFailure {
+      rethrow;
     } catch (_) {
-      _account = null;
       throw const OAuthFailure(
-        'Google sign-in required. Open Drive settings to reconnect.',
+        'Could not restore the saved Google account. Open Drive settings to reconnect.',
       );
     }
   }
 
   @override
   Future<void> signIn() async {
+    _accountId = _email = _lastToken = null;
     await _initialize();
     try {
       final account = await _google.authenticate(scopeHint: [driveFileScope]);
       await account.authorizationClient.authorizeScopes([driveFileScope]);
-      _account = account;
+      await secrets.write(
+        'drive.android.account',
+        jsonEncode({
+          'clientId': serverClientId,
+          'accountId': account.id,
+          'email': account.email,
+        }),
+      );
+      _accountId = account.id;
+      _email = account.email;
+    } on google.GoogleSignInException catch (e) {
+      throw OAuthFailure(
+        'Google sign-in failed (${e.code.name}). Check the account and Android OAuth settings.',
+      );
     } catch (_) {
-      _account = null;
       throw const OAuthFailure(
-        'Sign-in cancelled, permission denied, or Android OAuth configuration invalid.',
+        'Google sign-in or secure account storage failed. Reconnect Drive.',
       );
     }
   }
 
+  Future<String> _authorize(String id, String email) async {
+    final authorization = await google.GoogleSignInPlatform.instance
+        .clientAuthorizationTokensForScopes(
+          google.ClientAuthorizationTokensForScopesParameters(
+            request: google.AuthorizationRequestDetails(
+              scopes: const [driveFileScope],
+              userId: id,
+              email: email,
+              promptIfUnauthorized: false,
+            ),
+          ),
+        );
+    if (authorization == null) {
+      throw const OAuthFailure(
+        'Google Drive permission required. Open Drive settings to reconnect.',
+      );
+    }
+    _lastToken = authorization.accessToken;
+    return authorization.accessToken;
+  }
+
   @override
   Future<String> accessToken() async {
+    final id = _accountId, email = _email;
+    if (id == null || email == null) {
+      throw const OAuthFailure('Google Drive sign-in required.');
+    }
     try {
-      final authorization = await _account?.authorizationClient
-          .authorizationForScopes([driveFileScope]);
-      if (authorization == null)
-        throw const OAuthFailure('Google Drive permission required.');
-      _lastToken = authorization.accessToken;
-      return authorization.accessToken;
+      return await _authorize(id, email);
+    } on google.GoogleSignInException catch (e) {
+      throw OAuthFailure(
+        'Google Drive sign-in or permission required (${e.code.name}).',
+      );
+    } on OAuthFailure {
+      rethrow;
     } catch (_) {
       throw const OAuthFailure('Google Drive sign-in or permission required.');
     }
@@ -135,10 +194,10 @@ class AndroidDriveAuth extends DriveAuth {
   Future<void> invalidateToken() async {
     final token = _lastToken;
     _lastToken = null;
-    if (token != null && _account != null) {
+    if (token != null) {
       try {
-        await _account!.authorizationClient.clearAuthorizationToken(
-          accessToken: token,
+        await google.GoogleSignInPlatform.instance.clearAuthorizationToken(
+          google.ClearAuthorizationTokenParams(accessToken: token),
         );
       } catch (_) {
         throw const OAuthFailure(
@@ -150,9 +209,10 @@ class AndroidDriveAuth extends DriveAuth {
 
   @override
   Future<void> signOut() async {
+    _accountId = _email = _lastToken = null;
+    await secrets.delete('drive.android.account');
     await _initialize();
     await _google.signOut();
-    _account = null;
   }
 
   @override

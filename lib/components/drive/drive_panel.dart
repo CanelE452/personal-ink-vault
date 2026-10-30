@@ -77,7 +77,7 @@ class _DrivePanelState extends State<DrivePanel> with WidgetsBindingObserver {
     builder: (context, _) => Tooltip(
       message: label,
       child: TextButton.icon(
-        onPressed: controller.ready ? _open : null,
+        onPressed: controller.ready || controller.error != null ? _open : null,
         icon: Icon(
           controller.connected
               ? Icons.cloud_done_outlined
@@ -134,17 +134,40 @@ class _DrivePanelState extends State<DrivePanel> with WidgetsBindingObserver {
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(controller.status.message!),
                     ),
+                  if (controller.recoveryBackupPath != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: SelectableText(
+                        '기존 연결 설정 보관 위치: ${controller.recoveryBackupPath}',
+                      ),
+                    ),
                   const SizedBox(height: 16),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
+                      if (!controller.ready)
+                        OutlinedButton(
+                          onPressed: controller.busy
+                              ? null
+                              : controller.initialize,
+                          child: const Text('설정 다시 읽기'),
+                        ),
+                      if (!controller.ready)
+                        OutlinedButton(
+                          onPressed: controller.busy ? null : _recoverSettings,
+                          child: const Text('연결 설정 복구'),
+                        ),
                       OutlinedButton(
-                        onPressed: controller.busy ? null : _configure,
+                        onPressed: controller.busy || !controller.ready
+                            ? null
+                            : _configure,
                         child: const Text('OAuth 설정'),
                       ),
                       FilledButton(
-                        onPressed: controller.busy ? null : controller.signIn,
+                        onPressed: controller.busy || !controller.ready
+                            ? null
+                            : controller.signIn,
                         child: const Text('Google 로그인 / 재연결'),
                       ),
                       OutlinedButton(
@@ -166,7 +189,9 @@ class _DrivePanelState extends State<DrivePanel> with WidgetsBindingObserver {
                         child: const Text('지금 동기화 / 재시도'),
                       ),
                       TextButton(
-                        onPressed: controller.busy ? null : controller.signOut,
+                        onPressed: controller.busy || !controller.ready
+                            ? null
+                            : controller.signOut,
                         child: const Text('Drive 연결 해제 · 로컬 자료 유지'),
                       ),
                       if (controller.busy && Platform.isWindows)
@@ -194,6 +219,32 @@ class _DrivePanelState extends State<DrivePanel> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  Future<void> _recoverSettings() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Drive 연결 설정을 복구할까요?'),
+        content: const Text(
+          '문제가 있는 연결 설정 원본을 별도 보관하고 연결 정보만 초기화합니다. '
+          '로컬 노트와 PDF, Google Drive 자료, 저장된 Google 계정은 유지됩니다. '
+          '복구 후에는 Google 로그인 후 기존 Drive vault를 다시 연결해야 합니다. '
+          '이 동작으로 새 폴더를 만들거나 업로드하지 않습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('원본 보관 후 복구'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) await controller.recoverSettings();
   }
 
   Future<void> _configure() async {

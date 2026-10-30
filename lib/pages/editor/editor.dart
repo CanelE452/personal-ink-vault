@@ -64,6 +64,7 @@ class Editor extends StatefulWidget {
     this.onDirtyChanged,
     this.onBusyChanged,
     this.onLoaded,
+    this.onCancelImport,
     this.workspaceReadOnly = false,
   }) : initialPath = path != null
            ? Future.value(path)
@@ -80,6 +81,7 @@ class Editor extends StatefulWidget {
   final ValueChanged<bool>? onDirtyChanged;
   final ValueChanged<bool>? onBusyChanged;
   final ValueChanged<EditorCoreInfo>? onLoaded;
+  final Future<void> Function()? onCancelImport;
   final bool workspaceReadOnly;
 
   /// The file extension used by the app.
@@ -182,6 +184,7 @@ class EditorState extends State<Editor> {
   var _editGeneration = 0;
   Future<void>? _snapshotSave;
   Future<void>? _initializing;
+  var _initializingSnapshot = false;
   var _drawing = false;
   var _loadingSnapshot = true;
   late var _initialImportPending = widget.pdfPath != null;
@@ -191,6 +194,15 @@ class EditorState extends State<Editor> {
   void _reportBusy() => widget.onBusyChanged?.call(
     _drawing || _initialImportPending || _snapshotSave != null,
   );
+
+  Future<void> _cancelImport() async {
+    if (_initializingSnapshot ||
+        _snapshotSave != null ||
+        !_initialImportPending ||
+        _editorDisposed)
+      return;
+    await widget.onCancelImport?.call();
+  }
 
   // used to prevent accidentally drawing when pinch zooming
   var lastSeenPointerCount = 0;
@@ -219,16 +231,19 @@ class EditorState extends State<Editor> {
   }
 
   Future<void> _initAsync() async {
-    final filePath = await widget.initialPath;
-    if (_editorDisposed) return;
-    filenameTextEditingController.text = p.basename(filePath);
-    if (needsNaming) {
-      filenameTextEditingController.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: filenameTextEditingController.text.length,
-      );
-    }
+    if (_initializingSnapshot || _editorDisposed) return;
+    _initializingSnapshot = true;
+    _snapshotError = null;
     try {
+      final filePath = await widget.initialPath;
+      if (_editorDisposed) return;
+      filenameTextEditingController.text = p.basename(filePath);
+      if (needsNaming) {
+        filenameTextEditingController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: filenameTextEditingController.text.length,
+        );
+      }
       if (!_pdfImported) {
         await _loadCoreInfo(filePath);
         if (_editorDisposed) return;
@@ -252,6 +267,9 @@ class EditorState extends State<Editor> {
       if (mounted) setState(() {});
     } catch (error) {
       if (mounted) setState(() => _snapshotError = '필기를 열 수 없습니다: $error');
+    } finally {
+      _initializingSnapshot = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -1817,6 +1835,13 @@ class EditorState extends State<Editor> {
               MaterialBanner(
                 content: Text(_snapshotError!),
                 actions: [
+                  if (_initialImportPending && widget.onCancelImport != null)
+                    TextButton(
+                      onPressed: _initializingSnapshot || _snapshotSave != null
+                          ? null
+                          : _cancelImport,
+                      child: const Text('PDF 가져오기 취소'),
+                    ),
                   TextButton(
                     onPressed: _loadingSnapshot
                         ? () {

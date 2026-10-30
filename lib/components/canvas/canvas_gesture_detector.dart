@@ -311,9 +311,11 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
 
   @override
   void initState() {
-    setInitialTransform();
     widget._transformationController.addListener(onTransformChanged);
     _assignKeybindings();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setInitialTransform();
+    });
     super.initState();
   }
 

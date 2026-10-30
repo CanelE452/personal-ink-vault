@@ -29,6 +29,7 @@ class WorkspaceController extends ChangeNotifier {
   var _markdownGeneration = 0;
   var _activityGeneration = 0;
   var inkBusy = false;
+  NoteSession? _pendingImportSession;
   Timer? _markdownTimer;
   Future<void> _operationTail = Future.value();
   var _operations = 0;
@@ -211,12 +212,35 @@ class WorkspaceController extends ChangeNotifier {
     }
     await openNote(note);
     if (importingPdf) {
+      _pendingImportSession = activeSession;
       inkBusy = true;
       inkDirty = true;
       notifyListeners();
     }
     return note;
   }
+
+  Future<void> cancelPendingImport({required NoteSession session}) =>
+      _serialize(() async {
+        if (!identical(session, activeSession) ||
+            !identical(session, _pendingImportSession)) {
+          throw StateError('취소할 PDF 가져오기 작업이 없습니다.');
+        }
+        _pendingImportSession = null;
+        activeSession =
+            NoteSession(
+                session.repository,
+                session.note,
+                session.inkHeads,
+                session.markdownHeads,
+              )
+              ..inkParents = List.of(session.inkParents)
+              ..markdownParents = List.of(session.markdownParents);
+        inkDirty = false;
+        inkBusy = false;
+        editorGeneration++;
+        if (!_disposed) notifyListeners();
+      }).then((_) => refresh());
 
   void editMarkdown(String value) {
     markdown = value;
@@ -239,6 +263,7 @@ class WorkspaceController extends ChangeNotifier {
     if (session != null && !identical(session, activeSession)) return;
     if (value) _activityGeneration++;
     inkBusy = value;
+    if (!value) _pendingImportSession = null;
     if (!_disposed) notifyListeners();
     if (!value && !_disposed) unawaited(refresh());
   }
