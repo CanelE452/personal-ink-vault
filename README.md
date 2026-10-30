@@ -4,15 +4,16 @@
 
 ## Android 태블릿에 설치
 
-**[Android APK 다운로드 — Galaxy Tab S9+](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.1.0-preview.1/personal-ink-vault-android-preview.apk)**
+**[Android APK 다운로드 — Galaxy Tab S9+ · 수정판 preview.2](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.1.0-preview.2/personal-ink-vault-android-preview.apk)**
 
 1. 태블릿에서 위 **Android APK 다운로드**를 누릅니다.
-2. 다운로드한 `personal-ink-vault-android-preview.apk` 파일을 열어 설치합니다.
-3. 앱을 열고 Drive 연결은 [로그인·동기화 설정 안내](docs/drive-setup.md)를 따릅니다.
+2. 다운로드한 `personal-ink-vault-android-preview.apk` 파일을 열어 기존 앱 위에 **업데이트**로 설치합니다.
+3. 앱을 열어 새 노트와 기존 PDF를 확인합니다. PDF 가져오기에 실패하면 **PDF 가져오기 취소**를 누르고 노트 작업을 계속할 수 있습니다.
+4. 왼쪽 목록의 **Drive → Google 로그인 / 재연결**을 한 번 실행합니다. 처음 연결하면 **현재 로컬 vault를 Drive에 만들기**, 이미 만든 저장소가 있으면 **기존 Drive vault 연결**을 선택합니다. [설정 안내](docs/drive-setup.md)에 자세한 순서가 있습니다.
 
-현재 파일은 **0.1.0 개발 미리보기 APK**, 약 **143MB**, ARM64 지원, Android 7.0 이상용입니다. 기존 Google OAuth 등록과 같은 debug 서명을 사용합니다. Drive 로그인은 등록된 테스트 계정으로 진행하며 실제 S9+ 필기·두 기기 동기화 수용 시험은 남아 있습니다.
+현재 파일은 **0.1.0-preview.2 개발 미리보기 APK / 설치 번호136032**, 약 **143MB**, ARM64 지원, Android 7.0 이상용입니다. 기존 Google OAuth 등록과 같은 debug 서명을 사용합니다. 사진으로 확인한 캔버스 초기화 오류와 PDF 실패 후 잠김, Drive 자동 복원·설정 복구를 수정했습니다. 전체 Flutter 시험252개와 분석을 통과했으며 수정판의 실제 S9+ 필기·두 기기 동기화 수용 시험은 남아 있습니다. Drive 로그인은 등록된 테스트 계정으로 진행합니다.
 
-[릴리스·파일 목록·체크섬](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.1) · [Windows 개발판 빌드·실행 안내](docs/mvp-validation.md)
+[릴리스·파일 목록·체크섬](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.2) · [검증 기록·Windows 개발판 안내](docs/mvp-validation.md)
 
 ## 프로젝트 현황
 

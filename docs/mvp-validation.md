@@ -1,5 +1,16 @@
 # MVP 개발판 검증 기록
 
+## 태블릿 오류 수정판 preview.2 — 2026-10-30
+
+- [확인] 사용자 S9+ 사진의 `MediaQuery`/`CanvasGestureDetectorState.initState` 오류가 실제 Android 화면 분기 회귀시험에서 재현한 오류와 일치했다. 최초 캔버스 변환을 첫 레이아웃 뒤로 옮겼다. 수정 APK의 기기 실행 성공을 확인한 것은 아니다.
+- 새 노트/노트 열기 후 Drawer 닫기, 실패 알림 표시, PDF 실패 취소 후 완전 저장본 복구, 실패 PDF 캐시 해제의 오류 재발을 수정했다. 원본 PDF·기존 리비전을 유지하며 닫힌 세션의 늦은 저장을 거부한다.
+- Android Drive 자동 복원은 보안 저장한 계정에 묶인 무화면 승인 요청으로 바꿨다. 손상된 연결 설정은 명시적 확인 후 원본을 고유 경로에 보관하고 복구한다. 자동 로그인 UI·원격 생성·업로드는 복구 동작에서 실행하지 않는다. 업데이트 후 수동 로그인/재연결이 한 번 필요하다.
+- [확인] 최종 전체 Flutter **252개 통과 / 기존105개 skip / 0실패**, 23초, exit0. 전체 분석 문제0, 66.2초, exit0. 실제 작업공간→편집기→필기 획 저장→디스크 다시 읽기와 실패 PDF 취소·Drive 계정/복구 경계를 포함한다. 기존 skip 범위는 아래 기록과 동일하다.
+- [확인] Android 최종 증분 빌드5.2초/exit0(직전 재컴파일 로그95.5초), 서명 검증 exit0. 버전0.1.0/code136032, package `io.github.canele452.personalinkvault`, minSdk24/targetSdk36, ARM64·ARMv7·x86_64. v2 서명과 기존 인증서 SHA-1 유지. 대응 소스는 `911b3fdf2db0e32732622e8fcd9f165b2f801b8d`다.
+- [확인] [preview.2 릴리스](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.2)의 [APK 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.1.0-preview.2/personal-ink-vault-android-preview.apk)는 **143079542bytes**, SHA-256 `184b1bf2184ee7c005bb38b4c87415e5232934925b2d604d327d6fdcb12f8ea4`. GitHub asset digest 일치, 인증 없는 다운로드 HEAD200/크기 일치를 확인했다.
+- ZIP CRC·ARM64 PDFium·공개 Web ID 포함·사적 파일명 및 자격증명 payload 패턴 부재를 검사했다. 첨부 사진은 Git/릴리스에 포함하지 않았다. 기존 Windows PDFium DLL의 합성 A4 1쪽 실제 렌더링도 통과했다. 이는 Android native 실행 결과가 아니다.
+- 로그는 Git 제외 `build/validation/tablet-preview2-*`와 `tablet-pdf-native-smoke.txt`에 있다. Windows native 재빌드, 수정판 S9+ 실행·펜 품질·native PDF·실제 OAuth/두 기기 Drive 왕복은 남아 있다. 아래 preview.1 기록은 이전 파일에 대한 결과다.
+
 ## Android 설치 파일 공개 — 2026-10-30
 
 - [확인] 태블릿에서 받을 수 있도록 [v0.1.0-preview.1](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.1)을 prerelease로 게시했다. [APK 직접 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.1.0-preview.1/personal-ink-vault-android-preview.apk)는 인증 없는 HTTP HEAD에서 200과 파일 크기 일치를 확인했다.

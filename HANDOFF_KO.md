@@ -1,5 +1,7 @@
 # Personal Ink Vault — Windows Codex 인계
 
+**최신 수정판 — 2026-10-30:** S9+ 사용자 사진의 `CanvasGestureDetectorState.initState` 이전 `MediaQuery` 조회 오류를 호스트에서 재현·수정했다. PDF 실패 취소/원본 보존과 Drive 계정 복원·손상 설정 복구도 반영해 [preview.2](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.2)를 게시했다. 대응 소스는 `911b3fd`, 앱 버전0.1.0/설치 번호136032이며 기존 서명을 유지한다. 전체 Flutter252개 통과/기존105skip, 분석0, APK 빌드·서명·공개 다운로드 검증을 완료했다. README 상단이 최신 APK 링크다. 업데이트 후 **Drive → Google 로그인 / 재연결**을 한 번 실행해야 한다. 수정판의 실기기 실행·native PDF·실제 OAuth/Drive 왕복은 아직 미검증이다. Windows native 빌드는 이번 작업에서 반복하지 않았다. [오늘 기록](_docs/history/2026-10-30.md)과 [검증 기록](docs/mvp-validation.md)을 먼저 읽는다. 개인 스크린샷은 Git 제외했다.
+
 **추가 — 2026-10-30:** 사용자가 태블릿에서 받을 APK 공개를 요청해 [Android 미리보기 릴리스](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.1)를 게시했다. README 상단은 실제 HTTPS APK 다운로드 링크다. 0.1.0/versionCode136031/debug 서명이며 기존 Google 인증서 지문을 유지한다. 실제 기기 설치·필기·OAuth 왕복 수용은 미검증이다. 아래 APK 로컬 유지 기록은 릴리스 요청 전 상태다.
 
 ## 개발 시작 — 아래 초기 기록보다 우선
