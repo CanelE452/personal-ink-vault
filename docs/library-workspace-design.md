@@ -18,6 +18,12 @@
 
 조사 대상: `lib/components/canvas/save_indicator.dart`, `lib/main.dart`, `lib/pages/workspace/`, `lib/data/vault/workspace_store.dart`, `lib/pages/editor/editor.dart`, `packages/ink_vault_core/`.
 
+### 기존 분석의 범위와 누락
+
+StarNote 조사는 APK의 매니페스트·archive·리소스와 공개 기능을 확인한 정적 조사다. 보호 래퍼 안의 본체 호출 흐름 복원이나 S9+에서의 실제 생성·편집·저장·복귀 관찰은 완료하지 않았다. Saber는 공개 소스의 재사용 검토와 이후 통합이며, Obsidian은 배포 코드의 일부 정적 경로 조사다. 이 결과를 세 앱의 실제 사용 흐름을 끝까지 역공학·검증한 근거로 삼을 수 없다. 특히 새 workspace와 기존 Saber 뒤로가기의 연결을 놓친 것은 우리 통합·검증의 누락이다.
+
+새 화면은 사용자 제공 화면에서 확인되는 요구를 근거로 설계하고, 홈 → 생성 → 편집 → 저장 → 목록 복귀 → 같은 문서 재열기를 우리 앱에서 검사한다. APK 내부 단서와 UI 모양만으로 실제 파일 형식·상태 전환·필기 품질을 단정하지 않는다. 코드/호스트 시험 결과와 S9+ 실제 실행 결과를 별도로 기록한다.
+
 ## 화면과 이동 계약
 
 ### 홈

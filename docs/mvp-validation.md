@@ -1,5 +1,14 @@
 # MVP 개발판 검증 기록
 
+## 뒤로가기 수정판 preview.3 — 2026-10-30
+
+- [확인] 기존 화살표가 옛 home→workspace redirect로 되돌아가 세션을 닫지 못하는 결함을 회귀시험으로 재현했다. 화면/시스템 뒤로가기를 workspace의 저장→flush→세션 닫기→기존 문서 목록으로 연결했다. 열린 Drawer는 먼저 닫고, 저장 실패·입력 busy·완료되지 않은 commit은 작업본을 유지한다. 홈의 OS 뒤로가기는 유지한다.
+- [확인] 신규 navigation6개 포함 전체 Flutter **258개 통과 / 기존105skip / 0실패**, 36초/exit0. 전체 분석 문제0, 24.4초/exit0. 실제 Editor·controller·디스크 저장, 미저장 시스템 뒤로가기, 진행 중 commit 대기, Drawer 우선 닫기, 넓은 화면/홈 종료, 실패 저장 경계를 검사했다.
+- [확인] Android 빌드43.9초/exit0, 서명 검증 exit0. 앱 버전0.1.0/code136033, package `io.github.canele452.personalinkvault`, minSdk24/targetSdk36. ARM64·ARMv7·x86_64를 포함하며 기존 인증서와 같은 v2 서명이다. 소스는 `0e95d71aa7abacc14f9ec2217f8ee0c026fb49c8`다.
+- [확인] [preview.3 릴리스](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.3)의 [APK 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.1.0-preview.3/personal-ink-vault-android-preview.apk)는143079178bytes, SHA-256 `7fbd5dc8771279421cdaa9984c602981b2058ec9920beb91a5dac192ac24f10b`. 업로드 후 asset digest와 크기 일치, 인증 없는 공개 API·다운로드 HEAD200을 확인했다.
+- ZIP CRC, 공개 Web client ID와 ARM64 PDFium 포함, 사적 파일명·자격증명 payload 패턴 부재를 검사했다. 로그는 Git 제외 `build/validation/navigation-*`다. 제품 의존성·저장 형식·Office 엔진은 변경하지 않았다. 수정판의 S9+ 실제 실행과 두 기기 Drive 왕복은 아직 미검증이며 이번에 Windows native 빌드를 반복하지 않았다.
+- 폴더/표지 홈·새 생성 메뉴·Rust 공통화·Office/한글 원본 편집은 [별도 제안](library-workspace-design.md)이다. 이번 APK에 반영한 기능과 구분한다.
+
 ## 태블릿 오류 수정판 preview.2 — 2026-10-30
 
 - [확인] 사용자 S9+ 사진의 `MediaQuery`/`CanvasGestureDetectorState.initState` 오류가 실제 Android 화면 분기 회귀시험에서 재현한 오류와 일치했다. 최초 캔버스 변환을 첫 레이아웃 뒤로 옮겼다. 수정 APK의 기기 실행 성공을 확인한 것은 아니다.

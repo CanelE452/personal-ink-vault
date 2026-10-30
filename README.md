@@ -4,20 +4,22 @@
 
 ## Android 태블릿에 설치
 
-**[Android APK 다운로드 — Galaxy Tab S9+ · 수정판 preview.2](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.1.0-preview.2/personal-ink-vault-android-preview.apk)**
+**[Android APK 다운로드 — Galaxy Tab S9+ · 뒤로가기 수정판 preview.3](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.1.0-preview.3/personal-ink-vault-android-preview.apk)**
 
 1. 태블릿에서 위 **Android APK 다운로드**를 누릅니다.
 2. 다운로드한 `personal-ink-vault-android-preview.apk` 파일을 열어 기존 앱 위에 **업데이트**로 설치합니다.
-3. 앱을 열어 새 노트와 기존 PDF를 확인합니다. PDF 가져오기에 실패하면 **PDF 가져오기 취소**를 누르고 노트 작업을 계속할 수 있습니다.
-4. 왼쪽 목록의 **Drive → Google 로그인 / 재연결**을 한 번 실행합니다. 처음 연결하면 **현재 로컬 vault를 Drive에 만들기**, 이미 만든 저장소가 있으면 **기존 Drive vault 연결**을 선택합니다. [설정 안내](docs/drive-setup.md)에 자세한 순서가 있습니다.
+3. 앱을 열어 새 노트와 기존 PDF를 확인합니다. 편집기의 뒤로가기는 저장 후 문서 목록으로 돌아갑니다. PDF 가져오기에 실패하면 **PDF 가져오기 취소**를 누르고 노트 작업을 계속할 수 있습니다.
+4. Drive 미연결 상태라면 왼쪽 목록의 **Drive → Google 로그인 / 재연결**을 실행합니다. 처음 연결하면 **현재 로컬 vault를 Drive에 만들기**, 이미 만든 저장소가 있으면 **기존 Drive vault 연결**을 선택합니다. [설정 안내](docs/drive-setup.md)에 자세한 순서가 있습니다.
 
-현재 파일은 **0.1.0-preview.2 개발 미리보기 APK / 설치 번호136032**, 약 **143MB**, ARM64 지원, Android 7.0 이상용입니다. 기존 Google OAuth 등록과 같은 debug 서명을 사용합니다. 사진으로 확인한 캔버스 초기화 오류와 PDF 실패 후 잠김, Drive 자동 복원·설정 복구를 수정했습니다. 전체 Flutter 시험252개와 분석을 통과했으며 수정판의 실제 S9+ 필기·두 기기 동기화 수용 시험은 남아 있습니다. Drive 로그인은 등록된 테스트 계정으로 진행합니다.
+현재 파일은 **0.1.0-preview.3 개발 미리보기 APK / 설치 번호136033**, 약 **143MB**, ARM64 지원, Android 7.0 이상용입니다. 기존 Google OAuth 등록과 같은 debug 서명을 사용합니다. 이번에는 화면·시스템 뒤로가기를 저장 후 문서 목록으로 연결했습니다. 앞선 캔버스/PDF/Drive 수정도 포함합니다. 전체 Flutter 시험258개와 분석을 통과했으며 수정판의 실제 S9+ 필기·두 기기 동기화 수용 시험은 남아 있습니다. Drive 로그인은 등록된 테스트 계정으로 진행합니다.
 
-[릴리스·파일 목록·체크섬](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.2) · [검증 기록·Windows 개발판 안내](docs/mvp-validation.md)
+[릴리스·파일 목록·체크섬](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.3) · [검증 기록·Windows 개발판 안내](docs/mvp-validation.md)
 
 ## 프로젝트 현황
 
 Saber 고정 소스 기반 검증판과 자체 불변 저장·Drive 모듈을 개발 중입니다. 세 앱 분석을 반영한 [설계](docs/mvp-design.md), [개발 현황](docs/roadmap.md), [검증 기록](docs/mvp-validation.md)을 먼저 확인하세요. 코드 시험 통과와 실기기·실제 Drive 왕복 검증은 구분합니다.
+
+폴더·문서 표지 홈과 생성 메뉴, Rust 공통 핵심, Office·한글 원본 편집은 [확대 설계안](docs/library-workspace-design.md) 검토 단계입니다. 기업의 Rust 구성 사례와 기존 데이터 이전 조건도 정리했습니다.
 
 공개 저장소: [CanelE452/personal-ink-vault](https://github.com/CanelE452/personal-ink-vault). 기준 브랜치는 `main`이며 앱 소스·문서·공개 시험 자료를 관리합니다.
 

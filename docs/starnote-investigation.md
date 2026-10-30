@@ -2,6 +2,8 @@
 
 2026-10-22. 사용자 요청에 따라 인터넷에서 공식 APK를 확보하고 기능 안내와 정적 구조를 조사했다. 첫 사용 기기는 Galaxy Tab S9+다. 앱 설치/실행·개인 노트 수집은 하지 않았다.
 
+**2026-10-30 범위 재확인:** 이 조사는 실제 StarNote의 생성·편집·저장·뒤로가기 흐름을 재현한 동작 역공학 완료 보고가 아니다. 보호 래퍼 안의 본체 기능 코드는 복원하지 못했고, 실기기 사용 흐름도 관찰하지 않았다. 이번 우리 앱의 뒤로가기 결함은 Saber를 새 workspace에 연결한 통합·검증의 누락이다. 정적 분석 기록과 우리 앱의 실제 사용성 검증을 구분한다.
+
 ## 대상
 
 [Google Play 대상](https://play.google.com/store/apps/details?id=com.onyx.galaxy.global.note&hl=en) → 공식 starnote.ai → [다운로드 페이지](https://starnote.ai/download)의 HTML Android 링크 → [공식 APK](https://static-us.boox.com/galaxy/apks/starnote_global_latest.apk) 순서로 출처를 확인했다. 동명 starnote.app·미러·중국 지역판은 사용하지 않았다.
