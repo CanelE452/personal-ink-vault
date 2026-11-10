@@ -1,19 +1,17 @@
 # Personal Ink Vault
 
-개인 PDF 필기와 Markdown 정리를 연결하는 Flutter 앱입니다. **첫 MVP는 Galaxy Tab S9+ PDF 필기 → Windows에서 필기를 보며 Markdown 정리 → Drive 자동 동기화**입니다. iPhone·iPad는 후속 목표입니다.
+개인 PDF 필기와 Markdown 정리를 연결하는 Flutter 앱입니다. 이번 공개판은 Android 휴대폰과 태블릿에서 사용할 수 있습니다.
 
-## Android 태블릿에 설치
+## Android 휴대폰·태블릿에 설치
 
-**[Android APK 다운로드 — Galaxy Tab S9+ · 뒤로가기 수정판 preview.3](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.1.0-preview.3/personal-ink-vault-android-preview.apk)**
+**[Android 194 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.194/personal-ink-vault-android-0.2.0-build194-136194-arm64-release.apk)**
 
-1. 태블릿에서 위 **Android APK 다운로드**를 누릅니다.
-2. 다운로드한 `personal-ink-vault-android-preview.apk` 파일을 열어 기존 앱 위에 **업데이트**로 설치합니다.
-3. 앱을 열어 새 노트와 기존 PDF를 확인합니다. 편집기의 뒤로가기는 저장 후 문서 목록으로 돌아갑니다. PDF 가져오기에 실패하면 **PDF 가져오기 취소**를 누르고 노트 작업을 계속할 수 있습니다.
-4. Drive 미연결 상태라면 왼쪽 목록의 **Drive → Google 로그인 / 재연결**을 실행합니다. 처음 연결하면 **현재 로컬 vault를 Drive에 만들기**, 이미 만든 저장소가 있으면 **기존 Drive vault 연결**을 선택합니다. [설정 안내](docs/drive-setup.md)에 자세한 순서가 있습니다.
+1. Android 휴대폰 또는 태블릿에서 위 링크를 누릅니다.
+2. 다운로드한 APK를 열고 기존 Personal Ink Vault 앱을 업데이트합니다.
+3. 앱에서 새 노트, PDF 필기 또는 Office 원본을 엽니다. Drive를 연결하려면 앱의 **Drive → Google 로그인 / 재연결**을 사용합니다.
 
-현재 파일은 **0.1.0-preview.3 개발 미리보기 APK / 설치 번호136033**, 약 **143MB**, ARM64 지원, Android 7.0 이상용입니다. 기존 Google OAuth 등록과 같은 debug 서명을 사용합니다. 이번에는 화면·시스템 뒤로가기를 저장 후 문서 목록으로 연결했습니다. 앞선 캔버스/PDF/Drive 수정도 포함합니다. 전체 Flutter 시험258개와 분석을 통과했으며 수정판의 실제 S9+ 필기·두 기기 동기화 수용 시험은 남아 있습니다. Drive 로그인은 등록된 테스트 계정으로 진행합니다.
+Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 333MB입니다. Galaxy Tab S9+ 실기기와 두 Android 기기의 Drive 왕복 검증은 남아 있습니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.194) · [Android 194 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.194)
 
-[릴리스·파일 목록·체크섬](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.1.0-preview.3) · [검증 기록·Windows 개발판 안내](docs/mvp-validation.md)
 
 ## 프로젝트 현황
 
@@ -62,4 +60,4 @@ flutter --suppress-analytics run -d <DEVICE_ID>
 
 저장소 패키지의 시험은 `packages/ink_vault_core`에서 `dart test`로 실행합니다. 첫 화면에서 오프라인 노트/PDF를 만들 수 있습니다. Android는 필기와 Markdown 열람, Windows는 필기 보기와 Markdown 편집에 집중합니다. Drive는 [별도 설정 안내](docs/drive-setup.md)에 따라 같은 Google Cloud 프로젝트의 client를 등록하고 사용자 동의를 완료해야 연결됩니다. 설정 전에도 로컬 저장은 동작합니다.
 
-이 코드는 GPL v3인 Saber 기반입니다. 고정 소스·변경·제약은 [출처 기록](docs/upstream-provenance.md), 의존성은 [고지](THIRD_PARTY_NOTICES.md)를 참고하세요. 현재 아이콘과 전체 native/자산 감사는 배포 준비가 끝난 상태가 아닙니다.
+이 코드는 GPL v3인 Saber 기반입니다. 초기 포크의 고정 소스·변경·제약은 [출처 기록](docs/upstream-provenance.md), 의존성은 [고지](THIRD_PARTY_NOTICES.md)를 참고하세요.
