@@ -164,12 +164,20 @@ typedef _OriginalPageConflict = ({
   List<RevisionRecord> heads,
 });
 
+typedef OfficePdfCopy = ({
+  String fileName,
+  Uint8List bytes,
+  int? pageCount,
+  int? pageNumber,
+});
+
 class OfficeWorkspace extends StatefulWidget {
   final NoteRepository repository;
   final VaultNote note;
   final ValueChanged<bool>? onDirtyChanged;
   final ValueChanged<bool>? onBusyChanged;
   final Future<void> Function(VaultNote)? onConvertedCopy;
+  final Future<void> Function(Future<OfficePdfCopy?> Function())? onPdfCopy;
   final VoidCallback onBack;
   final OfficePageLinkRequest? pageLink;
   final ValueChanged<OfficePageLinkRequest>? onPageLinkHandled;
@@ -209,6 +217,7 @@ class OfficeWorkspace extends StatefulWidget {
     this.onDirtyChanged,
     this.onBusyChanged,
     this.onConvertedCopy,
+    this.onPdfCopy,
     required this.onBack,
     this.pageLink,
     this.onPageLinkHandled,
@@ -326,6 +335,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   List<OfficeEditionSummary> _editions = [];
   Set<String> _sourceHeads = {};
   List<OfficePdfVariant> _pdfVariants = const [];
+  var _legacyPdfAvailable = false;
   OfficePdfVariant? _selectedPdf;
   Uint8List? _selectedPdfBytes;
   List<RevisionRecord> _annotationHeads = [];
@@ -396,6 +406,15 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       _editorBusy;
   AndroidOfficeEngine get _engine =>
       widget.engine ?? const AndroidOfficeEngine();
+  OfficePreviewEngine get _previewEngine =>
+      widget.previewEngine ??
+      OfficePreviewEngine(
+        windowsEngine: _windowsEngine,
+        hwpEngine: _hwpEngine,
+        androidEngine: _engine,
+        isWindows: _useWindows,
+        isAndroid: widget.engine != null || Platform.isAndroid,
+      );
   bool get _useWindows =>
       widget.engine == null &&
       (_useHwp || widget.windowsEngine != null || Platform.isWindows);
@@ -880,6 +899,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         selected,
         interactiveAvailable: interactive,
       );
+      final legacyPdfAvailable = await _hasLegacyPdf(selected, variants);
       if (!_current(generation)) return;
       setState(() {
         _capabilities = capabilities;
@@ -889,6 +909,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         _sourceHeads = heads.map((record) => record.revisionId).toSet();
         _edition = selected;
         _pdfVariants = variants;
+        _legacyPdfAvailable = legacyPdfAvailable;
         _selectedPdf = selectedPdf;
         _recoveries = recoveries;
         _viewPageId = active == null ? null : view?.pageId;
@@ -989,6 +1010,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
 
   void _resetPdfSelection() {
     _pdfVariants = const [];
+    _legacyPdfAvailable = false;
     _selectedPdf = null;
     _selectedPdfBytes = null;
     _originalPreviewPage = null;
@@ -1009,13 +1031,39 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     if (edition == null) return;
     final generation = _generation;
     final variants = await _documents.readPdfVariants(widget.note, edition);
+    final legacyPdfAvailable = await _hasLegacyPdf(edition, variants);
     if (!_current(generation) || !identical(_edition, edition)) return;
-    if (!listEquals(
-      variants.map((variant) => variant.revision.revisionId).toList(),
-      _pdfVariants.map((variant) => variant.revision.revisionId).toList(),
-    )) {
-      setState(() => _pdfVariants = variants);
+    if (_legacyPdfAvailable != legacyPdfAvailable ||
+        !listEquals(
+          variants.map((variant) => variant.revision.revisionId).toList(),
+          _pdfVariants.map((variant) => variant.revision.revisionId).toList(),
+        )) {
+      setState(() {
+        _pdfVariants = variants;
+        _legacyPdfAvailable = legacyPdfAvailable;
+      });
     }
+  }
+
+  Future<bool> _hasLegacyPdf(
+    OfficeEdition? edition,
+    List<OfficePdfVariant> variants,
+  ) async {
+    if (widget.onPdfCopy == null || edition == null) return false;
+    final repository = widget.repository;
+    final noteId = widget.note.id;
+    for (final variant in variants) {
+      if (variant.revision.entityId != edition.revision.entityId) return true;
+      final heads = await repository.heads(variant.bindingId);
+      if (heads.any(
+        (head) =>
+            !head.deleted &&
+            head.kind == EntityKind.ink &&
+            head.ownerNoteId == noteId,
+      ))
+        return true;
+    }
+    return false;
   }
 
   Future<void> _refreshOfficeWorkspace() async {
@@ -1244,6 +1292,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         edition,
         interactiveAvailable: interactive,
       );
+      final legacyPdfAvailable = await _hasLegacyPdf(edition, variants);
       if (!_current(generation)) return;
       await _saveCurrentContents();
       if (!_current(generation)) return;
@@ -1251,6 +1300,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         _edition = edition;
         _resetPdfSelection();
         _pdfVariants = variants;
+        _legacyPdfAvailable = legacyPdfAvailable;
         _capabilities = capabilities;
         _interactiveAvailable = interactive;
         _windowsRendererAvailable = windowsRendererAvailable;
@@ -1453,15 +1503,6 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       return;
     }
     if (!_canGeneratePdf) return;
-    final engine =
-        widget.previewEngine ??
-        OfficePreviewEngine(
-          windowsEngine: _windowsEngine,
-          hwpEngine: _hwpEngine,
-          androidEngine: _engine,
-          isWindows: _useWindows,
-          isAndroid: widget.engine != null || Platform.isAndroid,
-        );
     final baseRoot = FileManager.getFile('/.working/office').absolute.path;
     final captured = await documents.beginEdit(
       note,
@@ -1487,7 +1528,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         _error = null;
         _notice = '원본을 바꾸지 않고 미리보기를 준비하고 있습니다.';
       });
-      previewResult = await engine.preview(
+      previewResult = await _previewEngine.preview(
         sourcePath: working.path,
         sessionId: sessionId,
       );
@@ -1498,7 +1539,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         return;
       }
       final sourceHash = sha256.convert(captured.originalBytes).toString();
-      final bytes = await _readVerifiedOfficePreview(
+      final bytes = await OfficePreviewEngine.readVerifiedPdf(
         working,
         sourceHash,
         result,
@@ -1512,7 +1553,9 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
           result.pdfSha256,
           result.pageCount,
         );
-        _notice = '원본 미리보기입니다. PDF 필기를 시작하면 필기 버전을 만듭니다.';
+        _notice = widget.onPdfCopy == null
+            ? '원본 미리보기입니다. PDF 필기를 시작하면 필기 버전을 만듭니다.'
+            : '원본 미리보기입니다.';
       });
     } finally {
       try {
@@ -1532,33 +1575,6 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     }
   }
 
-  Future<Uint8List> _readVerifiedOfficePreview(
-    File working,
-    String sourceHash,
-    OfficePreviewResult result,
-  ) async {
-    final pdf = File(result.pdfPath);
-    if (result.sourceSha256 != sourceHash ||
-        FileSystemEntity.typeSync(working.path, followLinks: false) !=
-            FileSystemEntityType.file ||
-        (await sha256.bind(working.openRead()).first).toString() !=
-            sourceHash ||
-        !p.isAbsolute(pdf.path) ||
-        p.equals(pdf.path, working.path) ||
-        FileSystemEntity.typeSync(pdf.path, followLinks: false) !=
-            FileSystemEntityType.file ||
-        await pdf.length() > 128 * 1024 * 1024 ||
-        result.pageCount < 1 ||
-        result.engineVersion.trim().isEmpty) {
-      throw const FormatException('원본에 연결된 미리보기를 확인하지 못했습니다.');
-    }
-    final bytes = await pdf.readAsBytes();
-    if (sha256.convert(bytes).toString() != result.pdfSha256) {
-      throw const FormatException('미리보기 PDF가 준비된 결과와 다릅니다.');
-    }
-    return bytes;
-  }
-
   Future<void> _startPdfPreview({_OriginalPdfPage? originalPage}) {
     final pending = _previewOperation;
     if (pending != null) return pending;
@@ -1566,15 +1582,19 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     if (originalPage != null && !_matchesShownOriginalPage(originalPage)) {
       throw const FormatException('미리보기 PDF가 바뀌었습니다. 페이지를 다시 선택하세요.');
     }
-    final remembered = _originalPreviewPage;
+    final remembered = widget.onPdfCopy == null ? _originalPreviewPage : null;
     final handoff =
         originalPage ??
         (remembered != null && _matchesShownOriginalPage(remembered)
             ? remembered
             : null);
+    return _trackPdfPreparation(_createPdfPreview(handoff));
+  }
+
+  Future<void> _trackPdfPreparation(Future<void> operation) {
     final generation = _generation;
     late Future<void> tracked;
-    tracked = _createPdfPreview(handoff).whenComplete(() {
+    tracked = operation.whenComplete(() {
       if (identical(_previewOperation, tracked)) _previewOperation = null;
       if (mounted) {
         _report();
@@ -1591,6 +1611,59 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       });
     }
     return tracked;
+  }
+
+  Future<void> _startPdfCopy({int? pageNumber}) async {
+    final receive = widget.onPdfCopy;
+    final edition = _edition;
+    if (receive == null ||
+        edition == null ||
+        !_liveNote ||
+        !_canPreview ||
+        _busy) {
+      return;
+    }
+    final generation = _generation;
+    final documents = _documents;
+    final note = widget.note;
+    bool current() => _current(generation) && identical(_edition, edition);
+    await receive(() async {
+      if (!current() || _busy) return null;
+      OfficePdfCopy? copy;
+      await _trackPdfPreparation(() async {
+        final shown = _shownOriginalPdf(edition);
+        final variant = _choosePdf(_pdfVariants);
+        final Uint8List bytes;
+        int? pageCount;
+        if (shown != null) {
+          bytes = shown.bytes;
+        } else if (variant != null) {
+          bytes = await documents.readPdfVariantBytes(note, edition, variant);
+          pageCount = variant.pageCount;
+        } else {
+          if (!_canGeneratePdf) {
+            throw const FormatException('변환할 원본 또는 저장된 PDF 버전을 확인하세요.');
+          }
+          final result = await _previewEngine.convertToPdf(
+            fileName: edition.originalFileName,
+            original: edition.originalBytes,
+          );
+          if (result == null) return;
+          bytes = result.bytes;
+          pageCount = result.pageCount;
+        }
+        copy = (
+          fileName:
+              '${p.basenameWithoutExtension(edition.originalFileName)}.pdf',
+          bytes: bytes,
+          pageCount: pageCount,
+          pageNumber: pageNumber,
+        );
+      }());
+      if (!current()) return null;
+      if (copy == null) setState(() => _notice = 'PDF 만들기를 취소했습니다.');
+      return copy;
+    });
   }
 
   Future<void> _createPdfPreview(_OriginalPdfPage? originalPage) async {
@@ -1613,6 +1686,10 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     setState(() => _pdfVariants = variants);
     if (existing != null) {
       await _openPdfNow(preview: existing, originalPage: originalPage);
+      return;
+    }
+    if (widget.onPdfCopy != null && variants.isEmpty) {
+      setState(() => _notice = '저장된 Office 필기를 찾을 수 없습니다.');
       return;
     }
     final cached = _selectedOriginalPreview;
@@ -1656,15 +1733,6 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       await publish(cached.pdfBytes, cached.pageCount);
       return;
     }
-    final engine =
-        widget.previewEngine ??
-        OfficePreviewEngine(
-          windowsEngine: _windowsEngine,
-          hwpEngine: _hwpEngine,
-          androidEngine: _engine,
-          isWindows: _useWindows,
-          isAndroid: widget.engine != null || Platform.isAndroid,
-        );
     final sessionId = newId();
     final working = FileManager.getFile(
       '/.working/office/${note.id}/${selected.revision.revisionId}/$sessionId/original${p.extension(captured.originalFileName)}',
@@ -1673,13 +1741,13 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     await working.writeAsBytes(captured.originalBytes, flush: true);
     if (!current()) return;
     setState(() => _recoveryPath = working.parent.path);
-    final result = await engine.preview(
+    final result = await _previewEngine.preview(
       sourcePath: working.path,
       sessionId: sessionId,
     );
     try {
       if (!current() || result == null) return;
-      final pdfBytes = await _readVerifiedOfficePreview(
+      final pdfBytes = await OfficePreviewEngine.readVerifiedPdf(
         working,
         selected.originalSha256,
         result,
@@ -2236,7 +2304,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         }
         return;
       }
-      final pdf = await _readVerifiedOfficePreview(
+      final pdf = await OfficePreviewEngine.readVerifiedPdf(
         working,
         sourceHash,
         preview,
@@ -3210,7 +3278,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
           sha256.convert(bytes).toString() != outputSha256) {
         throw const FormatException('편집한 PPTX의 파일 내용을 확인하지 못했습니다.');
       }
-      final pdf = await _readVerifiedOfficePreview(
+      final pdf = await OfficePreviewEngine.readVerifiedPdf(
         output,
         outputSha256,
         preview,
@@ -5308,11 +5376,23 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
                 children: [
                   FilledButton.icon(
                     key: const ValueKey('office-preview-pdf'),
-                    onPressed: _canPreview && !_busy && _pendingNative == null
-                        ? () => unawaited(_run(_startPdfPreview))
+                    onPressed:
+                        _canPreview &&
+                            !_busy &&
+                            _pendingNative == null &&
+                            (widget.onPdfCopy == null || _liveNote)
+                        ? () => unawaited(
+                            _run(
+                              widget.onPdfCopy == null
+                                  ? _startPdfPreview
+                                  : _startPdfCopy,
+                            ),
+                          )
                         : null,
                     icon: const Icon(Icons.draw_outlined),
-                    label: const Text('PDF 필기 시작'),
+                    label: Text(
+                      widget.onPdfCopy == null ? 'PDF 필기 시작' : 'PDF로 새 문서 만들기',
+                    ),
                   ),
                   FilledButton.tonalIcon(
                     key: const ValueKey('office-edit-original'),
@@ -5352,7 +5432,11 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
                           final page = shownPage(number);
                           if (current(page)) {
                             unawaited(
-                              _run(() => _startPdfPreview(originalPage: page)),
+                              _run(
+                                () => widget.onPdfCopy == null
+                                    ? _startPdfPreview(originalPage: page)
+                                    : _startPdfCopy(pageNumber: number),
+                              ),
                             );
                           }
                         }
@@ -5363,7 +5447,11 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
                 ),
               ],
               const SizedBox(height: 12),
-              const Text('원본은 기기에 보관됩니다. 원본 편집을 저장하면 새 원본 버전과 PDF가 함께 추가됩니다.'),
+              Text(
+                widget.onPdfCopy == null
+                    ? '원본은 기기에 보관됩니다. 원본 편집을 저장하면 새 원본 버전과 PDF가 함께 추가됩니다.'
+                    : 'PDF를 만들면 같은 폴더에 새 필기 문서가 추가됩니다. Office 원본은 계속 편집할 수 있습니다.',
+              ),
               if (edition.originalFileName.toLowerCase().endsWith('.pptx') &&
                   edition.bindingId != null &&
                   edition.revision.parentRevisionIds.length == 1 &&
@@ -5406,16 +5494,18 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
                 ),
               const SizedBox(height: 12),
               if (!_canEdit) const Text('이 기기에서는 이 형식의 원본 편집을 아직 사용할 수 없습니다.'),
-              const SizedBox(height: 20),
-              Text(
-                edition.pdfBytes != null
-                    ? '이 버전의 PDF ${edition.pageCount}쪽이 준비되었습니다. 위의 PDF 필기로 전환하세요.'
-                    : _pdfVariants.isNotEmpty
-                    ? '이 원본에 저장된 PDF 필기 버전이 있습니다.'
-                    : preview != null
-                    ? '미리보기 PDF가 준비되었습니다. PDF 필기를 시작하면 이 PDF로 필기 버전을 만듭니다.'
-                    : 'PDF가 아직 없습니다.',
-              ),
+              if (widget.onPdfCopy == null) ...[
+                const SizedBox(height: 20),
+                Text(
+                  edition.pdfBytes != null
+                      ? '이 버전의 PDF ${edition.pageCount}쪽이 준비되었습니다. 위의 PDF 필기로 전환하세요.'
+                      : _pdfVariants.isNotEmpty
+                      ? '이 원본에 저장된 PDF 필기 버전이 있습니다.'
+                      : preview != null
+                      ? '미리보기 PDF가 준비되었습니다. PDF 필기를 시작하면 이 PDF로 필기 버전을 만듭니다.'
+                      : 'PDF가 아직 없습니다.',
+                ),
+              ],
             ],
           ),
         ),
@@ -5878,7 +5968,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       const ButtonSegment(value: false, label: Text('원본')),
       ButtonSegment(
         value: true,
-        label: const Text('PDF 필기'),
+        label: Text(widget.onPdfCopy == null ? 'PDF 필기' : '기존 PDF 필기'),
         enabled: _canPreview,
       ),
     ],
@@ -5920,7 +6010,13 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
                 Expanded(child: _editionSelector()),
               ],
             );
-            final modes = _edition == null ? null : _modeSelector();
+            final modes =
+                _edition != null &&
+                    (widget.onPdfCopy == null ||
+                        _pdfMode ||
+                        _legacyPdfAvailable)
+                ? _modeSelector()
+                : null;
             final search = _pdfMode
                 ? IconButton(
                     key: const ValueKey('office-pdf-text-search'),

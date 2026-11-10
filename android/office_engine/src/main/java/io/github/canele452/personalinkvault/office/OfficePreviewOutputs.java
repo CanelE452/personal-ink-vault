@@ -46,8 +46,7 @@ public final class OfficePreviewOutputs {
             throw new IOException("Invalid or already owned preview session");
         }
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) Files.createDirectory(root);
-        requireRoot();
-        Path directory = Files.createTempDirectory(root, "preview-");
+        Path directory = Files.createTempDirectory(requireRoot(), "preview-");
         outputs.put(sessionId, new Output(directory));
         return directory.toFile();
     }
@@ -111,15 +110,16 @@ public final class OfficePreviewOutputs {
         if (output != null) deleteOwned(output);
     }
 
-    private void requireRoot() throws IOException {
+    private Path requireRoot() throws IOException {
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(root)) {
             throw new IOException("Preview root is not a private regular directory");
         }
+        // The Activity validates the canonical path even if Android supplies an aliased files directory.
+        return root.toFile().getCanonicalFile().toPath();
     }
 
     private void requireDirectory(Path directory) throws IOException {
-        requireRoot();
-        if (!root.equals(directory.getParent())
+        if (!requireRoot().equals(directory.getParent())
                 || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
                 || Files.isSymbolicLink(directory)) {
             throw new IOException("Preview directory ownership changed");

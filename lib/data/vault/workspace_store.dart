@@ -16,6 +16,8 @@ import 'package:saber/data/vault/obsidian_vault_source.dart';
 import 'package:saber/data/vault/structured_document_text.dart';
 import 'package:saber/data/vault/workspace_database.dart';
 
+typedef SharedOfficeOriginal = ({String fileName, Uint8List bytes});
+
 enum VaultDocumentKind {
   handwriting,
   pdf,
@@ -481,6 +483,7 @@ class WorkspaceStore {
     String? folderId,
     bool fromObsidian = false,
     String? sharedRequestId,
+    SharedOfficeOriginal? sharedOfficeOriginal,
   }) async {
     if (repository.formatVersion < 2)
       throw const FormatException('Attachments require vault format 2');
@@ -498,6 +501,10 @@ class WorkspaceStore {
     }
     _validateSourceFileName(fileName);
     if (bytes.isEmpty) throw const FormatException('Empty source original');
+    if (sharedOfficeOriginal != null &&
+        (sharedRequestId == null || documentKind != VaultDocumentKind.pdf)) {
+      throw const FormatException('Expected a shared Office PDF import');
+    }
     final original = Uint8List.fromList(bytes);
     if (sharedRequestId != null) {
       if (fromObsidian ||
@@ -506,18 +513,10 @@ class WorkspaceStore {
         throw const FormatException('Unsupported shared document receipt');
       }
       validateId(sharedRequestId);
-      final receipt = sha256
-          .convert(
-            utf8.encode(
-              jsonEncode([
-                documentKind.name,
-                fileName,
-                sha256.convert(original).toString(),
-              ]),
-            ),
-          )
-          .toString();
-      final existing = await _readSharedDocument(sharedRequestId, receipt);
+      final receipt = sharedOfficeOriginal == null
+          ? _sharedSourceReceipt(documentKind.name, fileName, original)
+          : _sharedOfficePdfReceipt(sharedOfficeOriginal);
+      final existing = await _readSharedDocument(sharedRequestId, {receipt});
       if (existing != null) return existing;
       try {
         return await _create(
@@ -530,7 +529,7 @@ class WorkspaceStore {
           sharedReceipt: receipt,
         );
       } on StateError {
-        final published = await _readSharedDocument(sharedRequestId, receipt);
+        final published = await _readSharedDocument(sharedRequestId, {receipt});
         if (published != null) return published;
         rethrow;
       }
@@ -615,7 +614,42 @@ class WorkspaceStore {
     }
   }
 
-  Future<VaultNote?> _readSharedDocument(String id, String receipt) async {
+  static String _sharedSourceReceipt(
+    String kind,
+    String fileName,
+    Uint8List bytes,
+  ) => sha256
+      .convert(
+        utf8.encode(jsonEncode([kind, fileName, '${sha256.convert(bytes)}'])),
+      )
+      .toString();
+
+  static String _sharedOfficePdfReceipt(SharedOfficeOriginal original) {
+    _validateSourceFileName(original.fileName);
+    if (original.bytes.isEmpty)
+      throw const FormatException('Empty Office original');
+    return _sharedSourceReceipt(
+      'office-pdf',
+      original.fileName,
+      original.bytes,
+    );
+  }
+
+  Future<VaultNote?> readSharedOfficeImport(
+    String requestId,
+    SharedOfficeOriginal original,
+  ) {
+    validateId(requestId);
+    return _readSharedDocument(requestId, {
+      _sharedSourceReceipt('office', original.fileName, original.bytes),
+      _sharedOfficePdfReceipt(original),
+    });
+  }
+
+  Future<VaultNote?> _readSharedDocument(
+    String id,
+    Set<String> receipts,
+  ) async {
     final heads = await repository.heads(id);
     if (heads.isEmpty) return null;
     final head = heads.singleOrNull;
@@ -628,7 +662,7 @@ class WorkspaceStore {
       head,
       trashed: head.deleted || (location?.trashed ?? false),
     );
-    if (note.json['sharedDocumentReceipt'] != receipt) {
+    if (!receipts.contains(note.json['sharedDocumentReceipt'])) {
       throw StateError('공유 문서의 원본을 확인할 수 없습니다.');
     }
     return note;

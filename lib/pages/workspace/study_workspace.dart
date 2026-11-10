@@ -25,6 +25,7 @@ import 'package:saber/data/mcp/vault_mcp_bridge.dart';
 import 'package:saber/data/mcp/vault_mcp_render.dart';
 import 'package:saber/data/mcp/vault_mcp_service.dart';
 import 'package:saber/data/office/office_document_store.dart';
+import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/vault/block_page_document.dart';
 import 'package:saber/data/vault/card_canvas_document.dart';
@@ -153,6 +154,8 @@ class _DocumentNameDialogState extends State<_DocumentNameDialog> {
   }
 }
 
+enum _OfficeImportMode { pdf, office }
+
 class StudyWorkspace extends StatefulWidget {
   static final pendingDocumentImport = SharedDocumentInbox();
   final WorkspaceController? controller;
@@ -160,12 +163,14 @@ class StudyWorkspace extends StatefulWidget {
   final DriveConnectionController Function(WorkspaceController)?
   createDriveConnection;
   final ThumbnailCache Function(Directory) thumbnailCacheFactory;
+  final OfficePreviewEngine? officePreviewEngine;
   const new({
     super.key,
     this.controller,
     this.enableDrive = false,
     this.createDriveConnection,
     this.thumbnailCacheFactory = ThumbnailCache.new,
+    this.officePreviewEngine,
   });
   @override
   State<StudyWorkspace> createState() => _StudyWorkspaceState();
@@ -834,38 +839,167 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   ) async {
     final fileName = p.basename(path);
     final folder = c.currentFolderId;
+    final session = c.activeSession;
     bool current() =>
         mounted &&
         identical(controller, c) &&
         identical(c.repository, repo) &&
+        identical(c.activeSession, session) &&
         c.currentFolderId == folder &&
         c.canCreateDocument &&
         !c.dirty &&
         StudyWorkspace.pendingDocumentImport.isCurrent(lease);
     final bytes = await File(path).readAsBytes();
     if (!current()) throw StateError('대상이 바뀌어 문서 가져오기 요청을 보관했습니다.');
-    final note = await OfficeDocumentStore(repo).importDocument(
-      title: p.basenameWithoutExtension(fileName),
-      fileName: fileName,
-      bytes: bytes,
-      folderId: folder,
+    await _importOfficeFile(
+      c,
+      original: (fileName: fileName, bytes: bytes),
+      isCurrent: current,
       sharedRequestId: lease.request.sharedRequestId,
     );
-    if (note.trashed || !current()) return;
+  }
+
+  Future<void> _importOfficeFile(
+    WorkspaceController c, {
+    required SharedOfficeOriginal original,
+    required bool Function() isCurrent,
+    String? sharedRequestId,
+  }) async {
+    final repository = c.repository;
+    void requireCurrent() {
+      if (!isCurrent()) throw StateError('가져올 보관함이나 폴더가 바뀌었습니다.');
+    }
+
+    requireCurrent();
+    final prior = sharedRequestId == null
+        ? null
+        : await c.store.readSharedOfficeImport(sharedRequestId, original);
+    requireCurrent();
+    if (prior != null) {
+      if (!prior.trashed) await c.openNote(prior);
+      _finishOfficeImport(c, repository, prior);
+      return;
+    }
+
+    if (!mounted) return;
+    final mode = await showDialog<_OfficeImportMode>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const ValueKey('office-import-mode'),
+        title: const Text('문서를 어떻게 열까요?'),
+        content: Text(
+          '${original.fileName}\n\n'
+          'PDF 필기용은 PDF만 보관합니다. Office 편집용은 원본을 보관하고 나중에 별도 PDF를 만들 수 있습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context, _OfficeImportMode.office),
+            child: const Text('Office 편집용'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _OfficeImportMode.pdf),
+            child: const Text('PDF 필기용'),
+          ),
+        ],
+      ),
+    );
+    if (mode == null) return;
+    requireCurrent();
+    final title = p.basenameWithoutExtension(original.fileName);
+    final VaultNote note;
+    if (mode == _OfficeImportMode.pdf) {
+      final converted =
+          await (widget.officePreviewEngine ?? OfficePreviewEngine())
+              .convertToPdf(
+                fileName: original.fileName,
+                original: original.bytes,
+              );
+      requireCurrent();
+      if (converted == null) return;
+      note = await _importConvertedOfficePdf(
+        c,
+        title: title,
+        fileName: '$title.pdf',
+        bytes: converted.bytes,
+        pageCount: converted.pageCount,
+        isCurrent: isCurrent,
+        sharedRequestId: sharedRequestId,
+        sharedOfficeOriginal: original,
+      );
+    } else {
+      note = await OfficeDocumentStore(repository).importDocument(
+        title: title,
+        fileName: original.fileName,
+        bytes: original.bytes,
+        folderId: c.currentFolderId,
+        sharedRequestId: sharedRequestId,
+      );
+      if (!note.trashed && isCurrent()) await c.openNote(note);
+    }
+    _finishOfficeImport(c, repository, note);
+  }
+
+  Future<VaultNote> _importConvertedOfficePdf(
+    WorkspaceController c, {
+    required String title,
+    required String fileName,
+    required Uint8List bytes,
+    required int? pageCount,
+    required bool Function() isCurrent,
+    int? pageNumber,
+    String? sharedRequestId,
+    SharedOfficeOriginal? sharedOfficeOriginal,
+  }) async {
+    PdfDocument? pdf;
     try {
-      await c.openNote(note);
-      if (!mounted || !identical(controller, c)) return;
-      markdownTab = false;
+      pdf = await PdfDocument.openData(bytes, useProgressiveLoading: false);
+      final pages = pdf.pages.length;
+      if (pages < 1 ||
+          (pageCount != null && pageCount != pages) ||
+          (pageNumber != null && (pageNumber < 1 || pageNumber > pages))) {
+        throw const FormatException('Invalid PDF page count');
+      }
+    } catch (_) {
+      throw const FormatException(
+        '변환한 PDF를 열 수 없습니다. 원본에서 PDF 만들기를 다시 시도해 주세요.',
+      );
+    } finally {
+      await pdf?.dispose();
+    }
+    if (!isCurrent()) throw StateError('PDF를 저장할 보관함이나 폴더가 바뀌었습니다.');
+    return c.importOfficePdf(
+      title,
+      fileName: fileName,
+      bytes: bytes,
+      pdfPageNumber: pageNumber,
+      sharedRequestId: sharedRequestId,
+      sharedOfficeOriginal: sharedRequestId == null
+          ? null
+          : sharedOfficeOriginal,
+    );
+  }
+
+  void _finishOfficeImport(
+    WorkspaceController c,
+    NoteRepository repo,
+    VaultNote note,
+  ) {
+    if (!mounted ||
+        !identical(controller, c) ||
+        !identical(c.repository, repo) ||
+        c.activeSession?.note.id != note.id)
+      return;
+    setState(() {
       _pendingPdf = null;
       _targetPage = null;
-      _scaffold.currentState?.closeDrawer();
-    } catch (_) {
-      if (mounted && identical(controller, c)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('문서를 저장했습니다. 보관함에서 다시 열어 주세요.')),
-        );
-      }
-    }
+      _searchSelection = null;
+      markdownTab = false;
+    });
+    _scaffold.currentState?.closeDrawer();
   }
 
   void _finishBusy() {
@@ -1431,6 +1565,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         !await _upgradeLegacyVault(workspace)) {
       return;
     }
+    if (!mounted) return;
     if (action == LibraryCreateAction.dailyNoteTemplate) {
       return _configureDailyNoteTemplate();
     }
@@ -1555,45 +1690,54 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       _scaffold.currentState?.closeDrawer();
       return;
     }
-    if ({
-      LibraryCreateAction.office,
-      LibraryCreateAction.wordDocument,
-      LibraryCreateAction.presentation,
-      LibraryCreateAction.hwpx,
-    }.contains(action)) {
-      final String title, fileName;
-      final Uint8List bytes;
-      if (action == LibraryCreateAction.office) {
-        final file = await FilePicker.pickFile(
-          type: FileType.custom,
-          allowedExtensions: OfficeDocumentStore.supportedExtensions,
-        );
-        if (file == null) return;
-        title = p.basenameWithoutExtension(file.name);
-        fileName = p.basename(file.name);
-        bytes = await file.readAsBytes();
-      } else {
-        final templateKind = switch (action) {
-          LibraryCreateAction.wordDocument => OfficeTemplateKind.document,
-          LibraryCreateAction.hwpx => OfficeTemplateKind.hwpx,
-          _ => OfficeTemplateKind.presentation,
-        };
-        final input = await _input('문서 이름', switch (templateKind) {
-          OfficeTemplateKind.document => '새 Word 문서',
-          OfficeTemplateKind.hwpx => '새 한글 문서',
-          OfficeTemplateKind.presentation => '새 프레젠테이션',
-        });
-        if (input == null || input.trim().isEmpty) return;
-        title = input.trim();
-        final starter = OfficeTemplates.create(templateKind, title: title);
-        fileName = starter.fileName;
-        bytes = starter.bytes;
-      }
+    if (action == LibraryCreateAction.office) {
+      final c = controller!;
+      final repository = c.repository;
+      final session = c.activeSession;
+      final folder = c.currentFolderId;
+      final file = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: OfficeDocumentStore.supportedExtensions,
+      );
+      if (file == null) return;
+      await _importOfficeFile(
+        c,
+        original: (
+          fileName: p.basename(file.name),
+          bytes: await file.readAsBytes(),
+        ),
+        isCurrent: () =>
+            mounted &&
+            identical(controller, c) &&
+            identical(c.repository, repository) &&
+            identical(c.activeSession, session) &&
+            c.currentFolderId == folder &&
+            c.canCreateDocument &&
+            !c.dirty,
+      );
+      return;
+    }
+    if (action == LibraryCreateAction.wordDocument ||
+        action == LibraryCreateAction.presentation ||
+        action == LibraryCreateAction.hwpx) {
+      final templateKind = switch (action) {
+        LibraryCreateAction.wordDocument => OfficeTemplateKind.document,
+        LibraryCreateAction.hwpx => OfficeTemplateKind.hwpx,
+        _ => OfficeTemplateKind.presentation,
+      };
+      final input = await _input('문서 이름', switch (templateKind) {
+        OfficeTemplateKind.document => '새 Word 문서',
+        OfficeTemplateKind.hwpx => '새 한글 문서',
+        OfficeTemplateKind.presentation => '새 프레젠테이션',
+      });
+      if (input == null || input.trim().isEmpty) return;
+      final title = input.trim();
+      final starter = OfficeTemplates.create(templateKind, title: title);
       final c = controller!;
       final note = await OfficeDocumentStore(c.repository).importDocument(
         title: title,
-        fileName: fileName,
-        bytes: bytes,
+        fileName: starter.fileName,
+        bytes: starter.bytes,
         folderId: c.currentFolderId,
       );
       _pendingPdf = null;
@@ -4303,6 +4447,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               showBackButton: false,
               repository: c.repository,
               note: session.note,
+              previewEngine: widget.officePreviewEngine,
               pageLink: identical(_officePageLink?.session, session)
                   ? _officePageLink?.request
                   : null,
@@ -4314,6 +4459,31 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               onDirtyChanged: (value) => c.setInkDirty(value, session: session),
               onBusyChanged: (value) => c.setInkBusy(value, session: session),
               onBack: () => unawaited(_back()),
+              onPdfCopy: (prepare) => _run(() async {
+                final repository = c.repository;
+                final folder = c.currentFolderId;
+                bool current() =>
+                    mounted &&
+                    identical(controller, c) &&
+                    identical(c.repository, repository) &&
+                    identical(c.activeSession, session) &&
+                    c.currentFolderId == folder;
+                if (!current()) return;
+                await _save();
+                if (!current()) return;
+                final copy = await prepare();
+                if (copy == null || !current()) return;
+                final pdf = await _importConvertedOfficePdf(
+                  c,
+                  title: '${session.note.title} (PDF)',
+                  fileName: copy.fileName,
+                  bytes: copy.bytes,
+                  pageCount: copy.pageCount,
+                  pageNumber: copy.pageNumber,
+                  isCurrent: current,
+                );
+                _finishOfficeImport(c, repository, pdf);
+              }),
               onConvertedCopy: (copy) => _run(() async {
                 if (identical(controller, c) &&
                     c.activeSession?.note.id == session.note.id) {

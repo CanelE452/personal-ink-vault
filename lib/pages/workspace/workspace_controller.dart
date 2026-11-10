@@ -383,6 +383,22 @@ class WorkspaceController extends ChangeNotifier {
     required Uint8List bytes,
   }) => _importPdf(title, fileName: fileName, bytes: bytes);
 
+  Future<VaultNote> importOfficePdf(
+    String title, {
+    required String fileName,
+    required Uint8List bytes,
+    int? pdfPageNumber,
+    String? sharedRequestId,
+    SharedOfficeOriginal? sharedOfficeOriginal,
+  }) => _importPdf(
+    title,
+    fileName: fileName,
+    bytes: bytes,
+    pdfPageNumber: pdfPageNumber,
+    sharedRequestId: sharedRequestId,
+    sharedOfficeOriginal: sharedOfficeOriginal,
+  );
+
   Future<VaultNote> importSharedPdf(
     String title, {
     required String fileName,
@@ -407,6 +423,8 @@ class WorkspaceController extends ChangeNotifier {
     required String fileName,
     required Uint8List bytes,
     String? sharedRequestId,
+    SharedOfficeOriginal? sharedOfficeOriginal,
+    int? pdfPageNumber,
   }) async {
     if (dirty) throw StateError('먼저 현재 노트를 저장하세요.');
     final repo = repository, source = store;
@@ -421,6 +439,7 @@ class WorkspaceController extends ChangeNotifier {
       documentKind: VaultDocumentKind.pdf,
       folderId: folderId,
       sharedRequestId: sharedRequestId,
+      sharedOfficeOriginal: sharedOfficeOriginal,
     );
     if (note.trashed) return note;
     _requireCreationTarget(repo, previous, generation, folderId);
@@ -438,7 +457,7 @@ class WorkspaceController extends ChangeNotifier {
       }
     }
     _requireCreationTarget(repo, previous, generation, folderId);
-    await openNote(note);
+    await openNote(note, pdfPageNumber: pdfPageNumber);
     _requireCreatedDocument(repo, note);
     return note;
   }

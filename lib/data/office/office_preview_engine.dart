@@ -3,9 +3,12 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
+import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:saber/data/office/android_office_engine.dart';
 import 'package:saber/data/office/hwp_office_engine.dart';
+import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/windows_office_engine.dart';
 
 class OfficePreviewResult {
@@ -72,6 +75,73 @@ class OfficePreviewEngine {
 
   bool _isHwpSource(String sourcePath) =>
       const {'.hwp', '.hwpx'}.contains(p.extension(sourcePath).toLowerCase());
+
+  Future<({Uint8List bytes, int pageCount})?> convertToPdf({
+    required String fileName,
+    required Uint8List original,
+  }) async {
+    final extension = p.extension(fileName).toLowerCase();
+    if (extension.isEmpty ||
+        !OfficeDocumentStore.supportedExtensions.contains(
+          extension.substring(1),
+        ) ||
+        original.isEmpty ||
+        original.length > 128 * 1024 * 1024) {
+      throw const FormatException(
+        'PDF로 변환할 수 있는 Office 파일을 선택하세요(최대 128 MiB).',
+      );
+    }
+    final cache = Platform.isAndroid
+        ? await getTemporaryDirectory()
+        : Directory.systemTemp;
+    final directory = await cache.createTemp('piv-office-pdf-');
+    final source = File(p.join(directory.path, 'original$extension'));
+    OfficePreviewResult? result;
+    try {
+      final expected = sha256.convert(original).toString();
+      await source.writeAsBytes(original, flush: true);
+      result = await preview(sourcePath: source.path, sessionId: newId());
+      if (result == null) return null;
+      return (
+        bytes: await readVerifiedPdf(source, expected, result),
+        pageCount: result.pageCount,
+      );
+    } finally {
+      await result?.dispose();
+      try {
+        if (source.existsSync()) await source.delete();
+        await directory.delete();
+      } on FileSystemException {
+        // The system can reclaim the private temporary copy later.
+      }
+    }
+  }
+
+  static Future<Uint8List> readVerifiedPdf(
+    File source,
+    String sourceHash,
+    OfficePreviewResult result,
+  ) async {
+    final pdf = File(result.pdfPath);
+    if (result.sourceSha256 != sourceHash ||
+        FileSystemEntity.typeSync(source.path, followLinks: false) !=
+            FileSystemEntityType.file ||
+        await _hash(source) != sourceHash ||
+        !p.isAbsolute(pdf.path) ||
+        p.equals(pdf.path, source.path) ||
+        FileSystemEntity.typeSync(pdf.path, followLinks: false) !=
+            FileSystemEntityType.file ||
+        await pdf.length() > 128 * 1024 * 1024 ||
+        result.pageCount < 1 ||
+        result.engineVersion.trim().isEmpty) {
+      throw const FormatException('원본에 연결된 PDF를 확인하지 못했습니다.');
+    }
+    final bytes = await pdf.readAsBytes();
+    if (sha256.convert(bytes).toString() != result.pdfSha256) {
+      throw const FormatException('PDF 파일이 변환 결과와 다릅니다.');
+    }
+    return bytes;
+  }
 
   Future<OfficePreviewResult?> preview({
     required String sourcePath,
