@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136194,
+  "versionCode": 136195,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,7 +17,7 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "efdedce9e33f6d55058e4d18dee55a461b818ef256f672155e8f80935137adb2",
+      "sha256": "228788f5351aed913ea6fafce85d84453d35f9d27168aece6990ac55c04b089e",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
@@ -781,7 +781,7 @@
       "mode": "100644"
     },
     "lib/data/drive/drive_connection.dart": {
-      "sha256": "87b07aaa40f42fafa76d1c8f28ce20725e760a7e0023df1d9f6cb05301958fbc",
+      "sha256": "6e7e9669e51ef019a8a80dfc4ed665e57c6de5884b49331d0ced13ff7fb7ce53",
       "mode": "100644"
     },
     "lib/data/drive/oauth_flow.dart": {
@@ -1865,7 +1865,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/study_workspace.dart": {
-      "sha256": "e6d3a07fe9afadef87b94df03c54517adb2e23884833cd0d81be38efbc511c30",
+      "sha256": "3fa0b3e8366d58ad4f4bcecd946c1e425d3ed5b7a226f4dc55a03f5abfbda301",
       "mode": "100644"
     },
     "lib/pages/workspace/synced_block_view.dart": {
@@ -1877,7 +1877,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_controller.dart": {
-      "sha256": "f6c0d08e8544aac99f2308002ec0bdfb907907d91bf1d855fc4c2077d5feb583",
+      "sha256": "3b770b26c37f662307f557122389a54288ba12794459ad423192e6b635515fe2",
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_quick_switcher.dart": {
@@ -2316,8 +2316,8 @@
       "sha256": "ca46113c51d38e8bbc033590acab2959030179ff401585105b183a848e32c623",
       "mode": "100644"
     },
-    "scripts/build-android-194.sh": {
-      "sha256": "135cd00bae4d44fe172ddf7dc1f3a6eeab9c2f9c294987557f93cbca7b336954",
+    "scripts/build-android-195.sh": {
+      "sha256": "4dcc35030f68b6df2df36607cb87e627adb4bc0030cf918c6743038d635d6e82",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {

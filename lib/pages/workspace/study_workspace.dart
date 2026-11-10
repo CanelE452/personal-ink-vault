@@ -1337,7 +1337,100 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     _scaffold.currentState?.closeDrawer();
   }
 
+  Future<bool> _upgradeLegacyVault(WorkspaceController c) async {
+    final source = c.repository;
+    bool isCurrent() =>
+        mounted &&
+        identical(controller, c) &&
+        identical(c.repository, source) &&
+        c.canCreateDocument;
+
+    if (!isCurrent()) return false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('보관함 형식 업데이트'),
+        content: const Text(
+          '이 문서를 만들려면 보관함 형식 2가 필요합니다. '
+          '현재 기기에 저장된 문서와 이력을 새 보관함에 복사한 뒤 문서 생성을 이어갑니다. '
+          '기존 보관함과 Drive 원본은 그대로 유지됩니다. '
+          '복사본도 동기화하려면 Drive에서 ‘현재 로컬 vault를 Drive에 만들기’를 선택하세요.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('형식 2 복사본 만들기'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true || !isCurrent()) return false;
+    await _save();
+    final support = await getApplicationSupportDirectory();
+    if (!isCurrent()) return false;
+    final destination = Directory(
+      p.join(support.path, 'vaults', 'upgrade-${newId()}'),
+    );
+    final drive = _driveConnection;
+    if (drive != null) {
+      if (!await drive.upgradeLegacyRepository(source, destination)) {
+        throw StateError(drive.error ?? '보관함 업데이트를 다시 시도해 주세요.');
+      }
+    } else {
+      if (source.pendingRevisionCount != 0 ||
+          source.integrityIssues.isNotEmpty) {
+        throw StateError(
+          '보관함에 아직 수신되지 않았거나 확인이 필요한 자료가 있습니다. '
+          '자료를 확인한 뒤 다시 시도해 주세요.',
+        );
+      }
+      final next = await BackupService.cloneToEmpty(
+        source,
+        destination,
+        targetFormatVersion: 2,
+      );
+      try {
+        if (!isCurrent()) return false;
+        await c.replaceRepository(next);
+      } finally {
+        if (!identical(c.repository, next)) await next.close();
+      }
+    }
+    final upgradedRoot = await destination.resolveSymbolicLinks();
+    return mounted &&
+        identical(controller, c) &&
+        p.equals(c.repository.root.path, upgradedRoot);
+  }
+
   Future<void> _createDocument(LibraryCreateAction action) async {
+    final workspace = controller!;
+    final requiresFormatTwo = switch (action) {
+      LibraryCreateAction.infinite ||
+      LibraryCreateAction.markdown ||
+      LibraryCreateAction.dailyNote ||
+      LibraryCreateAction.datedNote ||
+      LibraryCreateAction.dailyNoteTemplate ||
+      LibraryCreateAction.canvas ||
+      LibraryCreateAction.page ||
+      LibraryCreateAction.database ||
+      LibraryCreateAction.image ||
+      LibraryCreateAction.camera ||
+      LibraryCreateAction.office ||
+      LibraryCreateAction.wordDocument ||
+      LibraryCreateAction.presentation ||
+      LibraryCreateAction.hwpx ||
+      LibraryCreateAction.folder => true,
+      _ => false,
+    };
+    if (workspace.repository.formatVersion == 1 &&
+        requiresFormatTwo &&
+        !await _upgradeLegacyVault(workspace)) {
+      return;
+    }
     if (action == LibraryCreateAction.dailyNoteTemplate) {
       return _configureDailyNoteTemplate();
     }

@@ -186,8 +186,10 @@ class DriveConnectionController extends ChangeNotifier {
     _makeAuth();
     if (settings.folderId != null && _foreground) {
       await auth!.restoreForSync();
-      settings.requireAccount(auth!.accountId);
-      await _start();
+      if (_canResumeRepository()) {
+        settings.requireAccount(auth!.accountId);
+        await _start();
+      }
     } else {
       await auth!.restore();
     }
@@ -265,7 +267,7 @@ class DriveConnectionController extends ChangeNotifier {
     await _stop();
     await auth!.signIn();
     settings.requireAccount(auth!.accountId);
-    if (settings.folderId != null) await _start(resume: true);
+    if (_canResumeRepository()) await _start(resume: true);
   });
   Future<List<DriveVault>> listVaults() async {
     settings.requireAccount(auth?.accountId);
@@ -344,6 +346,72 @@ class DriveConnectionController extends ChangeNotifier {
     }
     await _start(resume: true);
   });
+
+  Future<bool> upgradeLegacyRepository(
+    NoteRepository source,
+    Directory destination,
+  ) async {
+    var upgraded = false;
+    await run(() async {
+      if (!ready) {
+        throw const OAuthFailure('Drive 설정을 읽은 뒤 보관함 복사를 다시 시도해 주세요.');
+      }
+      _requireCurrentLegacyRepository(source);
+      final bound = settings.folderId != null && _matchesRepository(source);
+      final restartSync = bound && coordinator != null;
+      NoteRepository? next;
+      try {
+        var latest = source;
+        if (bound) {
+          await _stop(keepLease: true);
+          await _acquireLease();
+          _requireCurrentLegacyRepository(source);
+          await _reloadRepository();
+          latest = repository();
+          _requireMatchingRepository(latest);
+        }
+        if (latest.pendingRevisionCount != 0 ||
+            latest.integrityIssues.isNotEmpty) {
+          throw const OAuthFailure(
+            '아직 내려받지 못했거나 확인이 필요한 자료가 있습니다. 동기화 또는 보관함 확인을 마친 뒤 다시 복사해 주세요.',
+          );
+        }
+        next = await BackupService.cloneToEmpty(
+          latest,
+          destination,
+          targetFormatVersion: 2,
+        );
+        _requireCurrentLegacyRepository(latest);
+        await onRepositoryChanged(next);
+        upgraded = true;
+      } finally {
+        if (next != null && !identical(repository(), next)) await next.close();
+        if (bound) {
+          status = const SyncStatus(SyncPhase.idle);
+          if (!upgraded && restartSync && _canResumeRepository()) {
+            try {
+              await _start();
+            } catch (_) {
+              // Keep the copy failure available to the caller.
+              await _stop();
+            }
+          } else {
+            await _stop();
+          }
+        }
+      }
+    });
+    return upgraded;
+  }
+
+  void _requireCurrentLegacyRepository(NoteRepository source) {
+    if (_closed ||
+        !identical(repository(), source) ||
+        source.formatVersion != 1) {
+      throw const OAuthFailure('보관함이 바뀌었습니다. 현재 보관함에서 다시 시도해 주세요.');
+    }
+  }
+
   Future<void> _acquireLease() async {
     if (_lease != null) return;
     final deadline = DateTime.now().add(const Duration(seconds: 30));
@@ -378,6 +446,15 @@ class DriveConnectionController extends ChangeNotifier {
     }
   }
 
+  Future<void> _reloadRepository() async {
+    _reloadingRepository = true;
+    try {
+      await onResumeReload();
+    } finally {
+      _reloadingRepository = false;
+    }
+  }
+
   Future<void> _start({bool resume = false}) async {
     if (!_foreground || _closed || settings.folderId == null) return;
     final accountId = auth?.accountId;
@@ -385,12 +462,7 @@ class DriveConnectionController extends ChangeNotifier {
     _requireMatchingRepository(repository());
     await _acquireLease();
     try {
-      _reloadingRepository = true;
-      try {
-        await onResumeReload();
-      } finally {
-        _reloadingRepository = false;
-      }
+      await _reloadRepository();
       final repo = repository();
       _requireMatchingRepository(repo);
       _remote = remoteFactory(auth!.accessToken);
@@ -444,7 +516,7 @@ class DriveConnectionController extends ChangeNotifier {
     }
   }
 
-  Future<void> _stop() async {
+  Future<void> _stop({bool keepLease = false}) async {
     try {
       await coordinator?.close();
     } finally {
@@ -455,8 +527,10 @@ class DriveConnectionController extends ChangeNotifier {
         _statuses = null;
         _remote?.close();
         _remote = null;
-        await _lease?.close();
-        _lease = null;
+        if (!keepLease) {
+          await _lease?.close();
+          _lease = null;
+        }
       }
     }
   }
@@ -469,6 +543,11 @@ class DriveConnectionController extends ChangeNotifier {
       await coordinator!.syncOnce(force: true);
       if (_backgroundRegistrationFailed) await _registerBackgroundWork();
     } else {
+      if (settings.folderId != null && !_matchesRepository(repository())) {
+        throw const OAuthFailure(
+          '현재 보관함을 동기화하려면 ‘현재 로컬 vault를 Drive에 만들기’를 선택해 주세요.',
+        );
+      }
       await auth?.restore();
       await _start(resume: true);
     }

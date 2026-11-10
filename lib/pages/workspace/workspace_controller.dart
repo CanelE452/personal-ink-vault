@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
+import 'package:saber/data/drive/drive_connection.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/native/ink_vault_native.dart';
@@ -609,7 +610,9 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
-  static Future<WorkspaceController> openDefault() async {
+  static Future<WorkspaceController> openDefault({
+    InkVaultNative? Function() loadNative = InkVaultNative.open,
+  }) async {
     final support = await getApplicationSupportDirectory();
     final selection = File('${support.path}/vault-selection.json');
     var root = '${support.path}/vaults/offline';
@@ -619,9 +622,10 @@ class WorkspaceController extends ChangeNotifier {
                   as Map<String, dynamic>)['root']
               as String;
     }
-    final controller = await openLibrary(
+    final controller = await _openLibrary(
       Directory(root),
-      native: InkVaultNative.open(),
+      native: loadNative(),
+      driveDirectory: Directory('${support.path}/drive'),
     );
     if (controller.repository.root.path != root) {
       await support.create(recursive: true);
@@ -638,9 +642,17 @@ class WorkspaceController extends ChangeNotifier {
   static Future<WorkspaceController> openLibrary(
     Directory root, {
     InkVaultNative? native,
+  }) => _openLibrary(root, native: native);
+
+  static Future<WorkspaceController> _openLibrary(
+    Directory root, {
+    InkVaultNative? native,
+    Directory? driveDirectory,
   }) async {
     var repository = await NoteRepository.open(root, createFormatVersion: 2);
-    if (repository.formatVersion == 1) {
+    if (repository.formatVersion == 1 &&
+        (driveDirectory == null ||
+            !await _isBoundLegacyDriveVault(repository, driveDirectory))) {
       try {
         if (repository.pendingRevisionCount != 0 ||
             repository.integrityIssues.isNotEmpty) {
@@ -664,6 +676,22 @@ class WorkspaceController extends ChangeNotifier {
     await controller.refresh();
     await controller._restoreNavigation();
     return controller;
+  }
+
+  static Future<bool> _isBoundLegacyDriveVault(
+    NoteRepository repository,
+    Directory driveDirectory,
+  ) async {
+    try {
+      final binding = await DriveConnectionSettings.load(driveDirectory);
+      return binding.folderId != null &&
+          binding.rootPath == repository.root.path &&
+          binding.vaultId == repository.vaultId &&
+          (binding.vaultFormatVersion ?? 1) == 1;
+    } on Object {
+      // Drive reports connection settings errors independently of the library.
+      return false;
+    }
   }
 
   File get _navigationFile =>
