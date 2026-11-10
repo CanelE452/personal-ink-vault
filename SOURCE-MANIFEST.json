@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136196,
+  "versionCode": 136197,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,7 +17,7 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "b485e65f03b9b4dcf54cfe28d92140c67fd5b17d9a22f341f6e47a7f15327ae1",
+      "sha256": "166482cffdb44e1c3d3acd4356636f41f20f0ef82ebbb8396198d9eed2cfdfb5",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
@@ -989,7 +989,7 @@
       "mode": "100644"
     },
     "lib/data/office/office_preview_engine.dart": {
-      "sha256": "c6edc31f3c670bc5d8c101965cf25ea470d7763e827ec34994c7f949c55d0c05",
+      "sha256": "127cdb191d321b8a244aa8946b3a8a272e125eb7d47924e572a2c5f755ed304c",
       "mode": "100644"
     },
     "lib/data/office/office_templates.dart": {
@@ -1357,7 +1357,7 @@
       "mode": "100644"
     },
     "lib/data/vault/thumbnail_cache.dart": {
-      "sha256": "9c2f6e07079b12963cb99e70382d9a11920c37e615e3527728ee49aa32d8fce8",
+      "sha256": "94632159a0bf1b7a5ed0951a802ff1ad629e94448c5c112e4f4a4b7fc5caec81",
       "mode": "100644"
     },
     "lib/data/vault/workspace_bookmarks.dart": {
@@ -2316,8 +2316,8 @@
       "sha256": "ca46113c51d38e8bbc033590acab2959030179ff401585105b183a848e32c623",
       "mode": "100644"
     },
-    "scripts/build-android-196.sh": {
-      "sha256": "0ac8ec998e82f04a8ca6fecdf5c3193fe4039344f4e55b743cd4f3bcacea7509",
+    "scripts/build-android-197.sh": {
+      "sha256": "13fa3dc06af0c984f3b70ed251c6b1006a50e4d05cf1619641731da49ad1e0fd",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {

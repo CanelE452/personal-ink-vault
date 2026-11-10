@@ -862,6 +862,11 @@ class ThumbnailCache {
     try {
       if (_retired) return null;
       if (bytes == null) {
+        if (!officePreviewEngine.supportsBackgroundPreview(
+          edition.originalFileName,
+        )) {
+          return null;
+        }
         await root.create(recursive: true);
         if (_retired) return null;
         work = await root.createTemp('.office-cover-');

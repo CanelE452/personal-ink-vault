@@ -64,6 +64,15 @@ class OfficePreviewEngine {
   final AndroidOfficeEngine _android;
   final bool _isWindows;
   final bool _isAndroid;
+
+  // The Android Office engine presents an Activity. Only headless engines may
+  // convert an original to generate an automatic cover.
+  bool supportsBackgroundPreview(String sourcePath) =>
+      _isWindows || _isHwpSource(sourcePath);
+
+  bool _isHwpSource(String sourcePath) =>
+      const {'.hwp', '.hwpx'}.contains(p.extension(sourcePath).toLowerCase());
+
   Future<OfficePreviewResult?> preview({
     required String sourcePath,
     required String sessionId,
@@ -86,10 +95,9 @@ class OfficePreviewEngine {
     Future<void> Function()? releasePreview;
     var successful = false;
     try {
-      final extension = p.extension(sourcePath).toLowerCase();
+      final hwp = _isHwpSource(sourcePath);
       late OfficePreviewResult result;
-      if ({'.hwp', '.hwpx'}.contains(extension) || _isWindows) {
-        final hwp = {'.hwp', '.hwpx'}.contains(extension);
+      if (hwp || _isWindows) {
         final engine = hwp ? _hwp : _windows;
         if (!await engine.available)
           throw PlatformException(
