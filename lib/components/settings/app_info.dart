@@ -54,10 +54,7 @@ class const AppInfo({super.key}) extends StatelessWidget {
     ),
     applicationLegalese: t.appInfo.licenseNotice(buildYear: buildYear),
     children: [
-      const Text(
-        'Independent validation build based on Saber. '
-        'The inherited icon is for local validation only.',
-      ),
+      const Text('Personal Ink Vault is based on Saber.'),
       const SizedBox(height: 10),
       if (!Platform.isIOS && !Platform.isMacOS)
         // Apple rejected the app for having donations not through the App Store

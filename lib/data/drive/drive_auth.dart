@@ -2,11 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart'
     as google;
 import 'package:http/http.dart' as http;
+import 'package:ink_vault_core/drive.dart'
+    show
+        DriveUploadSessions,
+        RemoteException,
+        RemoteFailure,
+        parseDriveRetryAfter;
 import 'package:saber/data/drive/oauth_flow.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -30,9 +37,33 @@ class OsDriveSecrets implements DriveSecrets {
   Future<void> delete(String key) => storage.delete(key: key);
 }
 
+class SecureDriveUploadSessions implements DriveUploadSessions {
+  final DriveSecrets _secrets;
+  final String _key;
+
+  new({
+    required String accountId,
+    required String folderId,
+    required String deviceId,
+    this._secrets = const OsDriveSecrets(),
+  }) : _key =
+           'drive.upload-session.v1.'
+           '${sha256.convert(utf8.encode(jsonEncode([accountId, folderId, deviceId])))}';
+
+  @override
+  Future<String?> read() => _secrets.read(_key);
+
+  @override
+  Future<void> write(String value) => _secrets.write(_key, value);
+
+  @override
+  Future<void> clear() => _secrets.delete(_key);
+}
+
 abstract class DriveAuth {
   String? get accountId;
   Future<void> restore();
+  Future<void> restoreForSync() => restore();
   Future<void> signIn();
   Future<String> accessToken();
   Future<void> invalidateToken() async {}
@@ -92,7 +123,12 @@ class AndroidDriveAuth extends DriveAuth {
   }
 
   @override
-  Future<void> restore() async {
+  Future<void> restore() => _restore(authorize: true);
+
+  @override
+  Future<void> restoreForSync() => _restore(authorize: false);
+
+  Future<void> _restore({required bool authorize}) async {
     _accountId = _email = _lastToken = null;
     try {
       final stored = await secrets.read('drive.android.account');
@@ -103,10 +139,11 @@ class AndroidDriveAuth extends DriveAuth {
       if (id is! String || id.isEmpty || email is! String || email.isEmpty) {
         throw const FormatException();
       }
-      await _initialize();
-      // Unlike lightweight authentication, this account-bound request never
-      // opens an account chooser and also works in a headless Android engine.
-      await _authorize(id, email);
+      if (authorize) {
+        await _initialize();
+        // Account-bound authorization does not open the account chooser.
+        await _authorize(id, email);
+      }
       _accountId = id;
       _email = email;
     } on google.GoogleSignInException catch (e) {
@@ -178,6 +215,7 @@ class AndroidDriveAuth extends DriveAuth {
       throw const OAuthFailure('Google Drive sign-in required.');
     }
     try {
+      await _initialize();
       return await _authorize(id, email);
     } on google.GoogleSignInException catch (e) {
       throw OAuthFailure(
@@ -224,6 +262,7 @@ class AndroidDriveAuth extends DriveAuth {
 }
 
 class DesktopDriveAuth extends DriveAuth {
+  static const _credentialsKey = 'drive.desktop.credentials';
   final String clientId;
   final DriveSecrets secrets;
   final http.Client _client;
@@ -234,6 +273,9 @@ class DesktopDriveAuth extends DriveAuth {
   var _expires = DateTime.fromMillisecondsSinceEpoch(0);
   OAuthLoopback? _callback;
   Future<String>? _refreshing;
+  var _credentialStore = Future<void>.value();
+  var _sessionGeneration = 0;
+  var _checkingCredentials = false;
   new({
     required this.clientId,
     required this.secrets,
@@ -244,7 +286,7 @@ class DesktopDriveAuth extends DriveAuth {
            launch ??
            ((uri) => launchUrl(uri, mode: LaunchMode.externalApplication));
   @override
-  String? get accountId => _accountId;
+  String? get accountId => _checkingCredentials ? null : _accountId;
   String get _secretKey => 'drive.desktop.secret.$clientId';
   Future<void> setClientSecret(String value) async {
     try {
@@ -260,23 +302,71 @@ class DesktopDriveAuth extends DriveAuth {
     }
   }
 
+  // Serialize local credential mutations so an earlier refresh write cannot
+  // finish after a newer sign-in or recreate credentials after sign-out.
+  Future<T> _withCredentialStore<T>(Future<T> Function() action) {
+    final operation = _credentialStore.then((_) => action());
+    _credentialStore = operation.then<void>((_) {}, onError: (Object _) {});
+    return operation;
+  }
+
+  int _beginSessionChange({bool checking = false}) {
+    _refreshing = null;
+    _checkingCredentials = checking;
+    return ++_sessionGeneration;
+  }
+
+  void _requireCurrentSession(int generation) {
+    if (generation != _sessionGeneration) {
+      throw const OAuthFailure('Drive credentials changed. Retry the operation.');
+    }
+  }
+
+  void _clearCredentials() => _accountId = _refreshToken = _token = null;
+
+  Future<void> _saveCredentials(int generation, String id, String refresh) =>
+      _withCredentialStore(() async {
+        if (generation != _sessionGeneration) return;
+        await secrets.write(
+          _credentialsKey,
+          jsonEncode({
+            'clientId': clientId,
+            'accountId': id,
+            'refreshToken': refresh,
+          }),
+        );
+      });
+
   @override
   Future<void> restore() async {
+    final generation = _beginSessionChange(checking: true);
     try {
-      final stored = await secrets.read('drive.desktop.credentials');
-      if (stored == null) return;
+      final stored = await _withCredentialStore(() => secrets.read(_credentialsKey));
+      _requireCurrentSession(generation);
+      if (stored == null) {
+        _clearCredentials();
+        return;
+      }
       final json = jsonDecode(stored) as Map<String, dynamic>;
-      if (json['clientId'] != clientId) return;
+      if (json['clientId'] != clientId) {
+        _clearCredentials();
+        return;
+      }
       final id = json['accountId'];
       final refresh = json['refreshToken'];
       if (id is! String || id.isEmpty || refresh is! String || refresh.isEmpty)
         throw const FormatException();
+      if (id != _accountId || refresh != _refreshToken) _token = null;
       _accountId = id;
       _refreshToken = refresh;
     } catch (_) {
+      _requireCurrentSession(generation);
+      _clearCredentials();
       throw const OAuthFailure(
         'OS secure storage could not restore Drive credentials.',
       );
+    } finally {
+      if (generation == _sessionGeneration) _checkingCredentials = false;
     }
   }
 
@@ -324,7 +414,10 @@ class DesktopDriveAuth extends DriveAuth {
     }
   }
 
-  Future<Map<String, dynamic>> _exchange(Map<String, String> fields) async {
+  Future<Map<String, dynamic>> _exchange(
+    Map<String, String> fields, {
+    bool forRefresh = false,
+  }) async {
     try {
       final secret = await secrets.read(_secretKey);
       final request = http.Request(
@@ -336,13 +429,35 @@ class DesktopDriveAuth extends DriveAuth {
         ...fields,
         if (secret != null && secret.isNotEmpty) 'client_secret': secret,
       };
-      final response = await http.Response.fromStream(
-        await _client.send(request).timeout(const Duration(seconds: 30)),
-      ).timeout(const Duration(seconds: 30));
-      if (response.statusCode != 200)
+      final http.Response response;
+      try {
+        response = await http.Response.fromStream(
+          await _client.send(request).timeout(const Duration(seconds: 30)),
+        ).timeout(const Duration(seconds: 30));
+      } catch (error) {
+        if (forRefresh &&
+            (error is TimeoutException || error is http.ClientException || error is IOException)) {
+          throw RemoteException.retryable('Drive token refresh interrupted');
+        }
+        rethrow;
+      }
+      final status = response.statusCode;
+      if (status != 200) {
+        if (forRefresh && (status == 408 || status == 429 || status >= 500 && status < 600)) {
+          throw RemoteException(
+            RemoteFailure.retryable,
+            'Drive token refresh temporarily unavailable',
+            statusCode: status,
+            retryAfter: parseDriveRetryAfter(
+              response.headers['retry-after'],
+              maxDelay: const Duration(days: 1),
+            ),
+          );
+        }
         throw const OAuthFailure(
           'Google authorization expired or was rejected. Reconnect Drive.',
         );
+      }
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       if (json['access_token'] is! String ||
           (json['access_token'] as String).isEmpty ||
@@ -356,6 +471,8 @@ class DesktopDriveAuth extends DriveAuth {
       return json;
     } on OAuthFailure {
       rethrow;
+    } on RemoteException {
+      rethrow;
     } catch (_) {
       throw const OAuthFailure(
         'Drive authorization unavailable. Check connection and OS secure storage.',
@@ -368,6 +485,7 @@ class DesktopDriveAuth extends DriveAuth {
     required String verifier,
     required Uri redirect,
   }) async {
+    final previous = _sessionGeneration;
     final json = await _exchange({
       'grant_type': 'authorization_code',
       'code': code,
@@ -399,23 +517,23 @@ class DesktopDriveAuth extends DriveAuth {
         'Could not verify the signed-in Google account.',
       );
     }
+    _requireCurrentSession(previous);
+    final generation = _beginSessionChange(checking: true);
     try {
-      await secrets.write(
-        'drive.desktop.credentials',
-        jsonEncode({
-          'clientId': clientId,
-          'accountId': id,
-          'refreshToken': refresh,
-        }),
-      );
-    } catch (_) {
-      throw const OAuthFailure(
-        'OS secure storage could not save Drive credentials. Sign-in was not completed.',
-      );
+      try {
+        await _saveCredentials(generation, id, refresh);
+      } catch (_) {
+        throw const OAuthFailure(
+          'OS secure storage could not save Drive credentials. Sign-in was not completed.',
+        );
+      }
+      _requireCurrentSession(generation);
+      _accountId = id;
+      _refreshToken = refresh;
+      _remember(json);
+    } finally {
+      if (generation == _sessionGeneration) _checkingCredentials = false;
     }
-    _accountId = id;
-    _refreshToken = refresh;
-    _remember(json);
   }
 
   void _remember(Map<String, dynamic> json) {
@@ -427,35 +545,44 @@ class DesktopDriveAuth extends DriveAuth {
 
   @override
   Future<String> accessToken() async {
-    if (_refreshToken == null || _accountId == null)
+    final id = accountId;
+    final refresh = _refreshToken;
+    if (id == null || refresh == null)
       throw const OAuthFailure('Google sign-in required.');
     if (_token != null &&
         DateTime.now().add(const Duration(seconds: 60)).isBefore(_expires))
       return _token!;
-    return _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
+    final existing = _refreshing;
+    if (existing != null) return existing;
+    late final Future<String> pending;
+    pending = _refresh(_sessionGeneration, id, refresh).whenComplete(() {
+      if (identical(_refreshing, pending)) _refreshing = null;
+    });
+    return _refreshing = pending;
   }
 
-  Future<String> _refresh() async {
-    final json = await _exchange({
-      'grant_type': 'refresh_token',
-      'refresh_token': _refreshToken!,
-    });
+  Future<String> _refresh(int generation, String id, String refresh) async {
+    final Map<String, dynamic> json;
+    try {
+      json = await _exchange({
+        'grant_type': 'refresh_token',
+        'refresh_token': refresh,
+      }, forRefresh: true);
+    } catch (_) {
+      _requireCurrentSession(generation);
+      rethrow;
+    }
+    _requireCurrentSession(generation);
     final rotated = json['refresh_token'];
-    if (rotated is String && rotated.isNotEmpty && rotated != _refreshToken) {
+    if (rotated is String && rotated.isNotEmpty && rotated != refresh) {
       try {
-        await secrets.write(
-          'drive.desktop.credentials',
-          jsonEncode({
-            'clientId': clientId,
-            'accountId': _accountId,
-            'refreshToken': rotated,
-          }),
-        );
+        await _saveCredentials(generation, id, rotated);
       } catch (_) {
         throw const OAuthFailure(
           'OS secure storage could not save renewed Drive credentials.',
         );
       }
+      _requireCurrentSession(generation);
       _refreshToken = rotated;
     }
     _remember(json);
@@ -469,17 +596,18 @@ class DesktopDriveAuth extends DriveAuth {
 
   @override
   Future<void> signOut() async {
-    await cancel();
+    _beginSessionChange();
+    _clearCredentials();
     try {
-      await secrets.delete('drive.desktop.credentials');
+      await _withCredentialStore(() async {
+        await cancel();
+        await secrets.delete(_credentialsKey);
+      });
     } catch (_) {
       throw const OAuthFailure(
         'OS secure storage could not remove Drive credentials.',
       );
     }
-    _accountId = null;
-    _refreshToken = null;
-    _token = null;
   }
 
   @override
@@ -489,6 +617,8 @@ class DesktopDriveAuth extends DriveAuth {
 
   @override
   void close() {
+    _beginSessionChange();
+    _clearCredentials();
     unawaited(_callback?.cancel() ?? Future.value());
     _client.close();
   }

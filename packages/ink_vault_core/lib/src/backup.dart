@@ -12,6 +12,17 @@ import 'package:ink_vault_core/src/revision.dart';
 class BackupService {
   static const defaultMaxBytes = 128 * 1024 * 1024;
 
+  /// Copies a complete vault without the portable JSON format's size limit.
+  /// Payloads are streamed; interrupted processes do not have a resume journal.
+  static Future<NoteRepository> cloneToEmpty(
+    NoteRepository source,
+    Directory destination, {
+    int? targetFormatVersion,
+  }) => source.cloneToEmpty(
+    destination,
+    targetFormatVersion: targetFormatVersion,
+  );
+
   static Future<Uint8List> exportSnapshot(
     NoteRepository repository, {
     int maxBytes = defaultMaxBytes,
@@ -49,7 +60,7 @@ class BackupService {
     final result = Uint8List.fromList(
       utf8.encode(
         jsonEncode({
-          'formatVersion': 1,
+          'formatVersion': repository.formatVersion,
           'vaultId': repository.vaultId,
           'revisions': ordered.map((r) => r.toJson()).toList(),
           'blobs': blobs,
@@ -65,23 +76,32 @@ class BackupService {
     Uint8List snapshot,
     Directory destination, {
     int maxBytes = defaultMaxBytes,
+    int? targetFormatVersion,
   }) async {
     if (maxBytes <= 0 || snapshot.length > maxBytes)
       throw const FormatException('Snapshot size limit exceeded');
     final raw = jsonObject(jsonDecode(utf8.decode(snapshot)));
-    if (raw['formatVersion'] != 1 ||
+    if ((raw['formatVersion'] != 1 && raw['formatVersion'] != 2) ||
         raw['vaultId'] is! String ||
         raw['revisions'] is! List) {
       throw const FormatException('Unsupported or invalid snapshot');
     }
     final oldVaultId = raw['vaultId'] as String;
+    final sourceFormat = raw['formatVersion'] as int;
+    final targetFormat = targetFormatVersion ?? sourceFormat;
+    if ((targetFormat != 1 && targetFormat != 2) ||
+        targetFormat < sourceFormat) {
+      throw const FormatException('Unsupported snapshot format conversion');
+    }
     validateId(oldVaultId);
     final records = <String, RevisionRecord>{};
     final entities = <String, RevisionRecord>{};
     final lengths = <String, int>{};
     for (final item in raw['revisions'] as List) {
       final r = RevisionRecord.fromJson(jsonObject(item));
-      if (r.vaultId != oldVaultId || records.containsKey(r.revisionId))
+      if (r.formatVersion > sourceFormat ||
+          r.vaultId != oldVaultId ||
+          records.containsKey(r.revisionId))
         throw const FormatException('Mixed vault or duplicate revision');
       final entity = entities[r.entityId];
       if (entity != null &&
@@ -153,7 +173,11 @@ class BackupService {
     NoteRepository? repository;
     try {
       final vaultId = newId();
-      repository = await NoteRepository.open(staging, vaultId: vaultId);
+      repository = await NoteRepository.open(
+        staging,
+        vaultId: vaultId,
+        createFormatVersion: targetFormat,
+      );
       for (final r in ordered) {
         final remapped = RevisionRecord.fromJson({
           ...r.toJson(),

@@ -1,7 +1,7 @@
 /// A note may be read-only for different reasons.
 /// A note that isn't read-only will have this set to null.
 enum ReadOnlyReason {
-  workspaceViewer,
+  workspacePdfPreview,
 
   /// The note's version is too new for this app version,
   /// so it may not have been parsed correctly or completely.

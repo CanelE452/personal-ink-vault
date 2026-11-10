@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "family": "Noto Sans CJK KR",
+  "style": "Regular",
+  "version": "2.004",
+  "fileName": "NotoSansCJKkr-Regular.otf",
+  "assetPath": "build/native/fonts/NotoSansCJKkr-Regular.otf",
+  "bytes": 16433112,
+  "sha256": "6bcb2a0703aa137e874fc2dffa85f6c21ba9a67fa329e81b8c801663af7e992a",
+  "gitBlobSha1": "dc4a7c65e6f450bf17c10a2405250b620eb78703",
+  "sourceRepository": "https://github.com/notofonts/noto-cjk",
+  "sourceCommit": "523d033d6cb47f4a80c58a35753646f5c3608a78",
+  "sourceRelease": "Sans2.004",
+  "sourcePath": "Sans/OTF/Korean/NotoSansCJKkr-Regular.otf",
+  "sourceUrl": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/OTF/Korean/NotoSansCJKkr-Regular.otf",
+  "copyright": "© 2014-2021 Adobe (http://www.adobe.com/).",
+  "trademark": "Noto is a trademark of Google Inc.",
+  "license": {
+    "spdx": "OFL-1.1",
+    "fileName": "OFL.txt",
+    "assetPath": "build/native/fonts/OFL.txt",
+    "bytes": 4381,
+    "sha256": "aa740660d65a99854f1acbcedead0741255ad09d911f19f63d4e1086cb256804",
+    "sourceUrl": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/LICENSE",
+    "sourceBytes": 4301,
+    "sourceSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+  }
+}

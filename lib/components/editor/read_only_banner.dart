@@ -18,20 +18,17 @@ class ReadOnlyBanner extends StatefulWidget {
 
 class _ReadOnlyBannerState extends State<ReadOnlyBanner> {
   bool get needsBanner => switch (widget.reason) {
-    null => false,
-    .placeholder => false,
+    null || .placeholder || .workspacePdfPreview => false,
     _ => true,
   };
   late var hasShownBanner = needsBanner;
 
   var _lastSubtitle = '';
   String get subtitle => _lastSubtitle = switch (widget.reason) {
-    null => _lastSubtitle,
-    .placeholder => _lastSubtitle,
+    null || .placeholder || .workspacePdfPreview => _lastSubtitle,
     .versionTooNew => t.editor.versionTooNew.title,
     .watchingServer => t.editor.readOnlyBanner.watchingServer,
     .corrupted => t.editor.readOnlyBanner.corrupted,
-    .workspaceViewer => 'Windows에서는 PDF·필기를 열람합니다. 필기 편집은 Android에서 하세요.',
   };
 
   @override

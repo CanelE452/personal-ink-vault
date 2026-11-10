@@ -13,6 +13,7 @@ import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/uni_icon.dart';
 import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/components/toolbar/export_bar.dart';
+import 'package:saber/components/toolbar/ink_width_presets.dart';
 import 'package:saber/components/toolbar/pen_modal.dart';
 import 'package:saber/components/toolbar/selection_bar.dart';
 import 'package:saber/components/toolbar/size_picker.dart';
@@ -32,6 +33,7 @@ import 'package:saber/i18n/strings.g.dart';
 class Toolbar extends StatefulWidget {
   const new({
     super.key,
+    required this.alignment,
     required this.readOnly,
     required this.setTool,
     required this.currentTool,
@@ -53,6 +55,7 @@ class Toolbar extends StatefulWidget {
     required this.exportAsPng,
   });
 
+  final AxisDirection alignment;
   final bool readOnly;
 
   final ValueChanged<Tool> setTool;
@@ -171,16 +174,31 @@ class _ToolbarState extends State<Toolbar> {
     );
   }
 
+  void _setPenSize(Pen pen, double size) {
+    if (widget.readOnly ||
+        !identical(widget.currentTool, pen) ||
+        pen.options.size == size) {
+      return;
+    }
+    setState(() => pen.setSize(size));
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) =>
+        _buildToolbar(context, constraints.maxWidth),
+  );
+
+  Widget _buildToolbar(BuildContext context, double availableWidth) {
     final colorScheme = ColorScheme.of(context);
 
     final brightness = Theme.brightnessOf(context);
     final invert = stows.editorAutoInvert.value && brightness == .dark;
 
     final isToolbarVertical =
-        stows.editorToolbarAlignment.value == AxisDirection.left ||
-        stows.editorToolbarAlignment.value == AxisDirection.right;
+        widget.alignment == AxisDirection.left ||
+        widget.alignment == AxisDirection.right;
+    final axis = isToolbarVertical ? Axis.vertical : Axis.horizontal;
 
     final buttonPadding = isToolbarVertical
         ? Toolbar._buttonPaddingVertical
@@ -232,16 +250,22 @@ class _ToolbarState extends State<Toolbar> {
             child: switch (toolOptionsType) {
               .hide => const SizedBox.square(dimension: SizePicker.smallLength),
               .pen => PenModal(
+                axis: axis,
                 getTool: () => Pen.currentPen,
                 setTool: widget.setTool,
+                setSize: _setPenSize,
               ),
               .highlighter => PenModal(
+                axis: axis,
                 getTool: () => Highlighter.currentHighlighter,
                 setTool: widget.setTool,
+                setSize: _setPenSize,
               ),
               .pencil => PenModal(
+                axis: axis,
                 getTool: () => Pencil.currentPencil,
                 setTool: widget.setTool,
+                setSize: _setPenSize,
               ),
               .select => SelectionBar(
                 duplicateSelection: widget.duplicateSelection,
@@ -413,6 +437,18 @@ class _ToolbarState extends State<Toolbar> {
                         ),
                       ),
               ),
+              if (widget.currentTool case final Pen pen
+                  when !isToolbarVertical && availableWidth >= 700)
+                if (pen.sizePresets case final widths?)
+                  InkWidthPresets(
+                    key: const ValueKey('toolbar-quick-ink-widths'),
+                    widths: widths,
+                    selectedWidth: pen.options.size,
+                    onSelected: widget.readOnly
+                        ? null
+                        : (size) => _setPenSize(pen, size),
+                    widthLabel: t.editor.penOptions.size,
+                  ),
               ToolbarIconButton(
                 tooltip: t.editor.toolbar.select,
                 selected: widget.currentTool is Select,
@@ -556,12 +592,12 @@ class _ToolbarState extends State<Toolbar> {
 
     return Flex(
       direction: isToolbarVertical ? Axis.horizontal : Axis.vertical,
-      textDirection: switch (stows.editorToolbarAlignment.value) {
+      textDirection: switch (widget.alignment) {
         AxisDirection.left => .rtl,
         AxisDirection.right => .ltr,
         _ => null,
       },
-      verticalDirection: switch (stows.editorToolbarAlignment.value) {
+      verticalDirection: switch (widget.alignment) {
         AxisDirection.down => VerticalDirection.down,
         AxisDirection.up => VerticalDirection.up,
         _ => VerticalDirection.down,

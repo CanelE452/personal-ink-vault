@@ -3,34 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/i18n/strings.g.dart';
 
-class SizePicker extends StatefulWidget {
-  const new({super.key, required this.axis, required this.pen});
+class SizePicker extends StatelessWidget {
+  const new({
+    super.key,
+    required this.axis,
+    required this.pen,
+    required this.onChanged,
+  });
 
   final Axis axis;
   final Pen pen;
-
-  @override
-  State<SizePicker> createState() => _SizePickerState();
+  final ValueChanged<double> onChanged;
 
   static const double smallLength = 25;
   static const double largeLength = 150;
-}
-
-/// Returns a string representation of [num] that:
-/// - Has no decimal point if [num] is an integer
-/// - Has one decimal point if [num] has a non-zero fractional part
-String _prettyNum(double num) {
-  final rounded = num.round();
-  if (num == rounded) return rounded.toString();
-  return num.toStringAsFixed(1);
-}
-
-class _SizePickerState extends State<SizePicker> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = ColorScheme.of(context);
     return Flex(
-      direction: widget.axis,
+      direction: axis,
       mainAxisSize: .min,
       children: [
         Column(
@@ -43,29 +34,32 @@ class _SizePickerState extends State<SizePicker> {
                 height: 1,
               ),
             ),
-            Text(_prettyNum(widget.pen.options.size)),
+            Text(_prettyNum(pen.options.size)),
           ],
         ),
         const SizedBox(width: 8),
         Padding(
           padding: const .symmetric(vertical: 8),
-          child: _SizeSlider(
-            pen: widget.pen,
-            axis: widget.axis,
-            setState: setState,
-          ),
+          child: _SizeSlider(pen: pen, axis: axis, onChanged: onChanged),
         ),
       ],
     );
   }
 }
 
+/// Returns an integer when possible and uses one decimal place otherwise.
+String _prettyNum(double num) {
+  final rounded = num.round();
+  if (num == rounded) return rounded.toString();
+  return num.toStringAsFixed(1);
+}
+
 class _SizeSlider extends StatelessWidget {
-  const new({required this.pen, required this.axis, required this.setState});
+  const new({required this.pen, required this.axis, required this.onChanged});
 
   final Pen pen;
   final Axis axis;
-  final void Function(void Function()) setState;
+  final ValueChanged<double> onChanged;
 
   /// [percent] is a value between 0 and 1
   /// where 0 is the start of the slider and 1 is the end.
@@ -76,15 +70,14 @@ class _SizeSlider extends StatelessWidget {
     final stepsFromMin = (percent * pen.sizeStepsBetweenMinAndMax).round();
     final newSize = pen.sizeMin + stepsFromMin * pen.sizeStep;
     if (newSize == pen.options.size) return;
-    setState(() {
-      pen.options.size = newSize;
-    });
+    onChanged(newSize);
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = ColorScheme.of(context);
     return GestureDetector(
+      key: const ValueKey('pen-size-slider'),
       onHorizontalDragStart: axis == Axis.horizontal
           ? (details) =>
                 onDrag(details.localPosition.dx / SizePicker.largeLength)

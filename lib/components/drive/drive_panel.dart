@@ -1,61 +1,22 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:ink_vault_core/drive.dart';
-import 'package:ink_vault_core/ink_vault_core.dart';
-
 import 'package:saber/data/drive/drive_connection.dart';
 
 class DrivePanel extends StatefulWidget {
-  final NoteRepository Function() repository;
-  final Future<void> Function(NoteRepository) onRepositoryChanged;
-  final Future<void> Function() onRemoteUpdated;
-  final Future<void> Function() onResumeReload;
-  const new({
-    super.key,
-    required this.repository,
-    required this.onRepositoryChanged,
-    required this.onRemoteUpdated,
-    required this.onResumeReload,
-  });
+  final DriveConnectionController controller;
+  const new({super.key, required this.controller});
   @override
   State<DrivePanel> createState() => _DrivePanelState();
 }
 
-class _DrivePanelState extends State<DrivePanel> with WidgetsBindingObserver {
-  late final DriveConnectionController controller;
-  @override
-  void initState() {
-    super.initState();
-    controller = DriveConnectionController(
-      repository: () => widget.repository(),
-      onRepositoryChanged: (next) => widget.onRepositoryChanged(next),
-      onRemoteUpdated: () => widget.onRemoteUpdated(),
-      onResumeReload: () => widget.onResumeReload(),
-    );
-    WidgetsBinding.instance.addObserver(this);
-    unawaited(controller.initialize());
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed)
-      unawaited(controller.setForeground(true));
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached)
-      unawaited(controller.setForeground(false));
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    unawaited(controller.close());
-    super.dispose();
-  }
+class _DrivePanelState extends State<DrivePanel> {
+  DriveConnectionController get controller => widget.controller;
 
   String get label {
     if (controller.error != null) return 'Drive 연결 확인 필요';
+    if (controller.waitingForLease) return '다른 Drive 동기화 작업 대기 중';
     if (!controller.ready || controller.busy) return 'Drive 준비 중';
     if (!controller.connected) return '기기에 저장됨 · Drive 미연결';
     return switch (controller.status.phase) {
@@ -102,6 +63,11 @@ class _DrivePanelState extends State<DrivePanel> with WidgetsBindingObserver {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(label),
+                  if (controller.waitingForLease)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text('현재 동기화 작업이 끝나면 자동으로 이어집니다.'),
+                    ),
                   const SizedBox(height: 12),
                   const Text(
                     '로컬 PDF·필기는 로그인 없이 저장됩니다. Drive 반영 완료는 다른 기기의 수신 완료를 뜻하지 않습니다.',
@@ -112,6 +78,14 @@ class _DrivePanelState extends State<DrivePanel> with WidgetsBindingObserver {
                         ? 'Android 백그라운드 전송은 OS 실행 기회와 기존 인증에 따라 진행됩니다.'
                         : 'Windows는 앱이 실행 중일 때 동기화합니다.',
                   ),
+                  if (controller.connected &&
+                      controller.backgroundRegistrationFailed)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        '백그라운드 동기화를 예약하지 못했습니다. 앱을 열어 둔 동안에는 동기화가 계속됩니다. 재시도로 다시 예약할 수 있습니다.',
+                      ),
+                    ),
                   if (controller.ready && controller.settings.folderId != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 12),

@@ -38,6 +38,20 @@ class SyncStatus {
   });
 }
 
+typedef _PersistedSyncState = ({
+  List<String> uploaded,
+  List<String> pending,
+  Map<String, String> intents,
+  Map<String, String> knownFiles,
+  List<String> removedFiles,
+  String? cursor,
+  int attempts,
+  DateTime? retryAt,
+  DateTime? lastSuccess,
+  bool authStopped,
+  bool blocked,
+});
+
 /// One coordinator per state directory. Keep this directory device-local, outside
 /// backups and Drive. State is reconstructible; immutable repository data is not.
 /// The caller owns and closes the repository and remote transport separately.
@@ -119,7 +133,28 @@ class SyncCoordinator {
     if (_closed) return Future.value();
     final existing = _inFlight;
     if (existing != null) return existing;
-    final future = _run(force: force);
+    return _trackSync(_run(force: force));
+  }
+
+  /// Records a retryable remote folder check before this coordinator starts.
+  /// The caller must hold the state directory lease throughout the check and save.
+  Future<void> recordPreflightRetry(RemoteException failure) {
+    if (failure.failure != RemoteFailure.retryable) {
+      throw ArgumentError('Expected a retryable preflight failure');
+    }
+    if (_closed || _started || _loaded || _inFlight != null) {
+      throw StateError('Preflight retry requires a fresh sync coordinator');
+    }
+    return _trackSync(_savePreflightRetry(failure));
+  }
+
+  Future<void> _savePreflightRetry(RemoteException failure) async {
+    await _load();
+    _scheduleRetry(failure);
+    await _save();
+  }
+
+  Future<void> _trackSync(Future<void> future) {
     _inFlight = future;
     return future.whenComplete(() => _inFlight = null);
   }
@@ -127,30 +162,85 @@ class SyncCoordinator {
   Future<void> _load() async {
     if (_loaded) return;
     await stateDirectory.create(recursive: true);
-    final file = File('${stateDirectory.path}/sync-state.json');
-    if (await file.exists()) {
-      final s = jsonObject(jsonDecode(await file.readAsString()));
-      if (s['version'] != 1 ||
-          s['vaultId'] != repository.vaultId ||
-          s['remoteId'] != remote.remoteId)
-        throw const FormatException('Sync state identity mismatch');
-      _uploaded.addAll((s['uploaded'] as List).cast<String>());
-      _pending.addAll((s['pending'] as List).cast<String>());
-      _intents.addAll(jsonObject(s['intents']).cast<String, String>());
-      _knownFiles.addAll(jsonObject(s['knownFiles']).cast<String, String>());
-      _removedFiles.addAll((s['removedFiles'] as List).cast<String>());
-      _cursor = s['cursor'] as String?;
-      _attempts = s['attempts'] as int;
-      _retryAt = s['retryAt'] == null
-          ? null
-          : DateTime.parse(s['retryAt'] as String);
-      _lastSuccess = s['lastSuccess'] == null
-          ? null
-          : DateTime.parse(s['lastSuccess'] as String);
-      _authStopped = s['authStopped'] as bool;
-      _blocked = s['blocked'] as bool;
+    final state = await _readState(
+      stateDirectory,
+      repository.vaultId,
+      remote.remoteId,
+    );
+    if (state != null) {
+      _uploaded.addAll(state.uploaded);
+      _pending.addAll(state.pending);
+      _intents.addAll(state.intents);
+      _knownFiles.addAll(state.knownFiles);
+      _removedFiles.addAll(state.removedFiles);
+      _cursor = state.cursor;
+      _attempts = state.attempts;
+      _retryAt = state.retryAt;
+      _lastSuccess = state.lastSuccess;
+      _authStopped = state.authStopped;
+      _blocked = state.blocked;
     }
     _loaded = true;
+  }
+
+  /// Checks automatic sync holds before authentication or remote preflight.
+  /// The caller must already hold the lease for this state directory.
+  static Future<SyncPhase?> readPersistedHold({
+    required Directory stateDirectory,
+    required String vaultId,
+    required String remoteId,
+  }) async {
+    final state = await _readState(stateDirectory, vaultId, remoteId);
+    if (state == null) return null;
+    return _holdPhase(state.authStopped, state.blocked, state.retryAt);
+  }
+
+  static Future<_PersistedSyncState?> _readState(
+    Directory directory,
+    String vaultId,
+    String remoteId,
+  ) async {
+    final file = File('${directory.path}/sync-state.json');
+    final type = await FileSystemEntity.type(file.path);
+    if (type == FileSystemEntityType.notFound) return null;
+    if (type != FileSystemEntityType.file) {
+      throw const FormatException('Invalid sync state file');
+    }
+    final state = jsonObject(jsonDecode(await file.readAsString()));
+    if (state['version'] != 1 ||
+        state['vaultId'] != vaultId ||
+        state['remoteId'] != remoteId) {
+      throw const FormatException('Sync state identity mismatch');
+    }
+    final retryAt = state['retryAt'] as String?;
+    final lastSuccess = state['lastSuccess'] as String?;
+    return (
+      uploaded: List<String>.from(state['uploaded'] as List<Object?>),
+      pending: List<String>.from(state['pending'] as List<Object?>),
+      intents: Map<String, String>.from(jsonObject(state['intents'])),
+      knownFiles: Map<String, String>.from(jsonObject(state['knownFiles'])),
+      removedFiles: List<String>.from(state['removedFiles'] as List<Object?>),
+      cursor: state['cursor'] as String?,
+      attempts: state['attempts'] as int,
+      retryAt: retryAt == null ? null : DateTime.parse(retryAt),
+      lastSuccess: lastSuccess == null ? null : DateTime.parse(lastSuccess),
+      authStopped: state['authStopped'] as bool,
+      blocked: state['blocked'] as bool,
+    );
+  }
+
+  static SyncPhase? _holdPhase(
+    bool authStopped,
+    bool blocked,
+    DateTime? retryAt, {
+    bool force = false,
+  }) {
+    if (authStopped) return SyncPhase.authenticationRequired;
+    if (blocked) return SyncPhase.error;
+    if (!force && retryAt != null && DateTime.now().isBefore(retryAt)) {
+      return SyncPhase.retryWaiting;
+    }
+    return null;
   }
 
   Future<void> _save() async {
@@ -349,6 +439,96 @@ class SyncCoordinator {
         }
       }
     }
+    return _hasFolderConflicts(heads.values.expand((r) => r).toList());
+  }
+
+  Future<bool> _hasFolderConflicts(List<RevisionRecord> heads) async {
+    final folders = {
+      for (final head in heads.where((r) => r.kind == EntityKind.folder))
+        head.entityId: head,
+    };
+    if (folders.isEmpty) return false;
+    Future<String?> readParent(
+      RevisionRecord record,
+      String fileName,
+      String key,
+    ) async {
+      final bytes = (await repository.readFiles(record))[fileName];
+      if (bytes == null) {
+        if (record.kind == EntityKind.folder)
+          throw FormatException('Missing $fileName');
+        return null;
+      }
+      final parent = jsonObject(jsonDecode(utf8.decode(bytes)))[key];
+      if (parent == null) return null;
+      if (parent is! String)
+        throw const FormatException('Invalid folder reference');
+      validateId(parent);
+      return parent;
+    }
+
+    final parents = <String, String?>{};
+    for (final folder in folders.values) {
+      parents[folder.entityId] = await readParent(
+        folder,
+        'folder.json',
+        'parentId',
+      );
+    }
+    if (parents.values.any((p) => p != null && !folders.containsKey(p)))
+      return true;
+    final visited = <String>{};
+    final visiting = <String>{};
+    bool hasCycle(String id) {
+      if (visited.contains(id)) return false;
+      if (!visiting.add(id)) return true;
+      final parent = parents[id];
+      if (parent != null && hasCycle(parent)) return true;
+      visiting.remove(id);
+      visited.add(id);
+      return false;
+    }
+
+    if (folders.keys.any(hasCycle)) return true;
+
+    final noteFolders = <String, String?>{};
+    for (final note in heads.where((r) => r.kind == EntityKind.metadata)) {
+      final parent = await readParent(note, 'note.json', 'folderId');
+      if (parent != null && !folders.containsKey(parent)) return true;
+      noteFolders[note.entityId] = parent;
+    }
+    for (final deletion in folders.values.where((r) => r.deleted)) {
+      final subtree = <String>{deletion.entityId};
+      var changed = true;
+      while (changed) {
+        changed = false;
+        for (final entry in parents.entries) {
+          if (subtree.contains(entry.value) && subtree.add(entry.key))
+            changed = true;
+        }
+      }
+      final notes = noteFolders.entries
+          .where((entry) => subtree.contains(entry.value))
+          .map((entry) => entry.key)
+          .toSet();
+      // Only the observed subtree belongs to this tombstone. New revisions or
+      // children must remain recoverable as conflicts, including source assets.
+      for (final head in heads) {
+        final isChildFolder =
+            head.kind == EntityKind.folder &&
+            head.entityId != deletion.entityId &&
+            subtree.contains(head.entityId);
+        if (isChildFolder ||
+            notes.contains(head.entityId) ||
+            notes.contains(head.ownerNoteId)) {
+          if (!(deletion.baseRefs[head.entityId] ?? const <String>[]).contains(
+            head.revisionId,
+          )) {
+            return true;
+          }
+        }
+      }
+    }
     return false;
   }
 
@@ -375,19 +555,16 @@ class SyncCoordinator {
       );
       _pending.addAll(_removedFiles);
       await _save();
-      if (_authStopped) {
+      final hold = _holdPhase(_authStopped, _blocked, _retryAt, force: force);
+      if (hold != null) {
         _emit(
-          SyncPhase.authenticationRequired,
-          message: 'Drive authorization required',
+          hold,
+          message: switch (hold) {
+            SyncPhase.authenticationRequired => 'Drive authorization required',
+            SyncPhase.error => 'Repair the sync error and resume',
+            _ => null,
+          },
         );
-        return;
-      }
-      if (_blocked) {
-        _emit(SyncPhase.error, message: 'Repair the sync error and resume');
-        return;
-      }
-      if (!force && _retryAt != null && DateTime.now().isBefore(_retryAt!)) {
-        _emit(SyncPhase.retryWaiting);
         return;
       }
       _emit(SyncPhase.syncing);
@@ -424,12 +601,7 @@ class SyncCoordinator {
         );
       } else if (e.failure == RemoteFailure.retryable ||
           e.failure == RemoteFailure.missing) {
-        _attempts++;
-        final base = min(300, 1 << min(8, _attempts));
-        final delay =
-            e.retryAfter ??
-            Duration(milliseconds: base * 1000 + Random.secure().nextInt(1000));
-        _retryAt = DateTime.now().toUtc().add(delay);
+        _scheduleRetry(e);
         _emit(SyncPhase.retryWaiting, message: e.message);
       } else {
         _blocked = true;
@@ -457,6 +629,15 @@ class SyncCoordinator {
       );
       if (_loaded) await _saveSafely();
     }
+  }
+
+  void _scheduleRetry(RemoteException failure) {
+    _attempts++;
+    final base = min(300, 1 << min(8, _attempts));
+    final delay =
+        failure.retryAfter ??
+        Duration(milliseconds: base * 1000 + Random.secure().nextInt(1000));
+    _retryAt = DateTime.now().toUtc().add(delay);
   }
 
   Future<void> _saveSafely() async {

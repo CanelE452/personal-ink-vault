@@ -43,10 +43,12 @@ class InteractiveCanvasViewer extends StatefulWidget {
     this.onDrawEnd,
     this.onDrawStart,
     this.onDrawUpdate,
+    this.ignorePointer,
     this.panEnabled = true,
     this.scaleEnabled = true,
     this.scaleFactor = kDefaultMouseScrollToScaleFactor,
     this.transformationController,
+    this.resetMotion,
     this.alignment,
     this.trackpadScrollCausesScale = false,
     required Widget this.child,
@@ -90,10 +92,12 @@ class InteractiveCanvasViewer extends StatefulWidget {
     this.onDrawEnd,
     this.onDrawStart,
     this.onDrawUpdate,
+    this.ignorePointer,
     this.panEnabled = true,
     this.scaleEnabled = true,
     this.scaleFactor = 200.0,
     this.transformationController,
+    this.resetMotion,
     this.alignment,
     this.trackpadScrollCausesScale = false,
     required InteractiveCanvasViewerWidgetBuilder this.builder,
@@ -118,6 +122,7 @@ class InteractiveCanvasViewer extends StatefulWidget {
 
   /// The alignment of the child's origin, relative to the size of the box.
   final Alignment? alignment;
+  final Listenable? resetMotion;
 
   /// If set to [Clip.none], the child may extend beyond the size of the InteractiveCanvasViewer,
   /// but it will not receive gestures in these areas.
@@ -336,6 +341,9 @@ class InteractiveCanvasViewer extends StatefulWidget {
 
   /// A function to distinguish a draw gesture and a pan/zoom gesture.
   final bool Function(ScaleStartDetails scaleDetails)? isDrawGesture;
+
+  /// Returns whether a pointer is excluded while the canvas is in use.
+  final bool Function(PointerEvent event)? ignorePointer;
 
   /// Called when any gesture ends.
   final GestureScaleEndCallback? onInteractionEnd;
@@ -723,18 +731,7 @@ class _InteractiveCanvasViewerState extends State<InteractiveCanvasViewer>
   // Handle the start of a gesture. All of pan, scale, and rotate are handled
   // with GestureDetector's scale gesture.
   void _onScaleStart(ScaleStartDetails details) {
-    if (_controller.isAnimating) {
-      _controller.stop();
-      _controller.reset();
-      _animation?.removeListener(_handleInertiaAnimation);
-      _animation = null;
-    }
-    if (_scaleController.isAnimating) {
-      _scaleController.stop();
-      _scaleController.reset();
-      _scaleAnimation?.removeListener(_handleScaleAnimation);
-      _scaleAnimation = null;
-    }
+    _stopMotion();
 
     _gestureType = null;
     _currentAxis = null;
@@ -844,7 +841,7 @@ class _InteractiveCanvasViewerState extends State<InteractiveCanvasViewer>
 
   // Handle the end of a gesture of _GestureType. All of pan, scale, and rotate
   // are handled with GestureDetector's scale gesture.
-  void _onScaleEnd(ScaleEndDetails details) {
+  void _onScaleEnd(ScaleEndDetails details, {required bool allowInertia}) {
     widget.onInteractionEnd?.call(details);
 
     if (isCurrentGestureADrawGesture) {
@@ -856,12 +853,9 @@ class _InteractiveCanvasViewerState extends State<InteractiveCanvasViewer>
     _rotationStart = null;
     _referenceFocalPoint = null;
 
-    _animation?.removeListener(_handleInertiaAnimation);
-    _scaleAnimation?.removeListener(_handleScaleAnimation);
-    _controller.reset();
-    _scaleController.reset();
+    _stopMotion();
 
-    if (!_gestureIsSupported(_gestureType)) {
+    if (!allowInertia || !_gestureIsSupported(_gestureType)) {
       _currentAxis = null;
       return;
     }
@@ -1039,6 +1033,15 @@ class _InteractiveCanvasViewerState extends State<InteractiveCanvasViewer>
     setState(() {});
   }
 
+  void _stopMotion() {
+    _animation?.removeListener(_handleInertiaAnimation);
+    _scaleAnimation?.removeListener(_handleScaleAnimation);
+    _animation = null;
+    _scaleAnimation = null;
+    _controller.reset();
+    _scaleController.reset();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1046,11 +1049,17 @@ class _InteractiveCanvasViewerState extends State<InteractiveCanvasViewer>
     _scaleController = AnimationController(vsync: this);
 
     _transformer.addListener(_handleTransformation);
+    widget.resetMotion?.addListener(_stopMotion);
   }
 
   @override
   void didUpdateWidget(InteractiveCanvasViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (widget.resetMotion != oldWidget.resetMotion) {
+      oldWidget.resetMotion?.removeListener(_stopMotion);
+      widget.resetMotion?.addListener(_stopMotion);
+    }
 
     final TransformationController? newController =
         widget.transformationController;
@@ -1067,6 +1076,7 @@ class _InteractiveCanvasViewerState extends State<InteractiveCanvasViewer>
 
   @override
   void dispose() {
+    widget.resetMotion?.removeListener(_stopMotion);
     _controller.dispose();
     _scaleController.dispose();
     _transformer.removeListener(_handleTransformation);
@@ -1113,17 +1123,119 @@ class _InteractiveCanvasViewerState extends State<InteractiveCanvasViewer>
 
     return Listener(
       key: _parentKey,
-      onPointerSignal: _receivedPointerSignal,
-      child: GestureDetector(
+      onPointerSignal: (event) {
+        if (!(widget.ignorePointer?.call(event) ?? false)) {
+          _receivedPointerSignal(event);
+        }
+      },
+      child: RawGestureDetector(
         behavior: HitTestBehavior.opaque, // Necessary when panning off screen.
-        onScaleEnd: _onScaleEnd,
-        onScaleStart: _onScaleStart,
-        onScaleUpdate: _onScaleUpdate,
-        trackpadScrollCausesScale: widget.trackpadScrollCausesScale,
-        trackpadScrollToScaleFactor: Offset(0, -1 / widget.scaleFactor),
+        gestures: {
+          _CanvasScaleGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<
+                _CanvasScaleGestureRecognizer
+              >(() => _CanvasScaleGestureRecognizer(debugOwner: this), (
+                recognizer,
+              ) {
+                recognizer
+                  ..ignorePointer = widget.ignorePointer
+                  ..dragStartBehavior = DragStartBehavior.start
+                  ..gestureSettings = MediaQuery.maybeGestureSettingsOf(context)
+                  ..trackpadScrollCausesScale = widget.trackpadScrollCausesScale
+                  ..trackpadScrollToScaleFactor = Offset(
+                    0,
+                    -1 / widget.scaleFactor,
+                  )
+                  ..onStart = _onScaleStart
+                  ..onUpdate = _onScaleUpdate
+                  ..onEnd = (details) => _onScaleEnd(
+                    details,
+                    allowInertia: !recognizer._preempting,
+                  );
+              }),
+        },
         child: child,
       ),
     );
+  }
+}
+
+class _CanvasScaleGestureRecognizer extends ScaleGestureRecognizer {
+  new({super.debugOwner});
+
+  bool Function(PointerEvent event)? ignorePointer;
+  final _contacts = <int, PointerEvent>{};
+  bool _preempting = false;
+
+  @override
+  void addPointer(PointerDownEvent event) {
+    // Rejected contacts must never enter the shared scale sequence.
+    if (!(ignorePointer?.call(event) ?? false)) super.addPointer(event);
+  }
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    if (event.kind == PointerDeviceKind.stylus ||
+        event.kind == PointerDeviceKind.invertedStylus) {
+      _retireContacts(event.timeStamp);
+    }
+    _contacts[event.pointer] = event;
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  void addPointerPanZoom(PointerPanZoomStartEvent event) {
+    if (!(ignorePointer?.call(event) ?? false)) super.addPointerPanZoom(event);
+  }
+
+  @override
+  void addAllowedPointerPanZoom(PointerPanZoomStartEvent event) {
+    _contacts[event.pointer] = event;
+    super.addAllowedPointerPanZoom(event);
+  }
+
+  void _retireContacts(Duration timeStamp) {
+    _preempting = true;
+    try {
+      for (final contact in _contacts.values.toList()) {
+        if (!_contacts.containsKey(contact.pointer)) continue;
+        final end = contact is PointerPanZoomStartEvent
+            ? PointerPanZoomEndEvent(
+                pointer: contact.pointer,
+                device: contact.device,
+                position: contact.position,
+                timeStamp: timeStamp,
+              )
+            : PointerCancelEvent(
+                pointer: contact.pointer,
+                kind: contact.kind,
+                device: contact.device,
+                position: contact.position,
+                timeStamp: timeStamp,
+              );
+        // Remove the old contact only from this recognizer and its arena entry.
+        handleEvent(end.transformed(contact.transform));
+        resolvePointer(contact.pointer, GestureDisposition.rejected);
+      }
+    } finally {
+      _preempting = false;
+    }
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerUpEvent ||
+        event is PointerCancelEvent ||
+        event is PointerPanZoomEndEvent) {
+      _contacts.remove(event.pointer);
+    }
+    super.handleEvent(event);
+  }
+
+  @override
+  void rejectGesture(int pointer) {
+    _contacts.remove(pointer);
+    super.rejectGesture(pointer);
   }
 }
 

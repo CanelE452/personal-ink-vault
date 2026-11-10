@@ -9,9 +9,39 @@ import 'package:http/http.dart' as http;
 import 'package:ink_vault_core/src/drive/remote_store.dart';
 import 'package:ink_vault_core/src/revision.dart';
 
-const _format = 'ink-vault-v1';
+String _formatFor(int version) {
+  if (version != 1 && version != 2) {
+    throw const FormatException('Unsupported Drive vault format');
+  }
+  return 'ink-vault-v$version';
+}
+
 const _folderMime = 'application/vnd.google-apps.folder';
 const _fields = 'id,name,mimeType,parents,trashed,appProperties,size';
+const _uploadStatusCodes = {200, 201, 308, 404, 410};
+const _maxUploadSessions = 16;
+
+/// Reads a Retry-After delay as seconds or an HTTP date.
+Duration? parseDriveRetryAfter(String? header, {Duration? maxDelay}) {
+  if (header == null) return null;
+  final now = DateTime.now().toUtc();
+  // Keep numeric delays within the range of HTTP dates.
+  final limit =
+      maxDelay ?? DateTime.utc(9999, 12, 31, 23, 59, 59).difference(now);
+  final value = header.trim();
+  final seconds = int.tryParse(value, radix: 10);
+  if (seconds != null) {
+    if (seconds < 0) return null;
+    return seconds > limit.inSeconds ? limit : Duration(seconds: seconds);
+  }
+  try {
+    final delay = HttpDate.parse(value).difference(now);
+    if (delay.isNegative) return Duration.zero;
+    return delay > limit ? limit : delay;
+  } on HttpException {
+    return null;
+  }
+}
 
 String _fileId(String value) {
   if (!RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value))
@@ -30,14 +60,30 @@ class DriveVault {
   final String id;
   final String vaultId;
   final String name;
-  DriveVault({required this.id, required this.vaultId, required this.name}) {
+  final int formatVersion;
+  DriveVault({
+    required this.id,
+    required this.vaultId,
+    required this.name,
+    this.formatVersion = 1,
+  }) {
+    _formatFor(formatVersion);
     _fileId(id);
     validateId(vaultId);
   }
 }
 
-/// Drive v3 transport. The caller owns OAuth and secure token storage.
-/// No account tokens or resumable-session URLs are persisted or logged here.
+/// A private credential-store slot dedicated to one account, vault and device.
+abstract interface class DriveUploadSessions {
+  Future<String?> read();
+  Future<void> write(String value);
+  Future<void> clear();
+}
+
+typedef _UploadSession = ({Uri uri, String type, String hash});
+
+/// Drive v3 transport. The caller owns OAuth and secure storage. Resumable
+/// session URLs stay in memory unless the caller supplies a secure slot.
 class DriveRemoteStore {
   final Future<String> Function() accessToken;
   final http.Client _client;
@@ -63,7 +109,16 @@ class DriveRemoteStore {
     String token;
     try {
       token = await accessToken();
-    } catch (_) {
+    } catch (error) {
+      if (error is RemoteException &&
+          error.failure == RemoteFailure.retryable) {
+        throw RemoteException(
+          RemoteFailure.retryable,
+          'Drive token refresh temporarily unavailable',
+          statusCode: error.statusCode,
+          retryAfter: error.retryAfter,
+        );
+      }
       throw RemoteException.authentication();
     }
     if (token.isEmpty || token.contains(RegExp(r'[\r\n]')))
@@ -86,7 +141,6 @@ class DriveRemoteStore {
         /* Error bodies are untrusted and never included in status. */
       }
       final code = response.statusCode;
-      final retrySeconds = int.tryParse(response.headers['retry-after'] ?? '');
       final failure =
           code == 401 ||
               code == 403 &&
@@ -114,9 +168,7 @@ class DriveRemoteStore {
         failure,
         'Drive request failed (HTTP $code)',
         statusCode: code,
-        retryAfter: retrySeconds == null
-            ? null
-            : Duration(seconds: retrySeconds),
+        retryAfter: parseDriveRetryAfter(response.headers['retry-after']),
       );
     } on TimeoutException {
       throw RemoteException.retryable('Drive request timed out');
@@ -145,7 +197,7 @@ class DriveRemoteStore {
     final p = _properties(file);
     if (file['mimeType'] != _folderMime ||
         file['trashed'] == true ||
-        p['format'] != _format ||
+        (p['format'] != _formatFor(1) && p['format'] != _formatFor(2)) ||
         p['type'] != 'vault') {
       throw const FormatException('Not an Ink Vault folder');
     }
@@ -153,6 +205,7 @@ class DriveRemoteStore {
       id: file['id'] as String,
       vaultId: p['vaultId'] as String,
       name: file['name'] as String,
+      formatVersion: p['format'] == _formatFor(2) ? 2 : 1,
     );
   }
 
@@ -162,7 +215,7 @@ class DriveRemoteStore {
     do {
       final page = await _get('files', {
         'q':
-            "trashed=false and mimeType='$_folderMime' and ${_property('format', _format)} and ${_property('type', 'vault')}",
+            "trashed=false and mimeType='$_folderMime' and (${_property('format', _formatFor(1))} or ${_property('format', _formatFor(2))}) and ${_property('type', 'vault')}",
         'spaces': 'drive',
         'fields': 'nextPageToken,files($_fields)',
         'pageSize': '1000',
@@ -189,21 +242,23 @@ class DriveRemoteStore {
     required String vaultId,
     String name = 'Personal Ink Vault',
     String? intentFileId,
+    int formatVersion = 1,
   }) async {
+    final format = _formatFor(formatVersion);
     validateId(vaultId);
     final id = intentFileId ?? await generateId();
     final existing = await _metadata(id);
     if (existing != null) {
       final vault = _vault(existing);
-      if (vault.vaultId != vaultId)
-        throw const FormatException('Vault ID collision');
+      if (vault.vaultId != vaultId || vault.formatVersion != formatVersion)
+        throw const FormatException('Vault identity or format collision');
       return vault;
     }
     final body = {
       'id': id,
       'name': name,
       'mimeType': _folderMime,
-      'appProperties': {'vaultId': vaultId, 'format': _format, 'type': 'vault'},
+      'appProperties': {'vaultId': vaultId, 'format': format, 'type': 'vault'},
     };
     try {
       final response = await _request(
@@ -216,8 +271,8 @@ class DriveRemoteStore {
     } on RemoteException catch (e) {
       if (e.statusCode != 409) rethrow;
       final vault = await connectVault(id);
-      if (vault.vaultId != vaultId)
-        throw const FormatException('Vault ID collision');
+      if (vault.vaultId != vaultId || vault.formatVersion != formatVersion)
+        throw const FormatException('Vault identity or format collision');
       return vault;
     }
   }
@@ -229,18 +284,24 @@ class DriveRemoteStore {
     return _vault(metadata);
   }
 
-  RemoteStore bind(DriveVault vault) => _BoundDrive(this, vault);
+  RemoteStore bind(DriveVault vault, {DriveUploadSessions? uploadSessions}) =>
+      _BoundDrive(this, vault, uploadSessions);
   void close() => _client.close();
 }
 
 class _BoundDrive implements RemoteStore {
   final DriveRemoteStore drive;
   final DriveVault vault;
-  _BoundDrive(this.drive, this.vault);
+  final DriveUploadSessions? uploadSessions;
+  final _sessions = <String, _UploadSession>{};
+  Future<void>? _loadedSessions;
+  Future<void> _sessionWrites = Future.value();
+  _BoundDrive(this.drive, this.vault, this.uploadSessions);
   @override
   String get vaultId => vault.vaultId;
   @override
   String get remoteId => vault.id;
+  String get _format => _formatFor(vault.formatVersion);
   String _query(String type) =>
       "trashed=false and '${_quoted(vault.id)}' in parents and ${_property('vaultId', vaultId)} and ${_property('format', _format)} and ${_property('type', type)}";
   bool _belongs(Map<String, dynamic> file, String type) {
@@ -319,14 +380,92 @@ class _BoundDrive implements RemoteStore {
     return true;
   }
 
-  Future<void> _upload(
+  static Uri? _uploadUri(String value) {
+    if (value.length > 4096) return null;
+    final uri = Uri.tryParse(value);
+    return uri != null &&
+            uri.scheme == 'https' &&
+            uri.host == 'www.googleapis.com' &&
+            uri.port == 443 &&
+            uri.userInfo.isEmpty &&
+            !uri.hasFragment &&
+            uri.path.startsWith('/upload/')
+        ? uri
+        : null;
+  }
+
+  Future<void> _loadUploadSessions() async {
+    try {
+      final value = await uploadSessions?.read();
+      if (value == null || value.length > 96 * 1024) return;
+      final data = jsonObject(jsonDecode(value));
+      if (data['version'] != 1) return;
+      final entries = jsonObject(data['uploads']);
+      if (entries.length > _maxUploadSessions) return;
+      for (final entry in entries.entries) {
+        _fileId(entry.key);
+        final item = jsonObject(entry.value);
+        final type = item['type'], hash = item['hash'], url = item['url'];
+        final uri = url is String ? _uploadUri(url) : null;
+        if ((type == 'blob' || type == 'manifest') &&
+            hash is String &&
+            RegExp(r'^[0-9a-f]{64}$').hasMatch(hash) &&
+            uri != null) {
+          _sessions[entry.key] = (uri: uri, type: type as String, hash: hash);
+        }
+      }
+    } catch (_) {
+      // An unavailable or malformed secure slot must not prevent syncing.
+      _sessions.clear();
+    }
+  }
+
+  Future<void> _rememberUpload(String id, _UploadSession? session) async {
+    final previous = _sessions.remove(id);
+    if (session != null) {
+      _sessions[id] = session;
+      if (_sessions.length > _maxUploadSessions) {
+        _sessions.remove(_sessions.keys.first);
+      }
+    } else if (previous == null) {
+      return;
+    }
+    final storage = uploadSessions;
+    if (storage == null) return;
+    final value = _sessions.isEmpty
+        ? null
+        : jsonEncode({
+            'version': 1,
+            'uploads': {
+              for (final entry in _sessions.entries)
+                entry.key: {
+                  'type': entry.value.type,
+                  'hash': entry.value.hash,
+                  'url': entry.value.uri.toString(),
+                },
+            },
+          });
+    final write = _sessionWrites.then((_) async {
+      try {
+        if (value == null) {
+          await storage.clear();
+        } else {
+          await storage.write(value);
+        }
+      } catch (_) {
+        // Keep the in-memory checkpoint if the platform store is unavailable.
+      }
+    });
+    _sessionWrites = write;
+    await write;
+  }
+
+  Future<Uri?> _beginUpload(
     String id,
     String name,
     Uint8List bytes,
     Map<String, String> props,
   ) async {
-    _fileId(id);
-    if (await _verifyExisting(id, props, bytes)) return;
     final metadata = {
       'id': id,
       'name': name,
@@ -350,48 +489,147 @@ class _BoundDrive implements RemoteStore {
         body: utf8.encode(jsonEncode(metadata)),
       );
     } on RemoteException catch (e) {
-      if (e.statusCode == 409 && await _verifyExisting(id, props, bytes))
-        return;
+      if (e.statusCode == 409 && await _verifyExisting(id, props, bytes)) {
+        return null;
+      }
       rethrow;
     }
     final location = begin.headers['location'];
-    if (location == null)
-      throw const FormatException('Drive resumable session missing');
-    final session = Uri.parse(location);
+    final uri = location == null ? null : _uploadUri(location);
+    if (uri == null) {
+      throw const FormatException(
+        'Drive resumable session unavailable or untrusted',
+      );
+    }
+    return uri;
+  }
+
+  static int _uploadOffset(http.Response response, int maximum) {
+    final range = response.headers['range'];
+    if (range == null) return 0;
+    final match = RegExp(r'^bytes=0-(\d+)$').firstMatch(range);
+    final last = match == null ? null : int.tryParse(match[1]!);
+    if (last == null || last >= maximum) {
+      throw const FormatException('Invalid Drive upload progress');
+    }
+    return last + 1;
+  }
+
+  Future<_UploadSession> _updateUploadUri(
+    String id,
+    _UploadSession session,
+    http.Response response,
+  ) async {
+    final location = response.headers['location'];
+    if (location == null) return session;
+    final uri = _uploadUri(location);
+    if (uri == null)
+      throw const FormatException('Untrusted Drive upload session');
+    if (uri == session.uri) return session;
+    final next = (uri: uri, type: session.type, hash: session.hash);
+    await _rememberUpload(id, next);
+    return next;
+  }
+
+  Future<bool> _sendUploadChunks(
+    String id,
+    _UploadSession session,
+    Uint8List bytes,
+    int offset,
+  ) async {
     const chunkSize = 1024 * 1024;
-    var offset = 0;
+    if (bytes.isNotEmpty && offset == bytes.length) {
+      throw RemoteException.retryable('Drive upload did not commit');
+    }
     do {
       final end = min(offset + chunkSize, bytes.length);
       final response = await drive._request(
         'PUT',
-        session,
+        session.uri,
         headers: {
           'content-type': 'application/octet-stream',
-          'content-range': bytes.isEmpty
-              ? 'bytes */0'
-              : 'bytes $offset-${end - 1}/${bytes.length}',
+          if (bytes.isNotEmpty)
+            'content-range': 'bytes $offset-${end - 1}/${bytes.length}',
         },
         body: bytes.sublist(offset, end),
-        allowed: {200, 201, 308},
+        allowed: _uploadStatusCodes,
       );
+      if (response.statusCode == 404 || response.statusCode == 410)
+        return false;
       if (response.statusCode == 308) {
-        final range = response.headers['range'];
-        final match = range == null
-            ? null
-            : RegExp(r'^bytes=0-(\d+)$').firstMatch(range);
-        if (match == null)
+        final next = _uploadOffset(response, end);
+        session = await _updateUploadUri(id, session, response);
+        if (next <= offset) {
           throw RemoteException.retryable('Drive upload progress unavailable');
-        final next = int.parse(match[1]!) + 1;
-        if (next <= offset || next > end)
-          throw const FormatException('Invalid Drive upload progress');
+        }
         offset = next;
       } else {
         if (end != bytes.length)
           throw const FormatException('Drive completed upload prematurely');
-        return;
+        return true;
       }
     } while (offset < bytes.length);
     throw RemoteException.retryable('Drive upload did not commit');
+  }
+
+  Future<void> _upload(
+    String id,
+    String name,
+    Uint8List bytes,
+    Map<String, String> props,
+  ) async {
+    _fileId(id);
+    await (_loadedSessions ??= _loadUploadSessions());
+    if (await _verifyExisting(id, props, bytes)) {
+      await _rememberUpload(id, null);
+      return;
+    }
+    final type = props['type']!, hash = props['sha256']!;
+    var session = _sessions[id];
+    var offset = 0;
+    if (session != null) {
+      if (session.type != type || session.hash != hash) {
+        throw const FormatException('Drive immutable upload ID collision');
+      }
+      final status = await drive._request(
+        'PUT',
+        session.uri,
+        headers: {'content-range': 'bytes */${bytes.length}'},
+        body: const [],
+        allowed: _uploadStatusCodes,
+      );
+      if (status.statusCode == 308) {
+        offset = _uploadOffset(status, bytes.length);
+        session = await _updateUploadUri(id, session, status);
+      } else if (status.statusCode == 200 || status.statusCode == 201) {
+        if (!await _verifyExisting(id, props, bytes)) {
+          throw RemoteException.retryable(
+            'Drive committed upload not yet visible',
+          );
+        }
+        await _rememberUpload(id, null);
+        return;
+      } else {
+        await _rememberUpload(id, null);
+        session = null;
+      }
+    }
+    // Allow one replacement for an expired session. The reserved file ID stays
+    // the same, including if the server committed just before expiry.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (session == null) {
+        final uri = await _beginUpload(id, name, bytes, props);
+        if (uri == null) return;
+        session = (uri: uri, type: type, hash: hash);
+        await _rememberUpload(id, session);
+      }
+      final complete = await _sendUploadChunks(id, session, bytes, offset);
+      await _rememberUpload(id, null);
+      if (complete || await _verifyExisting(id, props, bytes)) return;
+      session = null;
+      offset = 0;
+    }
+    throw RemoteException.retryable('Drive resumable session expired');
   }
 
   Map<String, String> _props(String type) => {
@@ -418,8 +656,8 @@ class _BoundDrive implements RemoteStore {
     RevisionRecord record,
     String intentFileId,
   ) async {
-    if (record.vaultId != vaultId)
-      throw const FormatException('Foreign vault revision');
+    if (record.vaultId != vaultId || record.formatVersion > vault.formatVersion)
+      throw const FormatException('Foreign vault or incompatible revision');
     final bytes = Uint8List.fromList(utf8.encode(jsonEncode(record.toJson())));
     await _upload(intentFileId, '${record.revisionId}.json', bytes, {
       ..._props('manifest'),
@@ -444,7 +682,9 @@ class _BoundDrive implements RemoteStore {
     final record = RevisionRecord.fromJson(
       jsonObject(jsonDecode(utf8.decode(bytes))),
     );
-    if (record.vaultId != vaultId || p['revisionId'] != record.revisionId)
+    if (record.vaultId != vaultId ||
+        p['revisionId'] != record.revisionId ||
+        record.formatVersion > vault.formatVersion)
       throw const FormatException('Drive manifest identity mismatch');
     return record;
   }

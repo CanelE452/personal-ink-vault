@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
+import 'package:saber/data/vault/pdf_import_state.dart';
 
 class SaberInkAdapter {
   static Future<Map<String, Uint8List>> capture(
@@ -33,6 +34,10 @@ class SaberInkAdapter {
     // A revision gets its own materialization directory; an open editor's
     // attachment paths are never overwritten by an incoming remote revision.
     for (final entry in files.entries) {
+      if (entry.key == PdfImportMarker.fileName) {
+        PdfImportMarker.fromBytes(entry.value);
+        continue;
+      }
       if (!RegExp(r'^main\.sbn2(?:\.\d+)?$').hasMatch(entry.key)) {
         throw const FormatException('지원하지 않는 필기 자산 경로');
       }
@@ -45,8 +50,10 @@ class SaberInkAdapter {
       path: path,
       onlyFirstPage: false,
     );
-    if (core.readOnlyReason != null)
+    if (core.readOnlyReason != null) {
+      core.dispose();
       throw const FormatException('필기 snapshot을 안전하게 열 수 없습니다.');
+    }
     return core;
   }
 }

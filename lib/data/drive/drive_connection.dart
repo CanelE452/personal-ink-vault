@@ -18,6 +18,7 @@ class DriveConnectionSettings {
   var desktopClientId = const String.fromEnvironment('DRIVE_DESKTOP_CLIENT_ID');
   String? accountId, folderId, vaultId, rootPath, intentFileId;
   var leasePort = 0;
+  int? vaultFormatVersion;
   static Future<DriveConnectionSettings> load(Directory directory) async {
     final result = DriveConnectionSettings();
     final file = File('${directory.path}/connection.json');
@@ -36,6 +37,12 @@ class DriveConnectionSettings {
     result.rootPath = json['rootPath'] as String?;
     result.intentFileId = json['intentFileId'] as String?;
     result.leasePort = json['leasePort'] as int? ?? 0;
+    result.vaultFormatVersion = json['vaultFormatVersion'] as int?;
+    if (result.vaultFormatVersion != null &&
+        result.vaultFormatVersion != 1 &&
+        result.vaultFormatVersion != 2) {
+      throw const FormatException('Unsupported connected vault format');
+    }
     if (result.leasePort < 0 || result.leasePort > 65535)
       throw const FormatException('Invalid local sync lease');
     return result;
@@ -57,6 +64,7 @@ class DriveConnectionSettings {
           'rootPath': rootPath,
           'intentFileId': intentFileId,
           'leasePort': leasePort,
+          'vaultFormatVersion': vaultFormatVersion,
         }),
         flush: true,
       );
@@ -76,6 +84,7 @@ class DriveConnectionSettings {
 
   void clearConnection() {
     accountId = folderId = vaultId = rootPath = intentFileId = null;
+    vaultFormatVersion = null;
   }
 }
 
@@ -106,16 +115,21 @@ class DriveConnectionController extends ChangeNotifier {
   final Future<Directory> Function() directoryProvider;
   final DriveAuth Function(DriveConnectionSettings)? authFactory;
   final DriveRemoteStore Function(Future<String> Function()) remoteFactory;
+  final DriveSecrets uploadSessionSecrets;
+  final Future<void> Function() registerBackgroundWork;
   late Directory settingsDirectory;
   late DriveConnectionSettings settings;
   DriveAuth? auth;
   SyncCoordinator? coordinator;
   DriveRemoteStore? _remote;
   DriveSyncLease? _lease;
+  ({Timer timer, bool resume})? _leaseRetry;
   StreamSubscription<SyncStatus>? _statuses;
   var status = const SyncStatus(SyncPhase.idle);
   String? error, recoveryBackupPath;
   var ready = false, busy = false, _closed = false, _foreground = true;
+  var _backgroundRegistrationFailed = false;
+  var _reloadingRepository = false;
   Future<void> _tail = Future.value();
   new({
     required this.repository,
@@ -124,16 +138,22 @@ class DriveConnectionController extends ChangeNotifier {
     required this.onResumeReload,
     this.directoryProvider = driveSettingsDirectory,
     this.authFactory,
+    this.uploadSessionSecrets = const OsDriveSecrets(),
+    this.registerBackgroundWork = registerDriveBackgroundWork,
     DriveRemoteStore Function(Future<String> Function())? remoteFactory,
   }) : remoteFactory = remoteFactory ?? _defaultRemote;
   static DriveRemoteStore _defaultRemote(Future<String> Function() token) =>
       DriveRemoteStore(accessToken: token);
   bool get signedIn => auth?.accountId != null;
+  bool get backgroundRegistrationFailed => _backgroundRegistrationFailed;
+  bool get waitingForLease => _leaseRetry != null;
   bool get connected =>
-      ready && settings.folderId != null && coordinator != null;
-  Future<void> run(Future<void> Function() action) {
+      ready &&
+      settings.folderId != null &&
+      identical(coordinator?.repository, repository());
+  Future<void> run(Future<void> Function() action, {bool Function()? when}) {
     final next = _tail.then((_) async {
-      if (_closed) return;
+      if (_closed || (when != null && !when())) return;
       busy = true;
       error = null;
       notifyListeners();
@@ -166,10 +186,14 @@ class DriveConnectionController extends ChangeNotifier {
             : settings.desktopClientId.isNotEmpty);
     if (!configured) return;
     _makeAuth();
-    await auth!.restore();
-    if (settings.folderId != null) {
-      settings.requireAccount(auth!.accountId);
-      await _start();
+    if (settings.folderId != null && _foreground) {
+      await auth!.restoreForSync();
+      if (_canResumeRepository()) {
+        settings.requireAccount(auth!.accountId);
+        await _start();
+      }
+    } else {
+      await auth!.restore();
     }
   });
   Future<void> recoverSettings() => run(() async {
@@ -217,30 +241,35 @@ class DriveConnectionController extends ChangeNotifier {
     required String desktopClientId,
     String? desktopSecret,
   }) => run(() async {
-    await _stop();
+    final androidId = androidServerClientId.trim();
+    final desktopId = desktopClientId.trim();
+    final secret = desktopSecret?.trim() ?? '';
     final changed =
-        settings.androidServerClientId != androidServerClientId.trim() ||
-        settings.desktopClientId != desktopClientId.trim();
-    if (changed) {
-      await auth?.signOut();
-      settings.clearConnection();
+        settings.androidServerClientId != androidId ||
+        settings.desktopClientId != desktopId;
+    final replaceAuth = changed || auth == null;
+    if (replaceAuth) {
+      await _stop();
+      if (changed) {
+        await auth?.signOut();
+        settings.clearConnection();
+      }
+      settings.androidServerClientId = androidId;
+      settings.desktopClientId = desktopId;
+      await settings.save(settingsDirectory);
+      _makeAuth();
     }
-    settings.androidServerClientId = androidServerClientId.trim();
-    settings.desktopClientId = desktopClientId.trim();
-    await settings.save(settingsDirectory);
-    _makeAuth();
-    if (auth case final DesktopDriveAuth desktop) {
-      if (desktopSecret != null)
-        await desktop.setClientSecret(desktopSecret.trim());
+    if (auth case final DesktopDriveAuth desktop when secret.isNotEmpty) {
+      await desktop.setClientSecret(secret);
     }
-    await auth!.restore();
+    if (replaceAuth) await auth!.restore();
   });
   Future<void> signIn() => run(() async {
     if (auth == null) _makeAuth();
     await _stop();
     await auth!.signIn();
     settings.requireAccount(auth!.accountId);
-    if (settings.folderId != null) await _start();
+    if (_canResumeRepository()) await _start(resume: true);
   });
   Future<List<DriveVault>> listVaults() async {
     settings.requireAccount(auth?.accountId);
@@ -266,18 +295,20 @@ class DriveConnectionController extends ChangeNotifier {
       settings.accountId = auth!.accountId;
       settings.rootPath = repo.root.path;
       settings.vaultId = repo.vaultId;
+      settings.vaultFormatVersion = repo.formatVersion;
       settings.intentFileId ??= settings.folderId ?? await remote.generateId();
       await settings.save(settingsDirectory); // Durable before folder creation.
       final vault = await remote.createVault(
         vaultId: repo.vaultId,
         intentFileId: settings.intentFileId,
+        formatVersion: repo.formatVersion,
       );
       settings.folderId = vault.id;
       await settings.save(settingsDirectory);
     } finally {
       remote.close();
     }
-    await _start();
+    await _start(resume: true);
   });
   Future<void> connectExisting(DriveVault selected) => run(() async {
     settings.requireAccount(auth?.accountId);
@@ -289,15 +320,21 @@ class DriveConnectionController extends ChangeNotifier {
       final next = await NoteRepository.open(
         Directory('${support.path}/vaults/drive-${vault.vaultId}'),
         vaultId: vault.vaultId,
+        createFormatVersion: vault.formatVersion,
       );
+      if (next.formatVersion != vault.formatVersion) {
+        await next.close();
+        throw const FormatException('Local and Drive vault formats differ');
+      }
       final previous = await DriveConnectionSettings.load(settingsDirectory);
       try {
         settings.accountId = auth!.accountId;
         settings.folderId = vault.id;
         settings.vaultId = vault.vaultId;
+        settings.vaultFormatVersion = vault.formatVersion;
         settings.rootPath = next.root.path;
         settings.intentFileId = null;
-        // A keyed panel may be recreated as soon as this callback switches root.
+        // Publish the connection before the workspace switches to this vault.
         await settings.save(settingsDirectory);
         await onRepositoryChanged(next);
       } catch (_) {
@@ -309,41 +346,178 @@ class DriveConnectionController extends ChangeNotifier {
     } finally {
       remote.close();
     }
-    await _start();
+    await _start(resume: true);
   });
-  Future<void> _acquireLease() async {
-    if (_lease != null) return;
-    final deadline = DateTime.now().add(const Duration(seconds: 30));
-    while (true) {
-      try {
-        _lease = await DriveSyncLease.acquire(settings.leasePort);
-        if (settings.leasePort == 0) {
-          settings.leasePort = _lease!.port;
-          await settings.save(settingsDirectory);
-        }
-        return;
-      } on SocketException {
-        if (DateTime.now().isAfter(deadline))
-          throw const OAuthFailure(
-            'Another sync task is still active. Retry shortly.',
-          );
-        await Future<void>.delayed(const Duration(milliseconds: 250));
+
+  Future<bool> upgradeLegacyRepository(
+    NoteRepository source,
+    Directory destination,
+  ) async {
+    var upgraded = false;
+    await run(() async {
+      if (!ready) {
+        throw const OAuthFailure('Drive 설정을 읽은 뒤 보관함 복사를 다시 시도해 주세요.');
       }
+      _requireCurrentLegacyRepository(source);
+      final bound = settings.folderId != null && _matchesRepository(source);
+      final restartSync = bound && (coordinator != null || waitingForLease);
+      final resumeSync = _leaseRetry?.resume ?? false;
+      NoteRepository? next;
+      try {
+        var latest = source;
+        if (bound) {
+          await _stop(keepLease: true);
+          await _acquireLease();
+          _requireCurrentLegacyRepository(source);
+          await _reloadRepository();
+          latest = repository();
+          _requireMatchingRepository(latest);
+        }
+        if (latest.pendingRevisionCount != 0 ||
+            latest.integrityIssues.isNotEmpty) {
+          throw const OAuthFailure(
+            '아직 내려받지 못했거나 확인이 필요한 자료가 있습니다. 동기화 또는 보관함 확인을 마친 뒤 다시 복사해 주세요.',
+          );
+        }
+        next = await BackupService.cloneToEmpty(
+          latest,
+          destination,
+          targetFormatVersion: 2,
+        );
+        _requireCurrentLegacyRepository(latest);
+        await onRepositoryChanged(next);
+        upgraded = true;
+      } finally {
+        if (next != null && !identical(repository(), next)) await next.close();
+        if (bound) {
+          status = const SyncStatus(SyncPhase.idle);
+          if (!upgraded && restartSync && _canResumeRepository()) {
+            try {
+              await _start(resume: resumeSync);
+            } catch (_) {
+              // Keep the copy failure available to the caller.
+              await _stop();
+            }
+          } else {
+            await _stop();
+          }
+        }
+      }
+    });
+    return upgraded;
+  }
+
+  void _requireCurrentLegacyRepository(NoteRepository source) {
+    if (_closed ||
+        !identical(repository(), source) ||
+        source.formatVersion != 1) {
+      throw const OAuthFailure('보관함이 바뀌었습니다. 현재 보관함에서 다시 시도해 주세요.');
     }
   }
 
-  Future<void> _start() async {
-    if (!_foreground || _closed || settings.folderId == null) return;
-    settings.requireAccount(auth?.accountId);
-    if (repository().root.path != settings.rootPath ||
-        repository().vaultId != settings.vaultId) {
+  Future<void> _acquireLease() async {
+    final deadline = DateTime.now().add(const Duration(seconds: 30));
+    while (!await _tryAcquireLease()) {
+      if (DateTime.now().isAfter(deadline))
+        throw const OAuthFailure(
+          'Another sync task is still active. Retry shortly.',
+        );
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+  }
+
+  Future<bool> _tryAcquireLease() async {
+    if (_lease != null) return true;
+    final port = settings.leasePort;
+    final DriveSyncLease lease;
+    try {
+      lease = await DriveSyncLease.acquire(port);
+    } on SocketException catch (error) {
+      final code = error.osError?.errorCode;
+      // Windows Dart can omit the native address-in-use error code.
+      if (port != 0 &&
+          (const {48, 98, 10048}.contains(code) ||
+              Platform.isWindows && code == -1)) {
+        return false;
+      }
+      rethrow;
+    }
+    if (port == 0) {
+      settings.leasePort = lease.port;
+      try {
+        await settings.save(settingsDirectory);
+      } catch (_) {
+        settings.leasePort = 0;
+        await lease.close();
+        rethrow;
+      }
+    }
+    _lease = lease;
+    return true;
+  }
+
+  void _cancelLeaseRetry() {
+    _leaseRetry?.timer.cancel();
+    _leaseRetry = null;
+  }
+
+  void _scheduleLeaseRetry({required bool resume}) {
+    late final Timer timer;
+    timer = Timer(const Duration(seconds: 1), () {
+      unawaited(
+        run(() async {
+          if (coordinator == null && _canResumeRepository()) {
+            await _start();
+          } else {
+            _cancelLeaseRetry();
+          }
+        }, when: () => identical(_leaseRetry?.timer, timer)),
+      );
+    });
+    _leaseRetry = (timer: timer, resume: resume);
+  }
+
+  bool _matchesRepository(NoteRepository repo) =>
+      repo.root.path == settings.rootPath &&
+      repo.vaultId == settings.vaultId &&
+      repo.formatVersion == (settings.vaultFormatVersion ?? 1);
+
+  void _requireMatchingRepository(NoteRepository repo) {
+    if (!_matchesRepository(repo)) {
       throw const OAuthFailure(
         'This local vault differs from the Drive connection. Select an existing Drive vault or disconnect before connecting this vault.',
       );
     }
-    await _acquireLease();
+  }
+
+  Future<void> _reloadRepository() async {
+    _reloadingRepository = true;
     try {
       await onResumeReload();
+    } finally {
+      _reloadingRepository = false;
+    }
+  }
+
+  Future<void> _start({bool resume = false}) async {
+    resume = resume || (_leaseRetry?.resume ?? false);
+    _cancelLeaseRetry();
+    if (!_foreground || _closed || settings.folderId == null) return;
+    final accountId = auth?.accountId;
+    settings.requireAccount(accountId);
+    _requireMatchingRepository(repository());
+    if (!await _tryAcquireLease()) {
+      if (!_closed) _scheduleLeaseRetry(resume: resume);
+      return;
+    }
+    if (_closed) {
+      await _stop();
+      return;
+    }
+    try {
+      await _reloadRepository();
+      final repo = repository();
+      _requireMatchingRepository(repo);
       _remote = remoteFactory(auth!.accessToken);
       // Previously validated binding starts offline; transport retry/backoff
       // handles temporary network loss without requiring a settings dialog.
@@ -351,12 +525,19 @@ class DriveConnectionController extends ChangeNotifier {
         id: settings.folderId!,
         vaultId: settings.vaultId!,
         name: 'Personal Ink Vault',
+        formatVersion: settings.vaultFormatVersion ?? 1,
       );
-      if (vault.vaultId != repository().vaultId)
-        throw const FormatException('Vault identity mismatch');
       coordinator = SyncCoordinator(
-        repository: repository(),
-        remote: _remote!.bind(vault),
+        repository: repo,
+        remote: _remote!.bind(
+          vault,
+          uploadSessions: SecureDriveUploadSessions(
+            accountId: accountId!,
+            folderId: vault.id,
+            deviceId: repo.deviceId,
+            secrets: uploadSessionSecrets,
+          ),
+        ),
         stateDirectory: Directory(
           '${settingsDirectory.path}/state/${vault.id}',
         ),
@@ -364,21 +545,32 @@ class DriveConnectionController extends ChangeNotifier {
       _statuses = coordinator!.statuses.listen((next) {
         status = next;
         if (!_closed) notifyListeners();
-        if (next.phase == SyncPhase.synced ||
-            next.phase == SyncPhase.conflict) {
+        if (identical(repository(), repo) &&
+            (next.phase == SyncPhase.synced ||
+                next.phase == SyncPhase.conflict)) {
           unawaited(onRemoteUpdated().catchError((Object _) {}));
         }
       });
-      coordinator!.resume();
+      if (resume) coordinator!.resume();
       coordinator!.start();
-      if (Platform.isAndroid) await registerDriveBackgroundWork();
     } catch (_) {
       await _stop();
       rethrow;
     }
+    await _registerBackgroundWork();
   }
 
-  Future<void> _stop() async {
+  Future<void> _registerBackgroundWork() async {
+    try {
+      await registerBackgroundWork();
+      _backgroundRegistrationFailed = false;
+    } catch (_) {
+      _backgroundRegistrationFailed = true;
+    }
+  }
+
+  Future<void> _stop({bool keepLease = false}) async {
+    _cancelLeaseRetry();
     try {
       await coordinator?.close();
     } finally {
@@ -389,8 +581,10 @@ class DriveConnectionController extends ChangeNotifier {
         _statuses = null;
         _remote?.close();
         _remote = null;
-        await _lease?.close();
-        _lease = null;
+        if (!keepLease) {
+          await _lease?.close();
+          _lease = null;
+        }
       }
     }
   }
@@ -401,17 +595,56 @@ class DriveConnectionController extends ChangeNotifier {
         await auth?.invalidateToken();
       coordinator!.resume();
       await coordinator!.syncOnce(force: true);
+      if (_backgroundRegistrationFailed) await _registerBackgroundWork();
     } else {
+      if (settings.folderId != null && !_matchesRepository(repository())) {
+        throw const OAuthFailure(
+          '현재 보관함을 동기화하려면 ‘현재 로컬 vault를 Drive에 만들기’를 선택해 주세요.',
+        );
+      }
       await auth?.restore();
-      await _start();
+      await _start(resume: true);
     }
   });
+  bool _canResumeRepository() =>
+      _foreground &&
+      ready &&
+      auth != null &&
+      settings.folderId != null &&
+      _matchesRepository(repository());
+
+  Future<void> repositoryChanged() {
+    // _start binds the repository it just reloaded. Its own change must not
+    // queue another start if that binding fails.
+    if (_reloadingRepository) return Future.value();
+    return run(
+      () async {
+        if (coordinator != null) {
+          await _stop();
+          status = const SyncStatus(SyncPhase.idle);
+        }
+        if (_canResumeRepository()) {
+          await auth!.restoreForSync();
+          await _start();
+        } else {
+          _cancelLeaseRetry();
+        }
+      },
+      when: () {
+        final sync = coordinator;
+        return sync == null
+            ? waitingForLease || _canResumeRepository()
+            : !identical(sync.repository, repository());
+      },
+    );
+  }
+
   Future<void> setForeground(bool foreground) => run(() async {
     _foreground = foreground;
     if (!ready) return;
     if (foreground) {
-      if (settings.folderId != null && coordinator == null) {
-        await auth?.restore();
+      if (coordinator == null && _canResumeRepository()) {
+        await auth!.restoreForSync();
         await _start();
       }
     } else {
@@ -422,15 +655,42 @@ class DriveConnectionController extends ChangeNotifier {
   });
   Future<void> signOut() => run(() async {
     await _stop();
+    final accountId = settings.accountId ?? auth?.accountId;
+    final folderId = settings.folderId;
+    final rootPath = settings.rootPath;
+    final vaultId = settings.vaultId;
     settings.clearConnection();
     await settings.save(settingsDirectory);
     if (Platform.isAndroid) await cancelDriveBackgroundWork();
+    if (accountId != null && folderId != null) {
+      try {
+        final repo = repository();
+        if (repo.root.path == rootPath && repo.vaultId == vaultId) {
+          final lease = settings.leasePort == 0
+              ? null
+              : await DriveSyncLease.acquire(settings.leasePort);
+          try {
+            await SecureDriveUploadSessions(
+              accountId: accountId,
+              folderId: folderId,
+              deviceId: repo.deviceId,
+              secrets: uploadSessionSecrets,
+            ).clear();
+          } finally {
+            await lease?.close();
+          }
+        }
+      } catch (_) {
+        // A busy lease or secure storage failure must not prevent disconnect.
+      }
+    }
     await auth?.signOut();
     status = const SyncStatus(SyncPhase.idle);
   });
   Future<void> cancelSignIn() async => auth?.cancel();
   Future<void> close() async {
     _closed = true;
+    _cancelLeaseRetry();
     await auth?.cancel();
     await _tail;
     await _stop();

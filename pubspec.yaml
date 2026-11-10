@@ -40,7 +40,8 @@ dependencies:
     path: packages/sbn
   ink_vault_core:
     path: packages/ink_vault_core
-  flutter_markdown_plus: ^1.0.12
+  flutter_markdown_plus:
+    path: packages/flutter_markdown_plus
   flutter_math_fork: ^0.7.4
   markdown: ^7.3.1
   google_sign_in: 7.2.0
@@ -56,6 +57,8 @@ dependencies:
   perfect_freehand: ^2.5.1
 
   path_provider: ^2.0.11
+  path_provider_platform_interface: 2.1.3
+  shared_preferences_platform_interface: 2.4.2
 
   flutter_secure_storage: ^11.0.0
 
@@ -70,6 +73,7 @@ dependencies:
   intl: any
 
   crypto: ^3.0.2
+  characters: 1.4.1
   encrypt: ^5.0.1
 
   http: ^1.1.0
@@ -106,6 +110,8 @@ dependencies:
   workmanager: ^0.10.7
 
   archive: ^4.0.3
+  xml: ^6.6.1
+  yaml: ^3.1.2
 
   flutter_sharing_intent: ^2.0.4
 
@@ -147,6 +153,7 @@ dependencies:
 
   pdfrx: ">=2.4.2 <2.5.0" # 2.5.0 requires material_ui
   path: ^1.9.1
+  ffi: 2.2.0
 
   stow: ^0.6.0
   stow_plain: ^0.6.0
@@ -162,6 +169,10 @@ dependencies:
   pool: ^1.5.2
 
 dev_dependencies:
+  html: 0.15.7
+  shared_preferences: 2.5.6
+  flutter_secure_storage_platform_interface: 2.1.1
+  flutter_secure_storage_windows: 4.2.2
   flutter_test:
     sdk: flutter
   integration_test:
@@ -175,8 +186,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
   icons_launcher: ^3.0.0
-
-  yaml: ^3.1.2
 
   golden_screenshot: ^11.1.1
 
@@ -204,6 +213,12 @@ flutter:
   uses-material-design: true
 
   assets:
+    - packages/ink_vault_native/THIRD_PARTY_LICENSES.txt
+    - packages/ink_hwp_native/THIRD_PARTY_LICENSES.txt
+    - packages/ink_vault_mcp/THIRD_PARTY_LICENSES.txt
+    - build/native/fonts/NotoSansCJKkr-Regular.otf
+    - build/native/fonts/NotoSansKR-Portable.ttf
+    - build/native/fonts/OFL.txt
     - assets/icon/icon.svg
     - assets/images/
     - assets/google_fonts/Atkinson_Hyperlegible_Next/OFL.txt
@@ -278,7 +293,7 @@ icons_launcher:
   platforms:
     android:
       enable: true
-      adaptive_background_color: "#ffc800"
+      adaptive_background_color: "#123b3a"
       adaptive_foreground_image: "assets/icon/icon_maskable.png"
       adaptive_monochrome_image: "assets/icon/icon_monochrome.png"
     ios:

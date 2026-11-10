@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(piv_office_bridge LANGUAGES CXX)
+
+get_filename_component(REPOSITORY "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." ABSOLUTE)
+set(ENGINE "${REPOSITORY}/build/office-engine/generated")
+add_library(piv_office_bridge SHARED office_bridge.cpp)
+target_compile_features(piv_office_bridge PRIVATE cxx_std_20)
+target_include_directories(piv_office_bridge PRIVATE "${ENGINE}/include")
+target_link_directories(piv_office_bridge PRIVATE "${ENGINE}/jniLibs/${ANDROID_ABI}")
+target_link_libraries(piv_office_bridge PRIVATE androidapp android log dl)
+target_link_options(piv_office_bridge PRIVATE "-Wl,--no-undefined")

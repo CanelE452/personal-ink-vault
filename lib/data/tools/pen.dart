@@ -75,6 +75,34 @@ class Pen extends Tool {
     _currentPen = currentPen;
   }
 
+  List<double>? get sizePresets => switch (toolId) {
+    .ballpointPen => const [3, 8, 15],
+    .fountainPen || .pencil => const [5, 8, 15],
+    .shapePen => const [3, 6, 10],
+    .highlighter => const [30, 40, 50],
+    _ => null,
+  };
+
+  void setSize(double size) {
+    assert(size >= sizeMin && size <= sizeMax);
+    if (options.size == size) return;
+    final updated = options.copyWith(size: size);
+    final setting = switch (toolId) {
+      .fountainPen => stows.lastFountainPenOptions,
+      .ballpointPen => stows.lastBallpointPenOptions,
+      .shapePen => stows.lastShapePenOptions,
+      .pencil => stows.lastPencilOptions,
+      .highlighter => stows.lastHighlighterOptions,
+      _ => null,
+    };
+    if (setting == null) {
+      options = updated;
+    } else {
+      setting.value = updated;
+      options = setting.value;
+    }
+  }
+
   void onDragStart(
     Offset position,
     EditorPage page,

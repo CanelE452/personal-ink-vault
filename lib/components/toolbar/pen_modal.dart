@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:saber/components/toolbar/size_picker.dart';
-import 'package:saber/data/extensions/axis_extensions.dart';
-import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
@@ -12,10 +10,18 @@ import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/i18n/strings.g.dart';
 
 class PenModal extends StatefulWidget {
-  const new({super.key, required this.getTool, required this.setTool});
+  const new({
+    super.key,
+    required this.axis,
+    required this.getTool,
+    required this.setTool,
+    required this.setSize,
+  });
 
+  final Axis axis;
   final Tool Function() getTool;
   final void Function(Pen) setTool;
+  final void Function(Pen, double) setSize;
 
   @override
   State<PenModal> createState() => _PenModalState();
@@ -24,7 +30,6 @@ class PenModal extends StatefulWidget {
 class _PenModalState extends State<PenModal> {
   @override
   Widget build(BuildContext context) {
-    final axis = stows.editorToolbarAlignment.value.axis.opposite;
     final Tool currentTool = widget.getTool();
     final Pen currentPen;
     if (currentTool is Pen) {
@@ -33,11 +38,16 @@ class _PenModalState extends State<PenModal> {
       return const SizedBox();
     }
 
-    return Flex(
-      direction: axis,
-      mainAxisAlignment: .center,
+    return Wrap(
+      direction: widget.axis,
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        SizePicker(axis: axis, pen: currentPen),
+        SizePicker(
+          axis: widget.axis,
+          pen: currentPen,
+          onChanged: (size) => widget.setSize(currentPen, size),
+        ),
         if (currentPen is! Highlighter && currentPen is! Pencil) ...[
           const SizedBox.square(dimension: 8),
           IconButton(

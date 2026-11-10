@@ -59,6 +59,7 @@ class Editor extends StatefulWidget {
     String? path,
     this.customTitle,
     this.pdfPath,
+    this.initialPdfBaselinePageId,
     this.loadSnapshot,
     this.onSaveSnapshot,
     this.onDirtyChanged,
@@ -66,6 +67,7 @@ class Editor extends StatefulWidget {
     this.onLoaded,
     this.onCancelImport,
     this.onBack,
+    this.showDocumentHeader = true,
     this.workspaceReadOnly = false,
   }) : initialPath = path != null
            ? Future.value(path)
@@ -77,6 +79,7 @@ class Editor extends StatefulWidget {
 
   final String? customTitle;
   final String? pdfPath;
+  final String Function(int)? initialPdfBaselinePageId;
   final Future<EditorCoreInfo> Function()? loadSnapshot;
   final Future<void> Function(EditorCoreInfo, int)? onSaveSnapshot;
   final ValueChanged<bool>? onDirtyChanged;
@@ -84,6 +87,7 @@ class Editor extends StatefulWidget {
   final ValueChanged<EditorCoreInfo>? onLoaded;
   final Future<void> Function()? onCancelImport;
   final VoidCallback? onBack;
+  final bool showDocumentHeader;
   final bool workspaceReadOnly;
 
   /// The file extension used by the app.
@@ -122,20 +126,7 @@ class EditorState extends State<Editor> {
 
   final _canvasGestureDetectorKey = GlobalKey<CanvasGestureDetectorState>();
   final _transformationController = TransformationController();
-  double get scrollY {
-    final transformation = _transformationController.value;
-    final scale = transformation.approxScale;
-    final translation = transformation.getTranslation();
-    final gestureDetector = _canvasGestureDetectorKey.currentState;
-
-    if (gestureDetector == null) {
-      log.warning('scrollY: Could not find CanvasGestureDetectorState');
-      return translation.y / scale;
-    } else {
-      final middle = gestureDetector.containerBounds.maxHeight / 2;
-      return (translation.y - middle) / scale + middle;
-    }
-  }
+  var _singlePageMode = false;
 
   var history = EditorHistory();
 
@@ -237,8 +228,11 @@ class EditorState extends State<Editor> {
     _initializingSnapshot = true;
     _snapshotError = null;
     try {
+      final baselinePageId = widget.initialPdfBaselinePageId;
       final filePath = await widget.initialPath;
+      await stows.lastSinglePageMode.waitUntilRead();
       if (_editorDisposed) return;
+      _singlePageMode = stows.lastSinglePageMode.value;
       filenameTextEditingController.text = p.basename(filePath);
       if (needsNaming) {
         filenameTextEditingController.selection = TextSelection(
@@ -251,13 +245,23 @@ class EditorState extends State<Editor> {
         if (_editorDisposed) return;
         if (_initialImportPending) {
           _reportBusy();
-          widget.onDirtyChanged?.call(true);
-          if (coreInfo.readOnlyReason == .workspaceViewer)
+          if (baselinePageId == null) widget.onDirtyChanged?.call(true);
+          if (coreInfo.readOnlyReason == .workspacePdfPreview)
             coreInfo.readOnlyReason = null;
-          if (!await importPdfFromFilePath(widget.pdfPath!)) {
+          if (!await importPdfFromFilePath(
+            widget.pdfPath!,
+            baselinePageId: baselinePageId,
+          )) {
             throw StateError('PDF 가져오기를 완료하지 못했습니다.');
           }
           _pdfImported = true;
+          if (baselinePageId != null) {
+            _initialImportPending = false;
+            if (widget.workspaceReadOnly)
+              coreInfo.readOnlyReason ??= .workspacePdfPreview;
+            cancelAutosaveAndMarkSaved();
+            _reportBusy();
+          }
         }
       }
       _loadingSnapshot = false;
@@ -265,6 +269,7 @@ class EditorState extends State<Editor> {
         await saveToFile();
       } else if (!_editorDisposed) {
         widget.onLoaded?.call(coreInfo);
+        if (_pdfImported && baselinePageId != null) _focusInitialTextPage();
       }
       if (mounted) setState(() {});
     } catch (error) {
@@ -284,17 +289,24 @@ class EditorState extends State<Editor> {
       throw StateError('편집기가 닫혔습니다.');
     }
     coreInfo = loaded;
-    if (widget.workspaceReadOnly) coreInfo.readOnlyReason ??= .workspaceViewer;
+    if (widget.workspaceReadOnly) {
+      coreInfo.readOnlyReason ??= .workspacePdfPreview;
+    }
     if (coreInfo.readOnly) {
       log.info('Loaded file as read-only: ${coreInfo.readOnlyReason}');
     }
 
-    for (int pageIndex = 0; pageIndex < coreInfo.pages.length; pageIndex++) {
-      listenToQuillChanges(coreInfo.pages[pageIndex].quill, pageIndex);
+    for (final page in coreInfo.pages) {
+      listenToQuillChanges(page.quill);
     }
 
     if (coreInfo.isEmpty) {
-      createPage(-1);
+      createPage(
+        -1,
+        firstPageId: _initialImportPending
+            ? widget.initialPdfBaselinePageId?.call(-1)
+            : null,
+      );
     } else {
       for (final page in coreInfo.pages) {
         page.backgroundImage?.onMoveImage = onMoveImage;
@@ -308,18 +320,8 @@ class EditorState extends State<Editor> {
       }
     }
 
-    if (currentTool == Tool.textEditing) {
-      int pageIndex;
-      if (coreInfo.initialPageIndex != null) {
-        pageIndex = coreInfo.initialPageIndex!;
-      } else {
-        pageIndex = 0;
-      }
-      assert(pageIndex < coreInfo.pages.length);
-
-      quillFocus.value = coreInfo.pages[pageIndex].quill
-        ..focusNode.requestFocus();
-    }
+    if (!_initialImportPending || widget.initialPdfBaselinePageId == null)
+      _focusInitialTextPage();
 
     if (coreInfo.filePath == Whiteboard.filePath &&
         stows.autoClearWhiteboardOnExit.value &&
@@ -333,6 +335,14 @@ class EditorState extends State<Editor> {
     } else {
       setState(() {});
     }
+  }
+
+  void _focusInitialTextPage() {
+    if (currentTool != Tool.textEditing) return;
+    final pageIndex = coreInfo.initialPageIndex ?? 0;
+    assert(pageIndex < coreInfo.pages.length);
+    quillFocus.value = coreInfo.pages[pageIndex].quill
+      ..focusNode.requestFocus();
   }
 
   void _setState() => setState(() {});
@@ -365,11 +375,12 @@ class EditorState extends State<Editor> {
 
   /// Creates pages until the given page index exists,
   /// plus an extra blank page
-  void createPage(int pageIndex) {
+  void createPage(int pageIndex, {String? firstPageId}) {
     while (pageIndex >= coreInfo.pages.length - 1) {
-      final page = EditorPage();
+      final page = EditorPage(pageId: firstPageId);
+      firstPageId = null;
       coreInfo.pages.add(page);
-      listenToQuillChanges(page.quill, coreInfo.pages.length - 1);
+      listenToQuillChanges(page.quill);
     }
   }
 
@@ -391,26 +402,20 @@ class EditorState extends State<Editor> {
 
     if (removedAPage) {
       // scroll to the last page (only if we're below the last page)
-
-      final scrollY = this.scrollY;
-      late final topOfLastPage = -CanvasGestureDetector.getTopOfPage(
-        pageIndex: coreInfo.pages.length - 1,
-        pages: coreInfo.pages,
-        screenWidth: MediaQuery.sizeOf(context).width,
-      );
-      final bottomOfLastPage = -CanvasGestureDetector.getTopOfPage(
-        pageIndex: coreInfo.pages.length,
-        pages: coreInfo.pages,
-        screenWidth: MediaQuery.sizeOf(context).width,
-      );
-
-      if (scrollY < bottomOfLastPage) {
-        _transformationController.value = Matrix4.translationValues(
-          0,
-          // Slight upwards offset so that the page is not flush with the top of the screen
-          topOfLastPage + 50,
-          0,
-        );
+      final canvas = _canvasGestureDetectorKey.currentState;
+      final width = canvas?.containerBounds.maxWidth;
+      if (canvas != null && width != null && width.isFinite && width > 0) {
+        final bottomOfLastPage =
+            CanvasGestureDetector.getTopOfPage(
+              pageIndex: coreInfo.pages.length,
+              pages: coreInfo.pages,
+              screenWidth: width,
+            ) -
+            Editor.gapBetweenPages;
+        if (_transformationController.toScene(Offset.zero).dy >
+            bottomOfLastPage) {
+          canvas.scrollToPage(coreInfo.pages.length - 1);
+        }
       }
     }
   }
@@ -597,10 +602,16 @@ class EditorState extends State<Editor> {
     CanvasImage.activeListener
         .notifyListenersPlease(); // un-select active image
 
+    final acceptedStylus =
+        details.pointerCount == 1 &&
+        (details.kind == PointerDeviceKind.stylus ||
+            details.kind == PointerDeviceKind.invertedStylus);
     _lastSeenPointerCountTimer?.cancel();
-    if (lastSeenPointerCount >= 2) {
+    if (acceptedStylus) {
+      // The touch debounce must not delay a pen or undo its completed stroke.
+      lastSeenPointerCount = 0;
+    } else if (lastSeenPointerCount >= 2) {
       // was a zoom gesture, ignore
-      lastSeenPointerCount = lastSeenPointerCount;
       return false;
     } else if (details.pointerCount >= 2) {
       // is a zoom gesture, remove accidental stroke
@@ -622,7 +633,8 @@ class EditorState extends State<Editor> {
 
     if (currentTool == Tool.textEditing) {
       return false;
-    } else if (stows.editorFingerDrawing.value ||
+    } else if (acceptedStylus ||
+        stows.editorFingerDrawing.value ||
         currentPointerKind == PointerDeviceKind.stylus ||
         currentPointerKind == PointerDeviceKind.invertedStylus ||
         currentPressure != null) {
@@ -878,9 +890,13 @@ class EditorState extends State<Editor> {
     autosaveAfterDelay();
   }
 
-  void listenToQuillChanges(QuillStruct quill, int pageIndex) {
+  void listenToQuillChanges(QuillStruct quill) {
     quill.changeSubscription?.cancel();
     quill.changeSubscription = quill.controller.changes.listen((event) {
+      final pageIndex = coreInfo.pages.indexWhere(
+        (page) => identical(page.quill, quill),
+      );
+      if (pageIndex < 0) return;
       final undoRedoButtonsNeedUpdating = !history.canUndo || history.canRedo;
       _addQuillChangeToHistory(
         quill: quill,
@@ -1033,7 +1049,7 @@ class EditorState extends State<Editor> {
         if (_initialImportPending) {
           _initialImportPending = false;
           if (widget.workspaceReadOnly)
-            coreInfo.readOnlyReason ??= .workspaceViewer;
+            coreInfo.readOnlyReason ??= .workspacePdfPreview;
           widget.onLoaded?.call(coreInfo);
         }
         if (generation == _editGeneration) {
@@ -1342,31 +1358,54 @@ class EditorState extends State<Editor> {
     return importPdfFromFilePath(file.path!);
   }
 
-  Future<bool> importPdfFromFilePath(String path) async {
-    if (coreInfo.readOnly) return false;
-    final pdfDocument = await coreInfo.assetCache.pdfDocumentCache.load(path);
+  Future<bool> importPdfFromFilePath(
+    String path, {
+    String Function(int)? baselinePageId,
+  }) async {
+    final note = coreInfo;
+    bool isCurrent() =>
+        !_editorDisposed && identical(coreInfo, note) && !note.readOnly;
+    if (!isCurrent()) return false;
+    final pdfDocument = await note.assetCache.pdfDocumentCache.load(path);
+    if (!isCurrent()) return false;
 
-    if (_editorDisposed) return false;
-    final emptyPage = coreInfo.pages.removeLast();
-    assert(emptyPage.isEmpty);
+    // The headless cache guesses sizes until the progressive loader runs.
+    if (pdfDocument.pages.any((page) => !page.isLoaded)) {
+      await pdfDocument.loadPagesProgressively<void>(
+        onPageLoadProgress: (_, _, _) => isCurrent(),
+      );
+    }
+    if (!isCurrent() || _drawing || pdfDocument.pages.isEmpty) return false;
 
+    final pages = <(PdfPage, Size)>[];
     for (final pdfPage in pdfDocument.pages) {
       assert(pdfPage.pageNumber >= 1, 'pdfrx page numbers start at 1');
+      if (!pdfPage.isLoaded ||
+          !pdfPage.width.isFinite ||
+          !pdfPage.height.isFinite ||
+          pdfPage.width <= 0 ||
+          pdfPage.height <= 0) {
+        return false;
+      }
 
-      // resize to [defaultWidth] to keep pen sizes consistent
-      final pageSize = Size(
-        EditorPage.defaultWidth,
-        EditorPage.defaultWidth * pdfPage.height / pdfPage.width,
-      );
+      // Normalize page widths so pen sizes stay consistent across the note.
+      final height = EditorPage.defaultWidth * pdfPage.height / pdfPage.width;
+      if (!height.isFinite || height <= 0) return false;
+      pages.add((pdfPage, Size(EditorPage.defaultWidth, height)));
+    }
 
+    final emptyPage = note.pages.removeLast();
+    assert(emptyPage.isEmpty);
+    for (final (pdfPage, pageSize) in pages) {
       final page = EditorPage(
+        pageId: baselinePageId?.call(pdfPage.pageNumber - 1),
         size: pageSize,
         backgroundImage: PdfEditorImage(
-          id: coreInfo.nextImageId++,
+          id: note.nextImageId++,
           pdfBytes: null,
           pdfFile: File(path),
           pdfPage: pdfPage.pageNumber - 1,
-          pageIndex: coreInfo.pages.length,
+          pageIndex: note.pages.length,
           pageSize: pageSize,
           naturalSize: pdfPage.size,
           onMoveImage: onMoveImage,
@@ -1375,26 +1414,30 @@ class EditorState extends State<Editor> {
           onLoad: () {
             if (mounted) setState(() {});
           },
-          assetCache: coreInfo.assetCache,
+          assetCache: note.assetCache,
         ),
       );
-      coreInfo.pages.add(page);
-      // TODO(adil192): Group multiple pages into one atomic change
-      history.recordChange(
-        EditorHistoryItem(
-          type: .insertPage,
-          pageIndex: coreInfo.pages.length - 1,
-          strokes: const [],
-          images: const [],
-          page: page,
-        ),
-      );
+      note.pages.add(page);
+      if (baselinePageId == null) {
+        // TODO(adil192): Group multiple pages into one atomic change
+        history.recordChange(
+          EditorHistoryItem(
+            type: .insertPage,
+            pageIndex: note.pages.length - 1,
+            strokes: const [],
+            images: const [],
+            page: page,
+          ),
+        );
+      } else {
+        listenToQuillChanges(page.quill);
+      }
     }
 
-    coreInfo.pages.add(emptyPage);
+    note.pages.add(emptyPage);
     if (mounted) setState(() {});
 
-    autosaveAfterDelay();
+    if (baselinePageId == null) autosaveAfterDelay();
 
     return true;
   }
@@ -1472,9 +1515,19 @@ class EditorState extends State<Editor> {
   Widget build(BuildContext context) {
     final colorScheme = ColorScheme.of(context);
     final platform = Theme.of(context).platform;
+    final toolbarAlignment = widget.onSaveSnapshot == null
+        ? stows.editorToolbarAlignment.value
+        : AxisDirection.up;
     final isToolbarVertical =
-        stows.editorToolbarAlignment.value == AxisDirection.left ||
-        stows.editorToolbarAlignment.value == AxisDirection.right;
+        toolbarAlignment == AxisDirection.left ||
+        toolbarAlignment == AxisDirection.right;
+    final showPageActions =
+        !coreInfo.readOnly &&
+        (!_initialImportPending || widget.initialPdfBaselinePageId == null);
+    final showPageMode =
+        !_loadingSnapshot &&
+        !_initialImportPending &&
+        coreInfo.pages.isNotEmpty;
 
     final Widget canvas = CanvasGestureDetector(
       key: _canvasGestureDetectorKey,
@@ -1492,6 +1545,7 @@ class EditorState extends State<Editor> {
       redo: redo,
       pages: coreInfo.pages,
       initialPageIndex: coreInfo.initialPageIndex,
+      initialSinglePageMode: _singlePageMode,
       pageBuilder: pageBuilder,
       isTextEditing: () => currentTool == Tool.textEditing,
       placeholderPageBuilder: (BuildContext context, int pageIndex) {
@@ -1530,8 +1584,9 @@ class EditorState extends State<Editor> {
               !stows.editorToolbarShowInFullscreen.value,
       maintainState: true,
       child: SafeArea(
-        bottom: stows.editorToolbarAlignment.value != AxisDirection.up,
+        bottom: toolbarAlignment != AxisDirection.up,
         child: Toolbar(
+          alignment: toolbarAlignment,
           readOnly: coreInfo.readOnly,
           setTool: (tool) {
             if (tool is Eraser && currentTool is Eraser) {
@@ -1701,9 +1756,7 @@ class EditorState extends State<Editor> {
     final Widget body;
     if (isToolbarVertical) {
       body = Row(
-        textDirection: stows.editorToolbarAlignment.value == AxisDirection.left
-            ? .ltr
-            : .rtl,
+        textDirection: toolbarAlignment == AxisDirection.left ? .ltr : .rtl,
         children: [
           toolbar,
           Expanded(
@@ -1718,8 +1771,7 @@ class EditorState extends State<Editor> {
       );
     } else {
       body = Column(
-        verticalDirection:
-            stows.editorToolbarAlignment.value == AxisDirection.up
+        verticalDirection: toolbarAlignment == AxisDirection.up
             ? VerticalDirection.up
             : VerticalDirection.down,
         children: [
@@ -1754,11 +1806,19 @@ class EditorState extends State<Editor> {
         );
       },
       child: Scaffold(
-        appBar: DynamicMaterialApp.isFullscreen
+        appBar:
+            DynamicMaterialApp.isFullscreen ||
+                (!widget.showDocumentHeader &&
+                    !showPageActions &&
+                    !showPageMode)
             ? null
             : AppBar(
-                toolbarHeight: kToolbarHeight,
-                title: widget.customTitle != null
+                primary: widget.showDocumentHeader,
+                automaticallyImplyLeading: widget.showDocumentHeader,
+                toolbarHeight: widget.showDocumentHeader ? kToolbarHeight : 48,
+                title: !widget.showDocumentHeader
+                    ? null
+                    : widget.customTitle != null
                     ? Text(widget.customTitle!)
                     : Form(
                         key: _filenameFormKey,
@@ -1773,13 +1833,26 @@ class EditorState extends State<Editor> {
                           validator: _validateFilenameTextField,
                         ),
                       ),
-                leading: SaveIndicator(
-                  savingState: savingState,
-                  triggerSave: saveToFile,
-                  onBack: widget.onBack,
-                ),
+                leading: widget.showDocumentHeader
+                    ? SaveIndicator(
+                        savingState: savingState,
+                        triggerSave: saveToFile,
+                        onBack: widget.onBack,
+                      )
+                    : null,
                 actions: [
-                  if (!coreInfo.readOnly) ...[
+                  if (showPageMode)
+                    IconButton(
+                      key: const ValueKey('editor-single-page-toggle'),
+                      icon: Icon(
+                        _singlePageMode
+                            ? Icons.view_agenda_outlined
+                            : Icons.description_outlined,
+                      ),
+                      tooltip: _singlePageMode ? '연속 스크롤' : '한 쪽씩 보기',
+                      onPressed: _togglePageMode,
+                    ),
+                  if (showPageActions) ...[
                     IconButton(
                       icon: const AdaptiveIcon(
                         icon: Icons.insert_page_break,
@@ -1789,12 +1862,7 @@ class EditorState extends State<Editor> {
                       onPressed: () => setState(() {
                         final currentPageIndex = this.currentPageIndex;
                         insertPageAfter(currentPageIndex);
-                        CanvasGestureDetector.scrollToPage(
-                          pageIndex: currentPageIndex + 1,
-                          pages: coreInfo.pages,
-                          screenWidth: MediaQuery.sizeOf(context).width,
-                          transformationController: _transformationController,
-                        );
+                        _scrollToPage(currentPageIndex + 1);
                       }),
                     ),
                     IconButton(
@@ -1819,6 +1887,8 @@ class EditorState extends State<Editor> {
                         icon: Icons.more_vert,
                         cupertinoIcon: CupertinoIcons.ellipsis_vertical,
                       ),
+                      tooltip: MaterialLocalizations.of(context)
+                          .moreButtonTooltip,
                       onPressed: () {
                         showModalBottomSheet(
                           context: context,
@@ -2050,7 +2120,7 @@ class EditorState extends State<Editor> {
           backgroundImage: page.backgroundImage?.copy()?..pageIndex += 1,
         );
         coreInfo.pages.insert(pageIndex + 1, newPage);
-        listenToQuillChanges(newPage.quill, pageIndex + 1);
+        listenToQuillChanges(newPage.quill);
         history.recordChange(
           EditorHistoryItem(
             type: .insertPage,
@@ -2078,7 +2148,7 @@ class EditorState extends State<Editor> {
         );
         autosaveAfterDelay();
       }),
-      transformationController: _transformationController,
+      onPageSelected: _scrollToPage,
     );
   }
 
@@ -2086,7 +2156,7 @@ class EditorState extends State<Editor> {
     if (coreInfo.readOnly) return;
     final page = EditorPage();
     coreInfo.pages.insert(pageIndex + 1, page);
-    listenToQuillChanges(page.quill, pageIndex + 1);
+    listenToQuillChanges(page.quill);
     history.recordChange(
       EditorHistoryItem(
         type: .insertPage,
@@ -2176,14 +2246,63 @@ class EditorState extends State<Editor> {
 
   late int _lastCurrentPageIndex = coreInfo.initialPageIndex ?? 0;
 
+  void _togglePageMode() {
+    if (_drawing ||
+        _loadingSnapshot ||
+        _initialImportPending ||
+        _snapshotSave != null ||
+        savingState.value == .saving ||
+        (quillFocus.value?.focusNode.hasFocus ?? false)) {
+      return;
+    }
+
+    final next = !_singlePageMode;
+    final canvas = _canvasGestureDetectorKey.currentState;
+    if (canvas?.setSinglePageMode(next) != true) return;
+    setState(() => _singlePageMode = next);
+    stows.lastSinglePageMode.value = next;
+  }
+
+  void _scrollToPage(int pageIndex) {
+    _canvasGestureDetectorKey.currentState?.scrollToPage(pageIndex);
+  }
+
+  bool revealPage(String pageId, {required EditorImage? background}) {
+    if (_editorDisposed ||
+        _loadingSnapshot ||
+        _drawing ||
+        savingState.value != .saved) {
+      return false;
+    }
+    final index = coreInfo.pages.indexWhere(
+      (page) =>
+          page.pageId == pageId && identical(page.backgroundImage, background),
+    );
+    return index >= 0 &&
+        (_canvasGestureDetectorKey.currentState?.scrollToPage(index) ?? false);
+  }
+
   /// The index of the page that is currently centered on screen.
   int get currentPageIndex {
     if (!mounted) return _lastCurrentPageIndex;
 
-    final screenWidth = MediaQuery.sizeOf(context).width;
+    final canvas = _canvasGestureDetectorKey.currentState;
+    final selectedIndex = canvas?.singlePageIndex;
+    if (selectedIndex != null) return _lastCurrentPageIndex = selectedIndex;
+
+    final bounds = canvas?.containerBounds;
+    final screenWidth = bounds?.hasBoundedWidth == true
+        ? bounds!.maxWidth
+        : MediaQuery.sizeOf(context).width;
+    final canvasHeight = bounds?.hasBoundedHeight == true
+        ? bounds!.maxHeight
+        : 0;
+    final center = _transformationController.toScene(
+      Offset(screenWidth / 2, canvasHeight / 2),
+    );
 
     return _lastCurrentPageIndex = getPageIndexFromScrollPosition(
-      scrollY: -scrollY,
+      scrollY: center.dy,
       screenWidth: screenWidth,
       pages: coreInfo.pages,
     );
@@ -2194,21 +2313,11 @@ class EditorState extends State<Editor> {
     required double scrollY,
     required double screenWidth,
     required List<EditorPage> pages,
-  }) {
-    for (int pageIndex = 0; pageIndex < pages.length; pageIndex++) {
-      final bottomOfPage = CanvasGestureDetector.getTopOfPage(
-        pageIndex: pageIndex + 1, // top of next page
-        pages: pages,
-        screenWidth: screenWidth,
-      );
-
-      if (scrollY < bottomOfPage) {
-        return pageIndex;
-      }
-    }
-    // below the last page
-    return pages.length - 1;
-  }
+  }) => CanvasGestureDetector.getPageIndex(
+    scrollY: scrollY,
+    pages: pages,
+    screenWidth: screenWidth,
+  );
 
   @override
   void dispose() {

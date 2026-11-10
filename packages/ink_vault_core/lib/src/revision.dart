@@ -1,6 +1,6 @@
 import 'dart:math';
 
-enum EntityKind { metadata, ink, markdown }
+enum EntityKind { metadata, ink, markdown, folder, attachment }
 
 final _uuid = RegExp(
   r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
@@ -107,8 +107,12 @@ class RevisionRecord {
     ]) {
       validateId(id);
     }
-    if (formatVersion != 1)
+    if (formatVersion != 1 && formatVersion != 2)
       throw const FormatException('Unsupported revision format');
+    if (formatVersion == 1 &&
+        (kind == EntityKind.folder || kind == EntityKind.attachment)) {
+      throw const FormatException('Entity kind requires revision format 2');
+    }
     if (this.parentRevisionIds.toSet().length !=
             this.parentRevisionIds.length ||
         this.parentRevisionIds.contains(revisionId)) {
@@ -128,8 +132,9 @@ class RevisionRecord {
         validateId(id);
       }
     }
-    if (kind == EntityKind.metadata && ownerNoteId != null) {
-      throw const FormatException('Metadata cannot belong to another note');
+    if ((kind == EntityKind.metadata || kind == EntityKind.folder) &&
+        ownerNoteId != null) {
+      throw const FormatException('Metadata or folder cannot belong to a note');
     }
   }
 
@@ -156,7 +161,7 @@ class RevisionRecord {
     final kindName = _string(json['kind']);
     final kinds = EntityKind.values.where((k) => k.name == kindName);
     if (kinds.isEmpty ||
-        json['formatVersion'] != 1 ||
+        (json['formatVersion'] != 1 && json['formatVersion'] != 2) ||
         json['deleted'] is! bool ||
         json['ownerNoteId'] != null && json['ownerNoteId'] is! String) {
       throw const FormatException('Invalid revision schema');

@@ -328,6 +328,11 @@ class Stows {
         false,
         volatile: !_isOnMainIsolate,
       );
+  final lastSinglePageMode = PlainStow(
+    'lastSinglePageMode',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
 
   final homeLayout = PlainStow(
     'homeLayout',

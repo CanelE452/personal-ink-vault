@@ -138,7 +138,7 @@ packages:
     source: hosted
     version: "8.13.0"
   characters:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: characters
       sha256: faf38497bda5ead2a8c7615f4f7939df04333478bf32e4173fcb06d428b5716b
@@ -362,7 +362,7 @@ packages:
     source: hosted
     version: "1.3.3"
   ffi:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: ffi
       sha256: "6d7fd89431262d8f3125e81b50d3847a091d846eafcd4fdb88dd06f36d705a45"
@@ -555,10 +555,9 @@ packages:
   flutter_markdown_plus:
     dependency: "direct main"
     description:
-      name: flutter_markdown_plus
-      sha256: fce641d6c2106cc495de1cd603f97a4f9d615a97a64011928ded380dbdade935
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/flutter_markdown_plus"
+      relative: true
+    source: path
     version: "1.0.12"
   flutter_math_fork:
     dependency: "direct main"
@@ -609,7 +608,7 @@ packages:
     source: hosted
     version: "3.0.3"
   flutter_secure_storage_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: flutter_secure_storage_platform_interface
       sha256: "64951127f001f546891c86f414972bf49ef2c4c8a4c92c65f5790cc0c9100045"
@@ -625,7 +624,7 @@ packages:
     source: hosted
     version: "2.1.1"
   flutter_secure_storage_windows:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: flutter_secure_storage_windows
       sha256: "471951813a97006d899db4948acc654a4f28c440083ea08178935ce20b173ec1"
@@ -793,7 +792,7 @@ packages:
     source: hosted
     version: "2.2.0"
   html:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: html
       sha256: "43b67b8f43321ab066817dfac5619596c98bb1b61624e77203bb4351785f9699"
@@ -1181,7 +1180,7 @@ packages:
     source: hosted
     version: "2.2.2"
   path_provider_platform_interface:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: path_provider_platform_interface
       sha256: "484838772624c3a4b94f1e44a3e19897fee738f2d5c4ce448443b0417f7c9dda"
@@ -1556,7 +1555,7 @@ packages:
     source: hosted
     version: "7.2.0"
   shared_preferences:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: shared_preferences
       sha256: "1e85e0dccf5b4a016077fea7dfbb4a7cb39c759ac1596fcf60c06deadb7da91f"
@@ -1588,7 +1587,7 @@ packages:
     source: hosted
     version: "2.4.1"
   shared_preferences_platform_interface:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: shared_preferences_platform_interface
       sha256: "649dc798a33931919ea356c4305c2d1f81619ea6e92244070b520187b5140ef9"
@@ -2025,7 +2024,7 @@ packages:
     source: hosted
     version: "1.1.0"
   xml:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: xml
       sha256: "971043b3a0d3da28727e40ed3e0b5d18b742fa5a68665cca88e74b7876d5e025"
@@ -2041,7 +2040,7 @@ packages:
     source: hosted
     version: "2.4.0"
   yaml:
-    dependency: "direct dev"
+    dependency: "direct main"
     description:
       name: yaml
       sha256: f67cdd8e07d3c6329146aaef1ba043542b3134c12489f553ca9a7435d1068aea

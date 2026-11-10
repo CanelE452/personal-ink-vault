@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:args/args.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,10 +11,11 @@ import 'package:logging/logging.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:printing/printing.dart';
 import 'package:saber/components/canvas/pencil_shader.dart';
-import 'package:saber/components/drive/drive_panel.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
+import 'package:saber/data/app_profile.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/imports/android_shared_documents.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/routes.dart';
 import 'package:saber/data/sentry/sentry_init.dart';
@@ -28,6 +28,10 @@ import 'package:window_manager/window_manager.dart';
 import 'package:worker_manager/worker_manager.dart';
 
 Future<void> main(List<String> args) async {
+  final options = AppStartupOptions.parse(args);
+  WidgetsFlutterBinding.ensureInitialized();
+  await configureAppProfile(options.profileDirectory);
+
   /// To set the flavor config e.g. for the Play Store, use:
   /// flutter build \
   ///   --dart-define=FLAVOR="Google Play" \
@@ -35,16 +39,13 @@ Future<void> main(List<String> args) async {
   ///   --dart-define=UPDATE_CHECK="false"
   FlavorConfig.setupFromEnvironment();
 
-  await initSentry(() => appRunner(args));
+  await initSentry(() => appRunner(options));
 }
 
-Future<void> appRunner(List<String> args) async {
+Future<void> appRunner(AppStartupOptions options) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final parser = ArgParser()..addFlag('verbose', abbr: 'v', negatable: false);
-  final parsedArgs = parser.parse(args);
-
-  Logger.root.level = (kDebugMode || parsedArgs.flag('verbose'))
+  Logger.root.level = (kDebugMode || options.verbose)
       ? Level.INFO
       : Level.WARNING;
   Logger.root.onRecord.listen((record) {
@@ -98,6 +99,27 @@ Future<void> appRunner(List<String> args) async {
   pdfrxFlutterInitialize();
 
   LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks(
+      const ['ink_vault_native (Rust)'],
+      await rootBundle.loadString(
+        'packages/ink_vault_native/THIRD_PARTY_LICENSES.txt',
+      ),
+    );
+    yield LicenseEntryWithLineBreaks(
+      const ['ink_hwp_native (Rust)'],
+      await rootBundle.loadString(
+        'packages/ink_hwp_native/THIRD_PARTY_LICENSES.txt',
+      ),
+    );
+    yield LicenseEntryWithLineBreaks(
+      const ['ink_vault_mcp (Rust)'],
+      await rootBundle.loadString(
+        'packages/ink_vault_mcp/THIRD_PARTY_LICENSES.txt',
+      ),
+    );
+    yield LicenseEntryWithLineBreaks(const [
+      'Noto Sans CJK KR',
+    ], await rootBundle.loadString('build/native/fonts/OFL.txt'));
     for (final licenseFile in const [
       'assets/google_fonts/Atkinson_Hyperlegible_Next/OFL.txt',
       'assets/google_fonts/Dekko/OFL.txt',
@@ -131,15 +153,7 @@ class const App({super.key}) extends StatefulWidget {
       GoRoute(path: '/', redirect: (context, state) => initialLocation),
       GoRoute(
         path: '/workspace',
-        builder: (context, state) => StudyWorkspace(
-          driveActions: (context, controller) => DrivePanel(
-            key: ValueKey(controller.repository.root.path),
-            repository: () => controller.repository,
-            onRepositoryChanged: controller.replaceRepository,
-            onRemoteUpdated: controller.refresh,
-            onResumeReload: controller.reloadFromDisk,
-          ),
-        ),
+        builder: (context, state) => const StudyWorkspace(enableDrive: true),
       ),
       GoRoute(
         path: RoutePaths.home,
@@ -165,10 +179,10 @@ class const App({super.key}) extends StatefulWidget {
     final filePath = file.value;
     if (file.type != SharedMediaType.FILE || filePath == null) return;
     if (filePath.toLowerCase().endsWith('.pdf')) {
-      StudyWorkspace.pendingPdfImport.value = filePath;
+      StudyWorkspace.pendingDocumentImport.value = filePath;
       _router.go(initialLocation);
     } else {
-      log.warning('공유 가져오기는 PDF만 지원합니다.');
+      log.warning('이 공유 경로의 파일 형식은 지원하지 않습니다.');
     }
   }
 
@@ -178,11 +192,22 @@ class const App({super.key}) extends StatefulWidget {
 
 class _AppState extends State<App> {
   StreamSubscription? _intentDataStreamSubscription;
+  AndroidSharedDocuments? _androidDocuments;
+  AppLifecycleListener? _documentLifecycle;
 
   @override
   void initState() {
-    setupSharingIntent();
     super.initState();
+    if (Platform.isAndroid) {
+      final documents = AndroidSharedDocuments(
+        inbox: StudyWorkspace.pendingDocumentImport,
+        onQueued: () => App._router.go(App.initialLocation),
+      );
+      _androidDocuments = documents;
+      _documentLifecycle = AppLifecycleListener(onResume: documents.refresh);
+      documents.start();
+    }
+    setupSharingIntent();
   }
 
   void setupSharingIntent() {
@@ -213,6 +238,8 @@ class _AppState extends State<App> {
 
   @override
   void dispose() {
+    _documentLifecycle?.dispose();
+    _androidDocuments?.dispose();
     _intentDataStreamSubscription?.cancel();
     super.dispose();
   }

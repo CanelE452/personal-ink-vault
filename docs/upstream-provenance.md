@@ -63,9 +63,10 @@ symlink for Windows portability. Asset and resolved dependency notices are in
 
 ## Branding and distribution limits
 
-The inherited launcher/about icons are retained solely for local validation. The
-about dialog names the independent validation build. Replace the icons and inspect
-all branding before distributing a binary; no use of Saber's trademark is claimed.
+The Android 194 release source uses the Personal Ink Vault artwork for its
+launcher and About icons. Its source is in `assets/icon/`. Earlier local
+validation builds and desktop platform resources can contain inherited Saber
+artwork. The About dialog names the independent fork and preserves attribution.
 The notices inventory records package LICENSE files but is not a complete native
 Gradle/Cargo/PDFium dependency audit. unDraw assets have separate restrictions and
 their exact historical license provenance remains open. Distribution readiness is

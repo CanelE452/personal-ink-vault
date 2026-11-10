@@ -12,6 +12,7 @@ class PdfEditorImage extends EditorImage {
   final File? pdfFile;
 
   final _pdfDocument = ValueNotifier<PdfDocument?>(null);
+  var _disposed = false;
 
   static final log = Logger('PdfEditorImage');
 
@@ -115,6 +116,7 @@ class PdfEditorImage extends EditorImage {
 
   @override
   Future<void> firstLoad() async {
+    if (_disposed) return;
     assert(srcRect.isEmpty);
     assert(!naturalSize.isEmpty);
 
@@ -126,11 +128,15 @@ class PdfEditorImage extends EditorImage {
     }
 
     assert(id != -1, 'id must be set before firstLoad is called');
-    _pdfDocument.value ??= await assetCache.pdfDocumentCache.load(
-      pdfFile?.path ?? 'inline_pdf_$id.pdf',
-      pdfBytes: pdfBytes,
-    );
-    await _pdfDocument.value!.pages[pdfPage].ensureLoaded();
+    final document =
+        _pdfDocument.value ??
+        await assetCache.pdfDocumentCache.load(
+          pdfFile?.path ?? 'inline_pdf_$id.pdf',
+          pdfBytes: pdfBytes,
+        );
+    if (_disposed) return;
+    _pdfDocument.value = document;
+    await document.pages[pdfPage].ensureLoaded();
   }
 
   @override
@@ -205,6 +211,7 @@ class PdfEditorImage extends EditorImage {
 
   @override
   void dispose() {
+    _disposed = true;
     pdfBytes = null;
     _pdfDocument.dispose();
     super.dispose();

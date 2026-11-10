@@ -37,7 +37,9 @@ class CanvasHud extends HookWidget {
 
     /// A timer to set the opacity to 0 after inactivity
     final hideTimer = useRef<Timer?>(null);
-    useEffect(() => hideTimer.value?.cancel, [hideTimer.value]);
+    useEffect(() {
+      return () => hideTimer.value?.cancel();
+    }, const []);
 
     void onTransform() {
       opacity.value = 1;

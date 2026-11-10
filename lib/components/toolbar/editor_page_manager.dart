@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
-import 'package:saber/components/canvas/canvas_gesture_detector.dart';
 import 'package:saber/components/canvas/canvas_preview.dart';
 import 'package:saber/components/theming/adaptive_icon.dart';
 import 'package:saber/components/theming/saber_theme.dart';
@@ -17,7 +16,7 @@ class EditorPageManager extends StatefulWidget {
     required this.duplicatePage,
     required this.clearPage,
     required this.deletePage,
-    required this.transformationController,
+    required this.onPageSelected,
   });
 
   final EditorCoreInfo coreInfo;
@@ -29,20 +28,13 @@ class EditorPageManager extends StatefulWidget {
   final void Function(int) clearPage;
   final void Function(int) deletePage;
 
-  final TransformationController transformationController;
+  final ValueChanged<int> onPageSelected;
 
   @override
   State<EditorPageManager> createState() => _EditorPageManagerState();
 }
 
 class _EditorPageManagerState extends State<EditorPageManager> {
-  void scrollToPage(int pageIndex) => CanvasGestureDetector.scrollToPage(
-    pageIndex: pageIndex,
-    pages: widget.coreInfo.pages,
-    screenWidth: MediaQuery.sizeOf(context).width,
-    transformationController: widget.transformationController,
-  );
-
   @override
   Widget build(BuildContext context) {
     final platform = Theme.of(context).platform;
@@ -59,7 +51,7 @@ class _EditorPageManagerState extends State<EditorPageManager> {
               widget.coreInfo.pages[pageIndex].isEmpty;
           return InkWell(
             key: ValueKey(pageIndex),
-            onTap: () => scrollToPage(pageIndex),
+            onTap: () => widget.onPageSelected(pageIndex),
             child: Padding(
               padding: const .all(8),
               child: Column(
@@ -70,16 +62,18 @@ class _EditorPageManagerState extends State<EditorPageManager> {
                       Text(
                         '${pageIndex + 1} / ${widget.coreInfo.pages.length}',
                       ),
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: cupertino ? 100 : 150,
-                          maxHeight: 250,
-                        ),
-                        child: FittedBox(
-                          child: CanvasPreview(
-                            pageIndex: pageIndex,
-                            height: null,
-                            coreInfo: widget.coreInfo,
+                      Flexible(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: cupertino ? 100 : 150,
+                            maxHeight: 250,
+                          ),
+                          child: FittedBox(
+                            child: CanvasPreview(
+                              pageIndex: pageIndex,
+                              height: null,
+                              coreInfo: widget.coreInfo,
+                            ),
                           ),
                         ),
                       ),
@@ -95,8 +89,8 @@ class _EditorPageManagerState extends State<EditorPageManager> {
                       ),
                     ],
                   ),
-                  Row(
-                    mainAxisAlignment: .center,
+                  Wrap(
+                    alignment: .center,
                     children: [
                       IconButton(
                         tooltip: t.editor.menu.insertPage,
@@ -106,7 +100,7 @@ class _EditorPageManagerState extends State<EditorPageManager> {
                         ),
                         onPressed: () => setState(() {
                           widget.insertPageAfter(pageIndex);
-                          scrollToPage(pageIndex + 1);
+                          widget.onPageSelected(pageIndex + 1);
                         }),
                       ),
                       IconButton(
@@ -117,7 +111,7 @@ class _EditorPageManagerState extends State<EditorPageManager> {
                         ),
                         onPressed: () => setState(() {
                           widget.duplicatePage(pageIndex);
-                          scrollToPage(pageIndex + 1);
+                          widget.onPageSelected(pageIndex + 1);
                         }),
                       ),
                       IconButton(
@@ -130,7 +124,7 @@ class _EditorPageManagerState extends State<EditorPageManager> {
                             ? null
                             : () => setState(() {
                                 widget.clearPage(pageIndex);
-                                scrollToPage(pageIndex);
+                                widget.onPageSelected(pageIndex);
                               }),
                       ),
                       IconButton(
@@ -143,7 +137,7 @@ class _EditorPageManagerState extends State<EditorPageManager> {
                             ? null
                             : () => setState(() {
                                 widget.deletePage(pageIndex);
-                                scrollToPage(pageIndex);
+                                widget.onPageSelected(pageIndex);
                               }),
                       ),
                     ],

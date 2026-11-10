@@ -33,6 +33,7 @@ class CanvasGestureDetector extends StatefulWidget {
     required this.redo,
     required this.pages,
     required this.initialPageIndex,
+    this.initialSinglePageMode = false,
     required this.pageBuilder,
     required this.placeholderPageBuilder,
     required this.isTextEditing,
@@ -61,6 +62,7 @@ class CanvasGestureDetector extends StatefulWidget {
 
   final List<EditorPage> pages;
   final int? initialPageIndex;
+  final bool initialSinglePageMode;
   final Widget Function(BuildContext context, int pageIndex) pageBuilder;
   final Widget Function(BuildContext context, int pageIndex)
   placeholderPageBuilder;
@@ -74,47 +76,23 @@ class CanvasGestureDetector extends StatefulWidget {
 
   static const kMinScale = 0.3;
   static const kMaxScale = 10.0;
+  static const _pageTopInset = Editor.gapBetweenPages * 2;
+
+  static double _fittedPageHeight(EditorPage page, double canvasWidth) =>
+      page.size.height * min(page.size.width, canvasWidth) / page.size.width;
 
   static double getTopOfPage({
     required int pageIndex,
     required List<EditorPage> pages,
     required double screenWidth,
   }) {
-    if (pageIndex <= 0) return 0;
-
-    double top = 0;
+    double top = _pageTopInset;
 
     for (int i = 0; i < pageIndex && i < pages.length; i++) {
-      final pageSize = pages[i].size;
-
-      /// Since we use a FittedBox, the actual width of the page
-      /// is the minimum of the page width and the screen width.
-      final pageWidthFitted = min(pageSize.width, screenWidth);
-
-      top += 16;
-      top += pageSize.height * (pageWidthFitted / pageSize.width);
+      top += _fittedPageHeight(pages[i], screenWidth) + Editor.gapBetweenPages;
     }
 
     return top;
-  }
-
-  static void scrollToPage({
-    required int pageIndex,
-    required List<EditorPage> pages,
-    required double screenWidth,
-    required TransformationController transformationController,
-  }) {
-    final topOfPage = -CanvasGestureDetector.getTopOfPage(
-      pageIndex: pageIndex,
-      pages: pages,
-      screenWidth: screenWidth,
-    );
-    transformationController.value = Matrix4.translationValues(
-      0,
-      // Slight upwards offset so that the page is not flush with the top of the screen
-      topOfPage + 50,
-      0,
-    );
   }
 
   static int getPageIndex({
@@ -122,21 +100,12 @@ class CanvasGestureDetector extends StatefulWidget {
     required List<EditorPage> pages,
     required double screenWidth,
   }) {
-    if (scrollY <= 0) return 0;
-
-    double top = 0;
+    double nextTop = _pageTopInset;
 
     for (int i = 0; i < pages.length; i++) {
-      final pageSize = pages[i].size;
-
-      /// Since we use a FittedBox, the actual width of the page
-      /// is the minimum of the page width and the screen width.
-      final pageWidthFitted = min(pageSize.width, screenWidth);
-
-      top += 16;
-      top += pageSize.height * (pageWidthFitted / pageSize.width);
-
-      if (top > scrollY) return i;
+      nextTop +=
+          _fittedPageHeight(pages[i], screenWidth) + Editor.gapBetweenPages;
+      if (scrollY < nextTop) return i;
     }
 
     return pages.length - 1;
@@ -145,6 +114,108 @@ class CanvasGestureDetector extends StatefulWidget {
 
 class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
   late var containerBounds = const BoxConstraints();
+  late bool _singlePageMode = widget.initialSinglePageMode;
+  String? _singlePageId;
+  int? _singlePageFallback;
+  var _allowContinuousTopInset = false;
+  final _motionReset = ValueNotifier(0);
+
+  bool get singlePageMode => _singlePageMode;
+
+  int? get singlePageIndex {
+    final pages = widget.pages;
+    if (!_singlePageMode || pages.isEmpty) return null;
+    final index = pages.indexWhere((page) => page.pageId == _singlePageId);
+    return index >= 0
+        ? index
+        : (_singlePageFallback ?? widget.initialPageIndex ?? 0).clamp(
+            0,
+            pages.length - 1,
+          );
+  }
+
+  Size? get _viewportSize {
+    final size = containerBounds.biggest;
+    return size.isFinite && !size.isEmpty ? size : null;
+  }
+
+  void _selectSinglePage(int index) {
+    _singlePageId = widget.pages[index].pageId;
+    _singlePageFallback = index;
+  }
+
+  Rect _pageRect(int index, double width, {required bool single}) {
+    final page = widget.pages[index];
+    final fittedWidth = min(page.size.width, width);
+    final top = single
+        ? CanvasGestureDetector._pageTopInset
+        : CanvasGestureDetector.getTopOfPage(
+            pageIndex: index,
+            pages: widget.pages,
+            screenWidth: width,
+          );
+    return Rect.fromLTWH(
+      (width - fittedWidth) / 2,
+      top,
+      fittedWidth,
+      CanvasGestureDetector._fittedPageHeight(page, width),
+    );
+  }
+
+  Offset _pageAnchor(Rect rect, Size viewport) {
+    final point = widget._transformationController.toScene(
+      viewport.center(Offset.zero),
+    );
+    return Offset(
+      point.dx >= rect.left && point.dx < rect.right
+          ? (point.dx - rect.left) / rect.width
+          : 0.5,
+      point.dy >= rect.top && point.dy < rect.bottom
+          ? (point.dy - rect.top) / rect.height
+          : 0.5,
+    );
+  }
+
+  Matrix4 _centerPage(Rect rect, Size viewport, Offset anchor) {
+    final scale = widget._transformationController.value.approxScale;
+    return Matrix4.diagonal3Values(scale, scale, 1)..setTranslationRaw(
+      viewport.width / 2 - (rect.left + rect.width * anchor.dx) * scale,
+      viewport.height / 2 - (rect.top + rect.height * anchor.dy) * scale,
+      0,
+    );
+  }
+
+  bool setSinglePageMode(bool enabled) {
+    if (enabled == _singlePageMode) return true;
+    final viewport = _viewportSize;
+    if (viewport == null || widget.pages.isEmpty || _hasActiveContacts) {
+      return false;
+    }
+    final index =
+        singlePageIndex ??
+        CanvasGestureDetector.getPageIndex(
+          scrollY: widget._transformationController
+              .toScene(viewport.center(Offset.zero))
+              .dy,
+          pages: widget.pages,
+          screenWidth: viewport.width,
+        );
+    final anchor = _pageAnchor(
+      _pageRect(index, viewport.width, single: _singlePageMode),
+      viewport,
+    );
+    final target = _pageRect(index, viewport.width, single: enabled);
+    setState(() {
+      _singlePageMode = enabled;
+      _selectSinglePage(index);
+    });
+    _setProgrammaticTransform(
+      _centerPage(target, viewport, anchor),
+      // At the same zoom a short first page may need extra space above it.
+      allowContinuousTopInset: !enabled,
+    );
+    return true;
+  }
 
   /// If zooming is locked, this is the zoom level.
   /// Otherwise, this is null.
@@ -323,11 +394,33 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
   /// Wait for note to be loaded before setting the initial transform.
   @override
   void didUpdateWidget(CanvasGestureDetector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.filePath != widget.filePath &&
+        !widget.pages.any((page) => page.pageId == _singlePageId)) {
+      _singlePageId = null;
+      _singlePageFallback = null;
+    } else if (singlePageIndex case final index?) {
+      final previousId = _singlePageId;
+      _selectSinglePage(index);
+      if (previousId != null && previousId != _singlePageId) {
+        final selected = _singlePageId;
+        final path = widget.filePath;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted &&
+              widget.filePath == path &&
+              _singlePageId == selected &&
+              singlePageIndex != null) {
+            scrollToPage(singlePageIndex!);
+          }
+        });
+      }
+    }
     if (oldWidget.initialPageIndex != widget.initialPageIndex ||
         oldWidget.filePath != widget.filePath) {
-      setInitialTransform();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setInitialTransform();
+      });
     }
-    super.didUpdateWidget(oldWidget);
   }
 
   /// Sets the initial transform so that we're scrolled to the correct page.
@@ -341,24 +434,107 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
 
     final transformCacheItem = CanvasTransformCache.get(widget.filePath);
 
-    if (transformCacheItem != null) {
+    if (_singlePageMode) {
+      final cachedId = transformCacheItem?.singlePageId;
+      final cachedIndex = widget.pages.indexWhere(
+        (page) => page.pageId == cachedId,
+      );
+      if (transformCacheItem != null &&
+          cachedIndex >= 0 &&
+          (widget.initialPageIndex == null ||
+              widget.initialPageIndex == cachedIndex)) {
+        setState(() => _selectSinglePage(cachedIndex));
+        _setProgrammaticTransform(transformCacheItem.transform.clone());
+        if (zoomLockedValue != null) {
+          zoomLockedValue = transformCacheItem.transform.approxScale;
+        }
+      } else if (singlePageIndex case final index?) {
+        scrollToPage(index);
+      }
+    } else if (transformCacheItem != null &&
+        transformCacheItem.singlePageId == null) {
       // if we're opening the same note, restore the last transform
-      widget._transformationController.value = transformCacheItem.transform;
+      _setProgrammaticTransform(
+        transformCacheItem.transform.clone(),
+        allowContinuousTopInset: true,
+      );
       if (zoomLockedValue != null) {
         zoomLockedValue = transformCacheItem.transform.approxScale;
       }
     } else if (widget.initialPageIndex != null) {
       // if we're opening a different note, scroll to the last recorded page
-      CanvasGestureDetector.scrollToPage(
-        pageIndex: widget.initialPageIndex!,
-        pages: widget.pages,
-        screenWidth: MediaQuery.sizeOf(context).width,
-        transformationController: widget._transformationController,
-      );
+      scrollToPage(widget.initialPageIndex!);
     }
   }
 
   Timer? _snapZoomTimer;
+
+  bool scrollToPage(int pageIndex) {
+    final viewport = _viewportSize;
+    final pages = widget.pages;
+    if (viewport == null || pages.isEmpty) return false;
+
+    final index = pageIndex.clamp(0, pages.length - 1);
+    if (_singlePageMode) {
+      if (_hasActiveContacts) return false;
+      final previous = singlePageIndex;
+      if (previous != null && previous != index) {
+        pages[previous].quill.focusNode.unfocus();
+      }
+      setState(() => _selectSinglePage(index));
+      _setProgrammaticTransform(
+        _centerPage(
+          _pageRect(index, viewport.width, single: true),
+          viewport,
+          const Offset(0.5, 0.5),
+        ),
+      );
+      return true;
+    }
+
+    final width = viewport.width;
+    final height = viewport.height;
+    final top = CanvasGestureDetector.getTopOfPage(
+      pageIndex: index,
+      pages: pages,
+      screenWidth: width,
+    );
+    final pageHeight = CanvasGestureDetector._fittedPageHeight(
+      pages[index],
+      width,
+    );
+    final center = top + pageHeight / 2;
+    // Zoom when a short page is too high to center at 1x without overscroll.
+    final scale = (height / (2 * center))
+        .clamp(1.0, CanvasGestureDetector.kMaxScale)
+        .toDouble();
+    final translationY = min(0.0, height / 2 - center * scale);
+    final visibleCenter = (height / 2 - translationY) / scale;
+    if (!(visibleCenter >= top && visibleCenter < top + pageHeight)) {
+      return false;
+    }
+
+    _setProgrammaticTransform(
+      Matrix4.diagonal3Values(scale, scale, 1)
+        ..setTranslationRaw(width * (1 - scale) / 2, translationY, 0),
+    );
+    return true;
+  }
+
+  void _setProgrammaticTransform(
+    Matrix4 transform, {
+    bool allowContinuousTopInset = false,
+  }) {
+    _motionReset.value++;
+    _allowContinuousTopInset = allowContinuousTopInset;
+    try {
+      widget._transformationController.value = transform;
+    } finally {
+      _allowContinuousTopInset = false;
+    }
+    // Retain an intentional zoom that is needed to keep a short page centered.
+    _snapZoomTimer?.cancel();
+  }
 
   /// Corrects the transform if it's out of bounds.
   /// If the scale is less than 1, centers the pages horizontally.
@@ -377,7 +553,25 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     if (diffFrom1 < 0.05 && diffFrom1 > 0.001)
       _snapZoomTimer = Timer(const Duration(milliseconds: 200), resetZoom);
 
-    if (scale < 1) {
+    final viewport = _viewportSize;
+    final index = singlePageIndex;
+    if (index != null && viewport != null) {
+      final rect = _pageRect(index, viewport.width, single: true);
+      double constrain(double value, double start, double end, double extent) {
+        final leading = -start * scale;
+        final trailing = extent - end * scale;
+        return value
+            .clamp(min(leading, trailing), max(leading, trailing))
+            .toDouble();
+      }
+
+      adjustmentX =
+          constrain(translation.x, rect.left, rect.right, viewport.width) -
+          translation.x;
+      adjustmentY =
+          constrain(translation.y, rect.top, rect.bottom, viewport.height) -
+          translation.y;
+    } else if (scale < 1) {
       // horizontally center pages if zoomed out
       final center = containerBounds.maxWidth * (1 - scale) / 2;
       adjustmentX = center - translation.x;
@@ -390,7 +584,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
         adjustmentX = minX - translation.x;
       }
 
-      if (translation.y > 0) {
+      if (translation.y > 0 && !_allowContinuousTopInset) {
         adjustmentY = -translation.y;
       }
     }
@@ -420,10 +614,32 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
         transformation;
   }
 
+  final _pointerContacts = <int>{};
+  int? _stylusPointer;
+  var _panZoomActive = false;
+
+  bool get _hasActiveContacts => _pointerContacts.isNotEmpty || _panZoomActive;
+
+  bool _isStylus(PointerEvent event) =>
+      event.kind == PointerDeviceKind.stylus ||
+      event.kind == PointerDeviceKind.invertedStylus;
+
+  bool _ignorePointer(PointerEvent event) =>
+      _stylusPointer != null && _stylusPointer != event.pointer;
+
+  void _listenerPointerDownEvent(PointerDownEvent event) {
+    if (_ignorePointer(event)) return;
+    if (_isStylus(event)) {
+      _stylusPointer = event.pointer;
+      _pointerContacts.clear();
+    }
+    _pointerContacts.add(event.pointer);
+    _listenerPointerEvent(event);
+  }
+
   void _listenerPointerEvent(PointerEvent event) {
-    final isStylus =
-        event.kind == PointerDeviceKind.stylus ||
-        event.kind == PointerDeviceKind.invertedStylus;
+    if (!_pointerContacts.contains(event.pointer)) return;
+    final isStylus = _isStylus(event);
     if (isStylus && event is PointerDownEvent) {
       _detectStylusButton(event);
     }
@@ -456,7 +672,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
   var stylusButtonWasPressed = false;
 
   void _listenerPointerHoverEvent(PointerEvent event) {
-    if (event.kind != .stylus && event.kind != .invertedStylus) return;
+    if (!_isStylus(event) || _ignorePointer(event)) return;
 
     // Apparently flutter synthesizes a hover event on pointer down,
     // so these are used to detect when hovering ends
@@ -479,28 +695,74 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
   }
 
   void _listenerPointerUpEvent(PointerEvent event) {
+    if (!_pointerContacts.remove(event.pointer)) return;
+    if (_stylusPointer == event.pointer) _stylusPointer = null;
     widget.updatePointerData(event.kind, null);
-    if (stylusButtonWasPressed) {
+    if (_isStylus(event) && stylusButtonWasPressed) {
       stylusButtonWasPressed = false;
       widget.onStylusButtonChanged(false);
     }
   }
 
+  void _updateBounds(BoxConstraints bounds) {
+    if (containerBounds == bounds) return;
+    final previous = _viewportSize;
+    containerBounds = bounds;
+    final viewport = _viewportSize;
+    final index = singlePageIndex;
+    final selected = _singlePageId;
+    if (previous == null ||
+        viewport == null ||
+        index == null ||
+        selected == null) {
+      return;
+    }
+    final anchor = _pageAnchor(
+      _pageRect(index, previous.width, single: true),
+      previous,
+    );
+    final before = widget._transformationController.value.clone();
+    final path = widget.filePath;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final current = singlePageIndex;
+      if (current == null ||
+          selected != _singlePageId ||
+          widget.filePath != path ||
+          _viewportSize != viewport ||
+          _hasActiveContacts ||
+          widget._transformationController.value != before) {
+        return;
+      }
+      _setProgrammaticTransform(
+        _centerPage(
+          _pageRect(current, viewport.width, single: true),
+          viewport,
+          anchor,
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final Size screenSize = MediaQuery.sizeOf(context);
+    final selected = singlePageIndex;
 
     return Stack(
       children: [
         Listener(
-          onPointerDown: _listenerPointerEvent,
+          onPointerDown: _listenerPointerDownEvent,
           onPointerMove: _listenerPointerEvent,
           onPointerUp: _listenerPointerUpEvent,
+          onPointerCancel: _listenerPointerUpEvent,
           onPointerHover: _listenerPointerHoverEvent,
+          onPointerPanZoomStart: (_) => _panZoomActive = true,
+          onPointerPanZoomEnd: (_) => _panZoomActive = false,
           child: GestureDetector(
             child: LayoutBuilder(
               builder: (BuildContext context, BoxConstraints containerBounds) {
-                this.containerBounds = containerBounds;
+                _updateBounds(containerBounds);
 
                 return InteractiveCanvasViewer.builder(
                   minScale: zoomLockedValue ?? CanvasGestureDetector.kMinScale,
@@ -513,18 +775,19 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
 
                   // we need a non-zero boundary margin so we can zoom out
                   // past the size of the page (for minScale < 1)
-                  boundaryMargin: .symmetric(
-                    vertical: 0,
-                    horizontal: screenSize.width * 2,
-                  ),
+                  boundaryMargin: _singlePageMode
+                      ? const EdgeInsets.all(double.infinity)
+                      : .symmetric(horizontal: screenSize.width * 2),
 
                   transformationController: widget._transformationController,
+                  resetMotion: _motionReset,
 
                   isDrawGesture: widget.isDrawGesture,
                   onInteractionEnd: widget.onInteractionEnd,
                   onDrawStart: widget.onDrawStart,
                   onDrawUpdate: widget.onDrawUpdate,
                   onDrawEnd: widget.onDrawEnd,
+                  ignorePointer: _ignorePointer,
 
                   builder: (BuildContext context, Quad viewport) {
                     return _PagesBuilder(
@@ -533,6 +796,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
                       placeholderPageBuilder: widget.placeholderPageBuilder,
                       boundingBox: _axisAlignedBoundingBox(viewport),
                       containerWidth: containerBounds.maxWidth,
+                      singlePageIndex: selected,
                     );
                   },
                 );
@@ -563,18 +827,57 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
             }),
           ),
         ),
+        if (selected != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 8,
+            child: SafeArea(
+              top: false,
+              child: Center(
+                child: Material(
+                  color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(24),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: '이전 쪽',
+                        onPressed: selected > 0
+                            ? () => scrollToPage(selected - 1)
+                            : null,
+                        icon: const Icon(Icons.chevron_left),
+                      ),
+                      Text('${selected + 1} / ${widget.pages.length}'),
+                      IconButton(
+                        tooltip: '다음 쪽',
+                        onPressed: selected + 1 < widget.pages.length
+                            ? () => scrollToPage(selected + 1)
+                            : null,
+                        icon: const Icon(Icons.chevron_right),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
 
   @override
   void dispose() {
+    _snapZoomTimer?.cancel();
+    final selected = singlePageIndex;
     CanvasTransformCache.add(
       widget.filePath,
       widget._transformationController.value,
+      singlePageId: selected == null ? null : widget.pages[selected].pageId,
     );
     widget._transformationController.removeListener(onTransformChanged);
     widget._transformationController.dispose();
+    _motionReset.dispose();
     _removeKeybindings();
     super.dispose();
   }
@@ -606,6 +909,7 @@ class _PagesBuilder extends StatelessWidget {
     required this.placeholderPageBuilder,
     required this.boundingBox,
     required this.containerWidth,
+    required this.singlePageIndex,
   });
 
   final List<EditorPage> pages;
@@ -614,34 +918,45 @@ class _PagesBuilder extends StatelessWidget {
   placeholderPageBuilder;
   final Rect boundingBox;
   final double containerWidth;
+  final int? singlePageIndex;
 
   @override
   Widget build(BuildContext context) {
     final List<Widget> children = [
-      const SizedBox.square(dimension: Editor.gapBetweenPages),
-      const SizedBox.square(dimension: Editor.gapBetweenPages),
+      SizedBox(
+        width: singlePageIndex == null
+            ? Editor.gapBetweenPages
+            : containerWidth,
+        height: CanvasGestureDetector._pageTopInset,
+      ),
     ];
 
-    double topOfPage = Editor.gapBetweenPages * 2;
+    double topOfPage = CanvasGestureDetector._pageTopInset;
     for (int pageIndex = 0; pageIndex < pages.length; pageIndex++) {
       final page = pages[pageIndex];
-      final pageWidth = min(
-        page.size.width,
+      if (singlePageIndex != null && pageIndex != singlePageIndex) {
+        page.isRendered = false;
+        continue;
+      }
+      final pageHeight = CanvasGestureDetector._fittedPageHeight(
+        page,
         containerWidth,
-      ); // because of FittedBox
-      final pageHeight = pageWidth / page.size.width * page.size.height;
+      );
       final bottomOfPage = topOfPage + pageHeight;
 
       final isFocused = page.quill.focusNode.hasFocus;
       final isInViewport =
           boundingBox.bottom >= topOfPage && boundingBox.top <= bottomOfPage;
-      final shouldRender = isFocused || isInViewport;
+      final shouldRender = singlePageIndex != null || isFocused || isInViewport;
 
       page.isRendered = shouldRender;
       children.add(
-        shouldRender
-            ? pageBuilder(context, pageIndex)
-            : placeholderPageBuilder(context, pageIndex),
+        KeyedSubtree(
+          key: ObjectKey(page),
+          child: shouldRender
+              ? pageBuilder(context, pageIndex)
+              : placeholderPageBuilder(context, pageIndex),
+        ),
       );
 
       children.add(const SizedBox.square(dimension: Editor.gapBetweenPages));
@@ -661,13 +976,15 @@ class CanvasTransformCache {
 
   new _();
 
-  static void add(String filePath, Matrix4 transform) {
+  static void add(String filePath, Matrix4 transform, {String? singlePageId}) {
     for (final entry in _cache) {
       if (entry.filePath != filePath) continue;
       entry.unlink();
       break;
     }
-    _cache.add(CanvasTransformCacheItem(filePath, transform));
+    _cache.add(
+      CanvasTransformCacheItem(filePath, transform, singlePageId: singlePageId),
+    );
 
     if (_cache.length > _maxCacheSize) {
       _cache.first.unlink();
@@ -693,8 +1010,9 @@ base class CanvasTransformCacheItem
     extends LinkedListEntry<CanvasTransformCacheItem> {
   final String filePath;
   final Matrix4 transform;
+  final String? singlePageId;
 
-  new(this.filePath, this.transform);
+  new(this.filePath, this.transform, {this.singlePageId});
 }
 
 double _inverseLerp(num value, {required num min, required num max}) {

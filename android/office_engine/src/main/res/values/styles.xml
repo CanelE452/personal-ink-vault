@@ -1,0 +1,8 @@
+<resources>
+    <style name="InkVaultOfficeTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+    <string name="app_name">Personal Ink Vault</string>
+</resources>

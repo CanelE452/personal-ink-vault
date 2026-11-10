@@ -1,0 +1,579 @@
+{
+  "schema": 1,
+  "engine": "Collabora Office Android",
+  "version": "26.04.6.0-962",
+  "sourceRevision": "fd0b24ba59e043b2ed9087eb6324bbc6d281e93b",
+  "sourceBaseUrl": "https://raw.githubusercontent.com/CollaboraOnline/online.mirror/fd0b24ba59e043b2ed9087eb6324bbc6d281e93b/",
+  "apk": {
+    "url": "https://www.collaboraoffice.com/downloads/Collabora-Office-Android-Snapshot/collabora-office-mobile-26.04.6.0-962-snapshot-arm64-v8a-2026-10-26.apk",
+    "sha256": "70b2d7456de59e463efbed1c7382e749f814632b436d2b395f1b0ae1e81ce180",
+    "bytes": 256658671,
+    "maximumBytes": 260000000
+  },
+  "sources": [
+    {
+      "path": "COPYING",
+      "gitBlob": "41dc2327f1698b99dd397a84f47b9596d0a516b5",
+      "bytes": 193,
+      "sha256": "2bfdca60adf803108d4c7f009000bea76ad00e621e163197881b0eaae91b530e"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/COWebView.java",
+      "gitBlob": "1dcad95c2a93919ccd1dbd52cfa674c086e06173",
+      "bytes": 1982,
+      "sha256": "b060db9fc7b9cb83ca8471952247e72eeab24628b887fb7e4330f8670308da00"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/COWebViewClient.java",
+      "gitBlob": "c1df5aeb97943b69f77d5f93c856741b7dd66088",
+      "bytes": 4804,
+      "sha256": "b4b8ea1af4b7bcc635087c4c3ee762bb5e196c496f111dce1ba5bc0b441f94b1"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/ClipboardFileProvider.java",
+      "gitBlob": "f038fb45ec6cd6cdf27d28f1195f2a8fda1a059e",
+      "bytes": 7666,
+      "sha256": "6c2cbc66d26f3f4cec05980c94dcbb60d52fba5415519ea35e9f840c0b72637d"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/LOActivity.java",
+      "gitBlob": "18ad2cfc65b4cce14677d07efca6288b0a753e36",
+      "bytes": 93503,
+      "sha256": "26150cd0518e470451d00c0351227af1b74b89cd12ad1f5b7d8cb34ec963c435"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/MobileSocket.java",
+      "gitBlob": "7a08aa0d1f62308043a9690164eba3d1c978855e",
+      "bytes": 4739,
+      "sha256": "7fffba6a3c598de1617a048c341aa91f18538a1fd9ac61f5b0ddd4713875efc7"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/PrintAdapter.java",
+      "gitBlob": "dd38c8f684e6beb2e2f24ba7a6adde0ec4f52ea5",
+      "bytes": 3553,
+      "sha256": "8d1838ec7a951e0dcca7b982b20133de2bc09bc4c6e7dda87f717f12bb3607cb"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/ProgressDialog.java",
+      "gitBlob": "c903fbdd3e3b489e5508a17977fda82030a883bf",
+      "bytes": 3852,
+      "sha256": "ded6690cb71fe18bf90e8ef14e783b19000ceaa1721ebaed9b9e4b489ec804a7"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/RateAppController.java",
+      "gitBlob": "4341c112a196718144492ed310d2c83e1cd9b68f",
+      "bytes": 5050,
+      "sha256": "4c499c450e24ca1f57cb9ce72c07099ab0532545af517e044335f8a6e8bc0db5"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/SlideShowActivity.java",
+      "gitBlob": "de39bfda81bce0da2f44ecdc7a856109b50f9469",
+      "bytes": 3484,
+      "sha256": "89a815f6c8eda65fae51e250a29169f96b65edf0aaaec5e08ce8f553c86222bb"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/UriPathResolver.java",
+      "gitBlob": "bd64089a3588dca5c60b00c741c55257a82ce320",
+      "bytes": 3950,
+      "sha256": "20682495254ba06299c2ae2a2be49de65b228323aee4a3b5eaf19880a930c8b9"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/lok/LokClipboardData.java",
+      "gitBlob": "dd49cd5ecdfa5b78360045abb4aae421a8cbd568",
+      "bytes": 4191,
+      "sha256": "51c9fc711e5c20afddc6787fb6bac160b133ac95d71bbc98aa12efb13e06e797"
+    },
+    {
+      "path": "android/lib/src/main/java/org/libreoffice/androidlib/lok/LokClipboardEntry.java",
+      "gitBlob": "26ca8d729d58a726a4aea202ec1ac2daf667d08b",
+      "bytes": 358,
+      "sha256": "80d0e913c875254d0b1aa0601dfa35304e3ef82884c35ff4c61e592cd92f86ca"
+    },
+    {
+      "path": "android/lib/src/main/res/layout/lolib_activity_main.xml",
+      "gitBlob": "2a6a6e70583080c046bcf9e644faa33111799170",
+      "bytes": 681,
+      "sha256": "fa9d47e93253f09b1389ff8b563bb4e339f740d5b02edce0c50fb53d1cabe7a1"
+    },
+    {
+      "path": "android/lib/src/main/res/layout/lolib_activity_slide_show.xml",
+      "gitBlob": "73d9452530301bf7a83f7e969031916f8bfa4fe4",
+      "bytes": 504,
+      "sha256": "7748eb4dc45e4a024d429e08d6b1b8b537cdc5dd3481ef49330494450709926a"
+    },
+    {
+      "path": "android/lib/src/main/res/layout/lolib_dialog_loading.xml",
+      "gitBlob": "6b07467f55254dd0c1b862f543fe746f0f458d23",
+      "bytes": 1361,
+      "sha256": "9c6b6da2ba265a125036f50abb4d65c6e0a0629bc07d2023a7db57a6149b400b"
+    },
+    {
+      "path": "android/lib/src/main/res/layout/rate_app_layout.xml",
+      "gitBlob": "608f7c76ec5fcea4865540dffa516aea235343bf",
+      "bytes": 1004,
+      "sha256": "5d8042a3969018b1423337a56f4a76c9e7b4e75bb3822891572e394fef5bea79"
+    },
+    {
+      "path": "android/lib/src/main/res/values-af/strings.xml",
+      "gitBlob": "c38b5255830a51ea1ed4a446bcb2cea6721d280d",
+      "bytes": 1228,
+      "sha256": "5ecf6bc0108038c789bb06791c9965d8bdd4a3e9fc517fd363cd7c7556c83694"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ar/strings.xml",
+      "gitBlob": "ef9df46aac30003083e6641fa640cfdb9f5bbe73",
+      "bytes": 2186,
+      "sha256": "e7a50b0e2c7b3e679353c334242f1d7ebe793e0d7894ace745671b6a899de2a3"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ast/strings.xml",
+      "gitBlob": "ecd1f7ca27f49e564142d07dfaf3edf585851478",
+      "bytes": 1671,
+      "sha256": "b0dfa7d535f0c77067d9b1963c3456450ea0b788a12e711c115fd4315ddad5a9"
+    },
+    {
+      "path": "android/lib/src/main/res/values-az/strings.xml",
+      "gitBlob": "55344e51920f3dcbb968d32ee2281e029d1571bf",
+      "bytes": 63,
+      "sha256": "0aed495e21a70cab045e3b4792a02f2c7ad68fc1687d73474a09db0b269bc041"
+    },
+    {
+      "path": "android/lib/src/main/res/values-b+be+Latn/strings.xml",
+      "gitBlob": "045e125f3d8dad8668061d471dd9869e29e4713a",
+      "bytes": 64,
+      "sha256": "bfbb57a7801bd4275be84b2dc91bcfa4d5d71a7db4f40edd8dbd7681c8665495"
+    },
+    {
+      "path": "android/lib/src/main/res/values-bar/strings.xml",
+      "gitBlob": "2a0f95f9c15a7d495643a858245837b9c10aaf6b",
+      "bytes": 439,
+      "sha256": "2846c21a270f7e8f3e190ee821ac811229638dbad8c1c943d866fcbd2ccd58a6"
+    },
+    {
+      "path": "android/lib/src/main/res/values-bg/strings.xml",
+      "gitBlob": "205cb09378ebf38794e9a4c0981d541bf62a92d3",
+      "bytes": 1799,
+      "sha256": "50ed9655ff563b733050cffd0e58bc979c90e77b1166974d3d6f7d5870ebe7a6"
+    },
+    {
+      "path": "android/lib/src/main/res/values-bn/strings.xml",
+      "gitBlob": "94eac558206fb2636ad2f2af18c4942e865f8682",
+      "bytes": 119,
+      "sha256": "8876748a074a704c63bee8cc291092072e490323acb69125b9f1da7e5ce7212c"
+    },
+    {
+      "path": "android/lib/src/main/res/values-br/strings.xml",
+      "gitBlob": "045e125f3d8dad8668061d471dd9869e29e4713a",
+      "bytes": 64,
+      "sha256": "bfbb57a7801bd4275be84b2dc91bcfa4d5d71a7db4f40edd8dbd7681c8665495"
+    },
+    {
+      "path": "android/lib/src/main/res/values-brh/strings.xml",
+      "gitBlob": "55344e51920f3dcbb968d32ee2281e029d1571bf",
+      "bytes": 63,
+      "sha256": "0aed495e21a70cab045e3b4792a02f2c7ad68fc1687d73474a09db0b269bc041"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ca/strings.xml",
+      "gitBlob": "34c4fb792025183b4df98ce00e61ff35f415097d",
+      "bytes": 2847,
+      "sha256": "db3f739e9e99796d5f200c76279a408a2d99cc3a6d64855ac1988e8762e39fa5"
+    },
+    {
+      "path": "android/lib/src/main/res/values-cs/strings.xml",
+      "gitBlob": "41237af9a771ce3c2ea75443fcc70dd02a354d85",
+      "bytes": 2802,
+      "sha256": "33cf6f90799507c85e2d89308b3cbf80f07c245c6d3e45f87ca01fe1062020d0"
+    },
+    {
+      "path": "android/lib/src/main/res/values-cy/strings.xml",
+      "gitBlob": "343297a682708bde36b27328a03d7908847d5425",
+      "bytes": 2039,
+      "sha256": "aa677fdb39a7c370941e66bdc5cacddabecaaaf1a2b6393f1a56097b677473f0"
+    },
+    {
+      "path": "android/lib/src/main/res/values-da/strings.xml",
+      "gitBlob": "eb660055606ddd6f50ab0667d0bd33482e8d02cf",
+      "bytes": 1937,
+      "sha256": "9375be0ecbfa47ff5a12b36f90bea68a984267e88ded64f918c6ceb79b69166e"
+    },
+    {
+      "path": "android/lib/src/main/res/values-de/strings.xml",
+      "gitBlob": "b7c0dba830fa1fe1d3e00f542b5f3ab0fba075be",
+      "bytes": 2873,
+      "sha256": "bc69a5dfabb3cdf5bf9bab49a12c490680e4fd7436853ff872c7e075885265af"
+    },
+    {
+      "path": "android/lib/src/main/res/values-dsb/strings.xml",
+      "gitBlob": "7bee78b4b0908bb45669d0c5985b47ba83197583",
+      "bytes": 1456,
+      "sha256": "d33f9cea786bc28063f5e4e6a67f6e678d3987ba5e52cc5da1481080e832086e"
+    },
+    {
+      "path": "android/lib/src/main/res/values-el/strings.xml",
+      "gitBlob": "9cde61ae8e9d461dd8dd80158a90ba3a1e0a74d7",
+      "bytes": 4003,
+      "sha256": "18f1d56ebf05a64decc57e56d090bac876dc040f9a2af649a97be431c9927720"
+    },
+    {
+      "path": "android/lib/src/main/res/values-en-rAU/strings.xml",
+      "gitBlob": "7b9c5b4a4fefa033436a90afca7a084d07bd1be3",
+      "bytes": 2413,
+      "sha256": "ef10fdadde4174728cc80944fe1a07ee8a8b2431ef125b595cd97ff0be26f26e"
+    },
+    {
+      "path": "android/lib/src/main/res/values-en-rCA/strings.xml",
+      "gitBlob": "b336f7aad7ce6d76261b4d14c10c0acee5193094",
+      "bytes": 2413,
+      "sha256": "68bd04b83524502a8e7735cfeb253b1a44cd31e7c6ce9aed70cccb14be18feb6"
+    },
+    {
+      "path": "android/lib/src/main/res/values-en-rGB/strings.xml",
+      "gitBlob": "c1540da0dbc286386ce5503e47bad7f13a20f4ae",
+      "bytes": 2458,
+      "sha256": "a2607850eb5f106cb275250f73c110445df24fe665a2fe4c1555bd30455d884c"
+    },
+    {
+      "path": "android/lib/src/main/res/values-en-rNZ/strings.xml",
+      "gitBlob": "79187a4bb6e478a0048552aa47d0c9dad8a206a0",
+      "bytes": 2413,
+      "sha256": "30ae246d8e59ef841c8ba9bd40d2aa7583351b25b6a6f2fd33efe6a32c92d0ff"
+    },
+    {
+      "path": "android/lib/src/main/res/values-en-rZA/strings.xml",
+      "gitBlob": "79187a4bb6e478a0048552aa47d0c9dad8a206a0",
+      "bytes": 2413,
+      "sha256": "30ae246d8e59ef841c8ba9bd40d2aa7583351b25b6a6f2fd33efe6a32c92d0ff"
+    },
+    {
+      "path": "android/lib/src/main/res/values-eo/strings.xml",
+      "gitBlob": "cb7a555962df40c843c906f120edd09678871eac",
+      "bytes": 1989,
+      "sha256": "c16b6a990d93a7ad392b57a0e799eb0dc170b3cc2497abe5fe81d8d67993b5b8"
+    },
+    {
+      "path": "android/lib/src/main/res/values-es/strings.xml",
+      "gitBlob": "3fac50bbbedbaed4fbe1f530f406fb04e334089a",
+      "bytes": 2191,
+      "sha256": "ce9d58edd072838b05d8fcbe20a71f4e6af1df1a3504b4cbe5c5a3428ed1b8e7"
+    },
+    {
+      "path": "android/lib/src/main/res/values-et/strings.xml",
+      "gitBlob": "dc4a82b17700968068decf914b11a1276f6da442",
+      "bytes": 2650,
+      "sha256": "01e77544f949a4dae83a874c371e9b134d0a8390e5fdc3f634ccf51523590fbf"
+    },
+    {
+      "path": "android/lib/src/main/res/values-eu/strings.xml",
+      "gitBlob": "9f6064fd0f57a1db2681f916c165e45d9f6e9e80",
+      "bytes": 2059,
+      "sha256": "cc96307f26e2b262d39bd96e21017635df57f45a32338091d6df0db147880c58"
+    },
+    {
+      "path": "android/lib/src/main/res/values-fa/strings.xml",
+      "gitBlob": "b64eeada2d7fe5fb258b5b4369b13c6b3601125c",
+      "bytes": 656,
+      "sha256": "fde2045a81abb8d740cea14992699d884ddf73c5e0ad957567974adbce6c9d78"
+    },
+    {
+      "path": "android/lib/src/main/res/values-fi/strings.xml",
+      "gitBlob": "70040e88a4238e3a5d8a201b096adbff56d0f082",
+      "bytes": 2083,
+      "sha256": "5a5065d2ddab27079ecb8db227f16376933879004ccdee5dcfd561d601078c88"
+    },
+    {
+      "path": "android/lib/src/main/res/values-fr/strings.xml",
+      "gitBlob": "a78f766bb73b0d3f79113aec701ee5d65daee198",
+      "bytes": 2892,
+      "sha256": "965118e6bc41464994d0a0039c81a2d7d92dd213402ec202cd11499b85229faa"
+    },
+    {
+      "path": "android/lib/src/main/res/values-fy/strings.xml",
+      "gitBlob": "045e125f3d8dad8668061d471dd9869e29e4713a",
+      "bytes": 64,
+      "sha256": "bfbb57a7801bd4275be84b2dc91bcfa4d5d71a7db4f40edd8dbd7681c8665495"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ga/strings.xml",
+      "gitBlob": "98e22296667939be44836ef0ca46784ee8392f35",
+      "bytes": 2805,
+      "sha256": "45de69501829d228143f30069f1260ce61b9ba60043019f112954577da27e05b"
+    },
+    {
+      "path": "android/lib/src/main/res/values-gl/strings.xml",
+      "gitBlob": "f3d6349a7cbe5338d6248ed708f3f5d3b927879c",
+      "bytes": 2112,
+      "sha256": "600570a3a8f12015623bdc8b8ff4304f55ddeef935b2be844c86fc71a0fabb3c"
+    },
+    {
+      "path": "android/lib/src/main/res/values-he/strings.xml",
+      "gitBlob": "ce673ef7ac2d499c04bebb7d5d99810d9215ad52",
+      "bytes": 2346,
+      "sha256": "c3caa763b37eb3a80dcd11c52524fe42eda710d4dd2747cdde363066edbb032b"
+    },
+    {
+      "path": "android/lib/src/main/res/values-hi/strings.xml",
+      "gitBlob": "7ec3cf41e745cd8ee1c90f443c929a4ad8c34b9d",
+      "bytes": 243,
+      "sha256": "421f483f13a00b2f0a1abf26100e2797bade719d6a94e231901afb4e8c0c428f"
+    },
+    {
+      "path": "android/lib/src/main/res/values-hr/strings.xml",
+      "gitBlob": "1fbdbbd531800b6473a7a39b949aa49f12c79b8a",
+      "bytes": 2724,
+      "sha256": "cfb712a696865c740a67c7aabac82f13c56c3ab01c143d4c28285f94fbdbb88d"
+    },
+    {
+      "path": "android/lib/src/main/res/values-hsb/strings.xml",
+      "gitBlob": "0d3f568b651abe6f8ea304b0fac6ed1231159ae9",
+      "bytes": 1428,
+      "sha256": "9280438bf36d241fedf958a58e80ea0de6f045f497e06bc5ba0923a35b32f08d"
+    },
+    {
+      "path": "android/lib/src/main/res/values-hu/strings.xml",
+      "gitBlob": "7e9dfee253e4cc73ac37d10b21944d674d9da7b5",
+      "bytes": 2871,
+      "sha256": "54c13311c38700830c650216f9556cb1da71d353f425cdbb77f1103066d48d10"
+    },
+    {
+      "path": "android/lib/src/main/res/values-hy/strings.xml",
+      "gitBlob": "3ea9dcfec55f964c94e50adb21e15b380e9abed8",
+      "bytes": 3934,
+      "sha256": "0550ae47ec81a651d7af684a83e918c4bc1ec55ada826b8f6a4e7d8372318c14"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ia/strings.xml",
+      "gitBlob": "9f50f7a9480ec3154fbfcec53af8fb2e79cac0f6",
+      "bytes": 288,
+      "sha256": "4ef375d59d57c4badb900b74c10fac61cfd9131e91a67fdef1c46d62b2707d14"
+    },
+    {
+      "path": "android/lib/src/main/res/values-id/strings.xml",
+      "gitBlob": "e1a3f05c0226104d8651db62481efe9a485435dc",
+      "bytes": 1969,
+      "sha256": "8a1b352934c1177c2b9372f37cc1377afea9a10a390079e47373f7d5884532e2"
+    },
+    {
+      "path": "android/lib/src/main/res/values-is/strings.xml",
+      "gitBlob": "78c25b0139fa7666e0e77106bfa8a246f53dd72f",
+      "bytes": 1986,
+      "sha256": "3a637f1b573f6dbf812f862e3e9b13a7a4c2eb7447ca9d3dd63e6405c9f06d31"
+    },
+    {
+      "path": "android/lib/src/main/res/values-it/strings.xml",
+      "gitBlob": "3265f03abfca556fd5a0cb24447a0183f8df8f10",
+      "bytes": 2146,
+      "sha256": "3c74c3d7c748fb3d93168bd0b5e322dfc1c3eef2bfd72ebd7c65fbd746a8bf3e"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ja/strings.xml",
+      "gitBlob": "11f847796e99f0bd718ee220bf96eb73b4c2e7d4",
+      "bytes": 2360,
+      "sha256": "91c60f2d702acf216d8da8aace6052f418354310c1293e4e4062cd8818abd4e7"
+    },
+    {
+      "path": "android/lib/src/main/res/values-jv/strings.xml",
+      "gitBlob": "045e125f3d8dad8668061d471dd9869e29e4713a",
+      "bytes": 64,
+      "sha256": "bfbb57a7801bd4275be84b2dc91bcfa4d5d71a7db4f40edd8dbd7681c8665495"
+    },
+    {
+      "path": "android/lib/src/main/res/values-kab/strings.xml",
+      "gitBlob": "76f00f11be2fec193cab1a46aea5517e9bbab03b",
+      "bytes": 1921,
+      "sha256": "0126ed0eacec7a40c3b52d71da88f6bbab977b70c4a9854f07d00055fcc32324"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ko/strings.xml",
+      "gitBlob": "557077782630ea3be66af2f76a742f23a3c9058c",
+      "bytes": 1955,
+      "sha256": "4065a98714411b67bcf446bbdfa7f1b6e7fecdc66fb7580a253973b619c0a8c1"
+    },
+    {
+      "path": "android/lib/src/main/res/values-large/large-screen.xml",
+      "gitBlob": "6b0ab174a00797a9e8864a2177da17ab1e309b31",
+      "bytes": 106,
+      "sha256": "5c83742c3e92a366f56cb6d772d0c563eb4c82a30d34300ed5f138bc3875098b"
+    },
+    {
+      "path": "android/lib/src/main/res/values-lb/strings.xml",
+      "gitBlob": "55344e51920f3dcbb968d32ee2281e029d1571bf",
+      "bytes": 63,
+      "sha256": "0aed495e21a70cab045e3b4792a02f2c7ad68fc1687d73474a09db0b269bc041"
+    },
+    {
+      "path": "android/lib/src/main/res/values-lo/strings.xml",
+      "gitBlob": "8f99787e2645c33baf5c70a4a07feeb64a718678",
+      "bytes": 3284,
+      "sha256": "9616be4fd0ead950ca3ff34c6f83fd7f6834600e4f25862b5fdebbe04e8ca600"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ml/strings.xml",
+      "gitBlob": "bf01b63c87bb1403f82370d269ad6cf93b13647e",
+      "bytes": 1998,
+      "sha256": "5fef381be57f9a6c1228509d8aedc035a0fba49016cb7345b4a372dd58b44acb"
+    },
+    {
+      "path": "android/lib/src/main/res/values-nb-rNO/strings.xml",
+      "gitBlob": "94faeaf231e419a620af283bae9fd4b7d70f6d03",
+      "bytes": 2561,
+      "sha256": "a5800796bf39899670030bd075e7b6ea9abc3d329a6212f8c707cdbeb1157f95"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ne/strings.xml",
+      "gitBlob": "bca5959136c1672ac4c0fbde81f9f9ac88bfb4dd",
+      "bytes": 3388,
+      "sha256": "c179c1798903bea5912b01cc16fa8e1ebc74931c52d1a08f033870bc4de77d29"
+    },
+    {
+      "path": "android/lib/src/main/res/values-nl/strings.xml",
+      "gitBlob": "cb79ceeba170374d04dcca3bbeca55fa2d34483f",
+      "bytes": 2690,
+      "sha256": "952b4152aac0081fee27698c86fea27abb863f245eab48288d4a993a79730958"
+    },
+    {
+      "path": "android/lib/src/main/res/values-nn/strings.xml",
+      "gitBlob": "10c9ca5b6d9caa6d9265e6b67ba42a6771295bef",
+      "bytes": 2482,
+      "sha256": "fddbcfdbc0a7fd51b139150c10731259fa5da345b672c9c86080b60404bcd267"
+    },
+    {
+      "path": "android/lib/src/main/res/values-oc/strings.xml",
+      "gitBlob": "045e125f3d8dad8668061d471dd9869e29e4713a",
+      "bytes": 64,
+      "sha256": "bfbb57a7801bd4275be84b2dc91bcfa4d5d71a7db4f40edd8dbd7681c8665495"
+    },
+    {
+      "path": "android/lib/src/main/res/values-or/strings.xml",
+      "gitBlob": "045e125f3d8dad8668061d471dd9869e29e4713a",
+      "bytes": 64,
+      "sha256": "bfbb57a7801bd4275be84b2dc91bcfa4d5d71a7db4f40edd8dbd7681c8665495"
+    },
+    {
+      "path": "android/lib/src/main/res/values-pl/strings.xml",
+      "gitBlob": "55da399fdb3480ab15e74342c474e94605754dcc",
+      "bytes": 2780,
+      "sha256": "b2b6022a6ab3ccea65b8f47849845e77f61d20e5bf1745f0a52343346350c07f"
+    },
+    {
+      "path": "android/lib/src/main/res/values-pt-rBR/strings.xml",
+      "gitBlob": "66e562c8cb06b65e900ef9f3c70d41ab0ae61a75",
+      "bytes": 2834,
+      "sha256": "04393a7caa76fdec1268b9c2589c20cc230e6ce518115010c233440c694093a0"
+    },
+    {
+      "path": "android/lib/src/main/res/values-pt/strings.xml",
+      "gitBlob": "0cd050814db624266a5b8b41c001ab91fb15c065",
+      "bytes": 2077,
+      "sha256": "378f72f67327a7667b18fa2a4356727e1c42f100006100b25ec5a2b81929e687"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ro/strings.xml",
+      "gitBlob": "6e5c6070d9053f68b49f1ee0b90de98d5db778d9",
+      "bytes": 2112,
+      "sha256": "51da9bec84f51d2808ccdf20e07f3918c940d9a889fb14034a1395ae5c9017d2"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ru/strings.xml",
+      "gitBlob": "8d3606ff55e185b5cccb234799e77d5dd956d8b4",
+      "bytes": 2835,
+      "sha256": "2661d759d393245399e155c051f7966c6f1f4d346183fe4c2bb89e30d15837d1"
+    },
+    {
+      "path": "android/lib/src/main/res/values-si/strings.xml",
+      "gitBlob": "37d6525e215945d355b50ec0763892a7f428195c",
+      "bytes": 186,
+      "sha256": "4f996545084e548ea5723c43ef4f9b8e5d1d8bdcc9ab429af65ebfc404fbab8d"
+    },
+    {
+      "path": "android/lib/src/main/res/values-sk/strings.xml",
+      "gitBlob": "0864a32bb284663b93c8685eb927312323788c3a",
+      "bytes": 2132,
+      "sha256": "ae86e749e14531a80144411e5d050ccb38b37ffe2581f3e7eb461990ae2d6a36"
+    },
+    {
+      "path": "android/lib/src/main/res/values-sl/strings.xml",
+      "gitBlob": "2e72dcea1ff0923dbcf1c037969c0a51475bb6ac",
+      "bytes": 2693,
+      "sha256": "a2c33c48e28991cb9e5beffc3d1c2f8a298d0d96a21ec390780db07298613575"
+    },
+    {
+      "path": "android/lib/src/main/res/values-sq/strings.xml",
+      "gitBlob": "d90d6d5add02a85c1c36b0829115d8471270a942",
+      "bytes": 2079,
+      "sha256": "9e47ccbef71192002b8c35a42557a90adae620b2b79665cc348be9ad3909230c"
+    },
+    {
+      "path": "android/lib/src/main/res/values-su/strings.xml",
+      "gitBlob": "55344e51920f3dcbb968d32ee2281e029d1571bf",
+      "bytes": 63,
+      "sha256": "0aed495e21a70cab045e3b4792a02f2c7ad68fc1687d73474a09db0b269bc041"
+    },
+    {
+      "path": "android/lib/src/main/res/values-sv/strings.xml",
+      "gitBlob": "1deb1d7880c057e9fb1d13c8acab49897af9b402",
+      "bytes": 2594,
+      "sha256": "835ef23d42dc8d1cdadcaf0e07427e7144f3e99a1c55744b132cd81e7e05bbe8"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ta/strings.xml",
+      "gitBlob": "50d291d693d94c13411bae402a76a9c31c05448e",
+      "bytes": 3870,
+      "sha256": "c8a856d62ef6bc0ac9ca5f53bd4af2666975dcde6a05e31f25f8e9c85d8b2d95"
+    },
+    {
+      "path": "android/lib/src/main/res/values-tr/strings.xml",
+      "gitBlob": "73784fab15f5bb52561ed394dd392a4a90993a19",
+      "bytes": 2685,
+      "sha256": "da8416614f9fb42aa01eeab6ec9b7aabfd4bc6920777f0fddf4d8ab7ffb1883b"
+    },
+    {
+      "path": "android/lib/src/main/res/values-uk/strings.xml",
+      "gitBlob": "7bb1df2f7723e6f5f9ae92739ceedd0d6e64e339",
+      "bytes": 3748,
+      "sha256": "045f2f11c6badb0c816725a24387a43b8228f4109a1f16a5997eaca339622eeb"
+    },
+    {
+      "path": "android/lib/src/main/res/values-ur/strings.xml",
+      "gitBlob": "55344e51920f3dcbb968d32ee2281e029d1571bf",
+      "bytes": 63,
+      "sha256": "0aed495e21a70cab045e3b4792a02f2c7ad68fc1687d73474a09db0b269bc041"
+    },
+    {
+      "path": "android/lib/src/main/res/values-vi/strings.xml",
+      "gitBlob": "7bfe768c51bbff1114b58c44e6769666477c6c91",
+      "bytes": 2250,
+      "sha256": "311c38ed4c85f7d3dbe8371db21731eafb1dbbd3538c6cd28ac509c24f997507"
+    },
+    {
+      "path": "android/lib/src/main/res/values-zh-rCN/strings.xml",
+      "gitBlob": "861c3bbd261a0b6d34f5ff5517e26011a9024d4a",
+      "bytes": 2423,
+      "sha256": "9973bec52a44a5e327fba8bd01221725a99066a5805adbc7f409ed803c18fdce"
+    },
+    {
+      "path": "android/lib/src/main/res/values-zh-rTW/strings.xml",
+      "gitBlob": "a9bbccb17a318b7616385d3d8cd8f35d59a89c24",
+      "bytes": 1917,
+      "sha256": "dfc4c29293fe0052293767f5724473f790df757e199589bbcd6e5c6e7a525ebe"
+    },
+    {
+      "path": "android/lib/src/main/res/values/strings.xml",
+      "gitBlob": "02825d7384fedc934cc679d99c38825c32750a9b",
+      "bytes": 2497,
+      "sha256": "59fb0f507bf85c9fd840c3d326a7ba24411532b6eeb475d2de8b4017ef032791"
+    },
+    {
+      "path": "android/lib/src/main/res/values/values.xml",
+      "gitBlob": "1f065e9706d08f2028ae7d5d15991bf22312708a",
+      "bytes": 107,
+      "sha256": "ff23a5443b60c6502cdf96edc38929b15959bbcfbd11da1a79955adc8e9433fa"
+    },
+    {
+      "path": "engine/include/COKit/COKit.hxx",
+      "gitBlob": "f4d2acb4bbd1fa0b699e141996aeab1625becb1b",
+      "bytes": 111175,
+      "sha256": "2c93765fc54bf1da7ed4e90e0692132caa97a5a32a6fd1391b8b6e9165181e37"
+    }
+  ]
+}
