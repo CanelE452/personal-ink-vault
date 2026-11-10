@@ -16,6 +16,7 @@ class _DrivePanelState extends State<DrivePanel> {
 
   String get label {
     if (controller.error != null) return 'Drive 연결 확인 필요';
+    if (controller.waitingForLease) return '다른 Drive 동기화 작업 대기 중';
     if (!controller.ready || controller.busy) return 'Drive 준비 중';
     if (!controller.connected) return '기기에 저장됨 · Drive 미연결';
     return switch (controller.status.phase) {
@@ -62,6 +63,11 @@ class _DrivePanelState extends State<DrivePanel> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(label),
+                  if (controller.waitingForLease)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text('현재 동기화 작업이 끝나면 자동으로 이어집니다.'),
+                    ),
                   const SizedBox(height: 12),
                   const Text(
                     '로컬 PDF·필기는 로그인 없이 저장됩니다. Drive 반영 완료는 다른 기기의 수신 완료를 뜻하지 않습니다.',

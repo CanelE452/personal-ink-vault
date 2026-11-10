@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136197,
+  "versionCode": 136198,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,7 +17,7 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "166482cffdb44e1c3d3acd4356636f41f20f0ef82ebbb8396198d9eed2cfdfb5",
+      "sha256": "b4d5f0c5aec921ce7248f1cd8affae9e8a6792e2112724136aa1892356f38e55",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
@@ -501,7 +501,7 @@
       "mode": "100644"
     },
     "lib/components/drive/drive_panel.dart": {
-      "sha256": "90da493166e3d4778b2ec50f45295a080ad0f94a740c9ad44f1679b07c19baf6",
+      "sha256": "1cd1a3ca39501475d1fb8c491428a8515e7543ac8f37c868539f5c9c1748c2e8",
       "mode": "100644"
     },
     "lib/components/editor/read_only_banner.dart": {
@@ -781,7 +781,7 @@
       "mode": "100644"
     },
     "lib/data/drive/drive_connection.dart": {
-      "sha256": "6e7e9669e51ef019a8a80dfc4ed665e57c6de5884b49331d0ced13ff7fb7ce53",
+      "sha256": "3857d02dd2ede142d104767688039cd99f0b05931289dfae0e23d433b4ddee1e",
       "mode": "100644"
     },
     "lib/data/drive/oauth_flow.dart": {
@@ -1877,7 +1877,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_controller.dart": {
-      "sha256": "3b770b26c37f662307f557122389a54288ba12794459ad423192e6b635515fe2",
+      "sha256": "3841d439589679a1535d89d20e8c8e1df35ff94d88c02099b3efdea7d5dfca50",
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_quick_switcher.dart": {
@@ -2053,7 +2053,7 @@
       "mode": "100644"
     },
     "packages/ink_vault_core/lib/src/repository.dart": {
-      "sha256": "94f241ee52a031c53aab019f7222edec22fab8ec16bc80392536b909f902d3d7",
+      "sha256": "38eee6d858d31fc8be20a4c431f3d17c2c9ac78c8348f45ad8e899bf5d56100f",
       "mode": "100644"
     },
     "packages/ink_vault_core/lib/src/revision.dart": {
@@ -2316,8 +2316,8 @@
       "sha256": "ca46113c51d38e8bbc033590acab2959030179ff401585105b183a848e32c623",
       "mode": "100644"
     },
-    "scripts/build-android-197.sh": {
-      "sha256": "13fa3dc06af0c984f3b70ed251c6b1006a50e4d05cf1619641731da49ad1e0fd",
+    "scripts/build-android-198.sh": {
+      "sha256": "35f12d41ca71e6ca2a316e24657c6ff441a66efcfefce34bfea99c48ace52bf0",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {

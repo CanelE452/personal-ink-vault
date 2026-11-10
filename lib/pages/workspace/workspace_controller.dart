@@ -1229,19 +1229,9 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   Future<void> reloadFromDisk() => _serialize(() async {
-    final previous = repository;
-    await _changes?.cancel();
     await _refreshTail;
-    await previous.close();
-    final next = await NoteRepository.open(previous.root);
-    final bookmark = searchesFromBookmark;
-    final expression = searchesWithOperators;
-    repository = next;
-    if (bookmark) _bookmarkQueryRepository = next;
-    if (expression) _expressionQueryRepository = next;
-    activeSession?.repository = next;
-    _listen();
-  }).then((_) => refresh());
+    await repository.reloadFromDisk();
+  }).then((_) => _refreshTail);
 
   Future<void> openNote(
     VaultNote note, {

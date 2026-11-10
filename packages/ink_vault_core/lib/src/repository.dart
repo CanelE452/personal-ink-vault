@@ -49,7 +49,8 @@ final class PreparedCommit {
 /// on open. Operations are serialized per instance; cross-process locking and
 /// power-loss durability of directory entries are not promised.
 /// Verified immutable blobs are cached per instance. External disk mutations are
-/// checked on explicit payload reads/imports and reopen, without a file watcher.
+/// checked on explicit payload reads/imports and disk refresh, without a file
+/// watcher.
 class NoteRepository {
   final Directory root;
   final String vaultId;
@@ -89,17 +90,7 @@ class NoteRepository {
     String storedDevice;
     int storedFormat;
     if (await config.exists()) {
-      final json = jsonObject(jsonDecode(await config.readAsString()));
-      if ((json['formatVersion'] != 1 && json['formatVersion'] != 2) ||
-          json['vaultId'] is! String ||
-          json['deviceId'] is! String) {
-        throw const FormatException('Invalid vault configuration');
-      }
-      storedVault = json['vaultId'] as String;
-      storedDevice = json['deviceId'] as String;
-      storedFormat = json['formatVersion'] as int;
-      validateId(storedVault);
-      validateId(storedDevice);
+      (storedVault, storedDevice, storedFormat) = await _readIdentity(config);
       if (vaultId != null && storedVault != vaultId ||
           deviceId != null && storedDevice != deviceId) {
         throw const FormatException('Vault or device identity mismatch');
@@ -127,6 +118,27 @@ class NoteRepository {
     );
     await Directory('${root.path}/blobs').create();
     await Directory('${root.path}/revisions').create();
+    await repository._loadRecords();
+    return repository;
+  }
+
+  static Future<(String, String, int)> _readIdentity(File config) async {
+    final json = jsonObject(jsonDecode(await config.readAsString()));
+    final vault = json['vaultId'];
+    final device = json['deviceId'];
+    final format = json['formatVersion'];
+    if (vault is! String ||
+        device is! String ||
+        format is! int ||
+        (format != 1 && format != 2)) {
+      throw const FormatException('Invalid vault configuration');
+    }
+    validateId(vault);
+    validateId(device);
+    return (vault, device, format);
+  }
+
+  Future<void> _loadRecords() async {
     await for (final file in Directory(
       '${root.path}/revisions',
     ).list(followLinks: false)) {
@@ -135,20 +147,17 @@ class NoteRepository {
         final r = RevisionRecord.fromJson(
           jsonObject(jsonDecode(await file.readAsString())),
         );
-        if (r.formatVersion > storedFormat ||
-            r.vaultId != storedVault ||
+        if (r.formatVersion > formatVersion ||
+            r.vaultId != vaultId ||
             file.uri.pathSegments.last != '${r.revisionId}.json') {
           throw const FormatException('Revision identity mismatch');
         }
-        repository._records[r.revisionId] = r;
+        _records[r.revisionId] = r;
       } on FormatException {
-        repository._integrityIssues.add(
-          'Invalid manifest: ${file.uri.pathSegments.last}',
-        );
+        _integrityIssues.add('Invalid manifest: ${file.uri.pathSegments.last}');
       }
     }
-    await repository._rebuild();
-    return repository;
+    await _rebuild();
   }
 
   Future<T> _serial<T>(Future<T> Function() action) {
@@ -157,6 +166,35 @@ class NoteRepository {
     _tail = next.then<void>((_) {}, onError: (Object _, StackTrace __) {});
     return next;
   }
+
+  /// Reloads revisions written by a background worker while keeping open
+  /// sessions and their change subscriptions bound to this repository.
+  Future<void> reloadFromDisk() => _serial(() async {
+    final identity = await _readIdentity(File('${root.path}/vault.json'));
+    if (identity != (vaultId, deviceId, formatVersion)) {
+      throw const FormatException('Vault identity or format changed');
+    }
+
+    final snapshot = NoteRepository._(root, vaultId, deviceId, formatVersion);
+    try {
+      await snapshot._loadRecords();
+      _records
+        ..clear()
+        ..addAll(snapshot._records);
+      _active
+        ..clear()
+        ..addAll(snapshot._active);
+      _integrityIssues
+        ..clear()
+        ..addAll(snapshot._integrityIssues);
+      _validatedBlobLengths
+        ..clear()
+        ..addAll(snapshot._validatedBlobLengths);
+      _changes.add(null);
+    } finally {
+      await snapshot.close();
+    }
+  });
 
   Future<RevisionRecord> commit({
     required String entityId,

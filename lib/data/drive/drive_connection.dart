@@ -123,6 +123,7 @@ class DriveConnectionController extends ChangeNotifier {
   SyncCoordinator? coordinator;
   DriveRemoteStore? _remote;
   DriveSyncLease? _lease;
+  ({Timer timer, bool resume})? _leaseRetry;
   StreamSubscription<SyncStatus>? _statuses;
   var status = const SyncStatus(SyncPhase.idle);
   String? error, recoveryBackupPath;
@@ -145,6 +146,7 @@ class DriveConnectionController extends ChangeNotifier {
       DriveRemoteStore(accessToken: token);
   bool get signedIn => auth?.accountId != null;
   bool get backgroundRegistrationFailed => _backgroundRegistrationFailed;
+  bool get waitingForLease => _leaseRetry != null;
   bool get connected =>
       ready &&
       settings.folderId != null &&
@@ -358,7 +360,8 @@ class DriveConnectionController extends ChangeNotifier {
       }
       _requireCurrentLegacyRepository(source);
       final bound = settings.folderId != null && _matchesRepository(source);
-      final restartSync = bound && coordinator != null;
+      final restartSync = bound && (coordinator != null || waitingForLease);
+      final resumeSync = _leaseRetry?.resume ?? false;
       NoteRepository? next;
       try {
         var latest = source;
@@ -390,7 +393,7 @@ class DriveConnectionController extends ChangeNotifier {
           status = const SyncStatus(SyncPhase.idle);
           if (!upgraded && restartSync && _canResumeRepository()) {
             try {
-              await _start();
+              await _start(resume: resumeSync);
             } catch (_) {
               // Keep the copy failure available to the caller.
               await _stop();
@@ -413,24 +416,65 @@ class DriveConnectionController extends ChangeNotifier {
   }
 
   Future<void> _acquireLease() async {
-    if (_lease != null) return;
     final deadline = DateTime.now().add(const Duration(seconds: 30));
-    while (true) {
+    while (!await _tryAcquireLease()) {
+      if (DateTime.now().isAfter(deadline))
+        throw const OAuthFailure(
+          'Another sync task is still active. Retry shortly.',
+        );
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+  }
+
+  Future<bool> _tryAcquireLease() async {
+    if (_lease != null) return true;
+    final port = settings.leasePort;
+    final DriveSyncLease lease;
+    try {
+      lease = await DriveSyncLease.acquire(port);
+    } on SocketException catch (error) {
+      final code = error.osError?.errorCode;
+      // Windows Dart can omit the native address-in-use error code.
+      if (port != 0 &&
+          (const {48, 98, 10048}.contains(code) ||
+              Platform.isWindows && code == -1)) {
+        return false;
+      }
+      rethrow;
+    }
+    if (port == 0) {
+      settings.leasePort = lease.port;
       try {
-        _lease = await DriveSyncLease.acquire(settings.leasePort);
-        if (settings.leasePort == 0) {
-          settings.leasePort = _lease!.port;
-          await settings.save(settingsDirectory);
-        }
-        return;
-      } on SocketException {
-        if (DateTime.now().isAfter(deadline))
-          throw const OAuthFailure(
-            'Another sync task is still active. Retry shortly.',
-          );
-        await Future<void>.delayed(const Duration(milliseconds: 250));
+        await settings.save(settingsDirectory);
+      } catch (_) {
+        settings.leasePort = 0;
+        await lease.close();
+        rethrow;
       }
     }
+    _lease = lease;
+    return true;
+  }
+
+  void _cancelLeaseRetry() {
+    _leaseRetry?.timer.cancel();
+    _leaseRetry = null;
+  }
+
+  void _scheduleLeaseRetry({required bool resume}) {
+    late final Timer timer;
+    timer = Timer(const Duration(seconds: 1), () {
+      unawaited(
+        run(() async {
+          if (coordinator == null && _canResumeRepository()) {
+            await _start();
+          } else {
+            _cancelLeaseRetry();
+          }
+        }, when: () => identical(_leaseRetry?.timer, timer)),
+      );
+    });
+    _leaseRetry = (timer: timer, resume: resume);
   }
 
   bool _matchesRepository(NoteRepository repo) =>
@@ -456,11 +500,20 @@ class DriveConnectionController extends ChangeNotifier {
   }
 
   Future<void> _start({bool resume = false}) async {
+    resume = resume || (_leaseRetry?.resume ?? false);
+    _cancelLeaseRetry();
     if (!_foreground || _closed || settings.folderId == null) return;
     final accountId = auth?.accountId;
     settings.requireAccount(accountId);
     _requireMatchingRepository(repository());
-    await _acquireLease();
+    if (!await _tryAcquireLease()) {
+      if (!_closed) _scheduleLeaseRetry(resume: resume);
+      return;
+    }
+    if (_closed) {
+      await _stop();
+      return;
+    }
     try {
       await _reloadRepository();
       final repo = repository();
@@ -517,6 +570,7 @@ class DriveConnectionController extends ChangeNotifier {
   }
 
   Future<void> _stop({bool keepLease = false}) async {
+    _cancelLeaseRetry();
     try {
       await coordinator?.close();
     } finally {
@@ -572,12 +626,14 @@ class DriveConnectionController extends ChangeNotifier {
         if (_canResumeRepository()) {
           await auth!.restoreForSync();
           await _start();
+        } else {
+          _cancelLeaseRetry();
         }
       },
       when: () {
         final sync = coordinator;
         return sync == null
-            ? _canResumeRepository()
+            ? waitingForLease || _canResumeRepository()
             : !identical(sync.repository, repository());
       },
     );
@@ -634,6 +690,7 @@ class DriveConnectionController extends ChangeNotifier {
   Future<void> cancelSignIn() async => auth?.cancel();
   Future<void> close() async {
     _closed = true;
+    _cancelLeaseRetry();
     await auth?.cancel();
     await _tail;
     await _stop();
