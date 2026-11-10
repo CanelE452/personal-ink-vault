@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "family": "Noto Sans KR",
+  "style": "Variable TrueType",
+  "version": "2.004",
+  "fileName": "NotoSansKR-Portable.ttf",
+  "assetPath": "build/native/fonts/NotoSansKR-Portable.ttf",
+  "bytes": 10415420,
+  "sha256": "9e1d729e7e2b36f9ef439da102f8c134c10aabe46f1c843bf0aca5c043b86f76",
+  "sourceRepository": "https://github.com/notofonts/noto-cjk",
+  "sourceCommit": "523d033d6cb47f4a80c58a35753646f5c3608a78",
+  "sourcePath": "Sans/Variable/TTF/Subset/NotoSansKR-VF.ttf",
+  "sourceUrl": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/Variable/TTF/Subset/NotoSansKR-VF.ttf",
+  "copyright": "© 2014-2021 Adobe (http://www.adobe.com/).",
+  "license": {
+    "spdx": "OFL-1.1",
+    "fileName": "OFL.txt",
+    "assetPath": "build/native/fonts/OFL.txt",
+    "bytes": 4381,
+    "sha256": "aa740660d65a99854f1acbcedead0741255ad09d911f19f63d4e1086cb256804"
+  }
+}

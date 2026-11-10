@@ -1,0 +1,3 @@
+-keep class org.libreoffice.androidlib.** { *; }
+-keep class io.github.canele452.personalinkvault.office.** { *; }
+-dontwarn com.android.tools.r8.keepanno.annotations.UsedByNative

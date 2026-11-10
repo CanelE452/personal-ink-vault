@@ -1,0 +1,368 @@
+common:
+  done: 完了
+  continueBtn: 続ける
+  cancel: 取消
+home:
+  tabs:
+    home: ホーム
+    browse: 閲覧
+    whiteboard: ホワイトボード
+    settings: 設定
+  titles:
+    home: 最近のメモ
+    browse: 閲覧
+    whiteboard: ホワイトボード
+    settings: 設定
+  tooltips:
+    newNote: 新しいメモ
+    showUpdateDialog: 更新ダイアログの表示
+    exportNote: メモを書き出す
+  create:
+    newNote: 新しいノート
+    importNote: ノートをインポートする
+  welcome: ようこそSaberへ
+  invalidFormat: 選択されたファイルはサポートされていません。sbn/sbn2 ファイルか、PDFファイルを選択してください。
+  noFiles: ファイルが見つかりません
+  noPreviewAvailable: プレビューがありません
+  createNewNote: +ボタンで新しくメモを作成
+  backFolder: 前のフォルダに戻る
+  newFolder:
+    newFolder: 新しいフォルダー
+    folderName: フォルダー名
+    create: 作成
+    folderNameEmpty: フォルダー名は空欄にすることはできません
+    folderNameContainsSlash: フォルダー名にはスラッシュを使用できません
+    folderNameExists: 同一のフォルダー名がすでに存在します
+  renameNote:
+    renameNote: メモのタイトルを変更
+    noteName: メモのタイトル
+    rename: 名称変更
+    noteNameEmpty: メモのタイトルは空欄にすることはできません
+    noteNameExists: 同一のタイトルがすでに存在します
+    noteNameForbiddenCharacters: 名前に使えない文字が含まれています
+    noteNameReserved: 名前は予約済みです
+  moveNote:
+    moveNote: メモを移動
+    moveNotes: $nのノートを移動する
+    moveName: $f を移動
+    move: 移動
+    renamedTo: $newName に名称を変更した
+    multipleRenamedTo: "そのメモの名前が次のものに変更されます:"
+    numberRenamedTo: $n のノートは、競合を避けるために名前を変更されます
+  deleteNote: メモを削除
+  deleteNoteDialog:
+    deleteNotes: $nのメモを削除
+    deleteName: $fを削除
+    confirmDelete:
+      one: 選択されたメモを完全に削除しますか？
+      other: 選択されたメモを完全に削除しますか？
+    delete: 削除
+  renameFolder:
+    renameFolder: フォルダ名を変更
+    folderName: フォルダ名
+    rename: 名称変更
+    folderNameEmpty: フォルダー名を空欄にすることはできません
+    folderNameContainsSlash: フォルダー名にはスラッシュを使用できません
+    folderNameExists: この名前のフォルダーは既に存在します
+  deleteFolder:
+    deleteFolder: フォルダを削除
+    deleteName: $fを削除
+    delete: 削除
+    alsoDeleteContents: フォルダ内のメモも全て削除する
+  sort:
+    sortBy(OUTDATED): 並べ替えで
+    nameAToZ(OUTDATED): 名前（A-Z）
+    nameZToA(OUTDATED): 名前（A-Z）
+    lastModifiedNewToOld(OUTDATED): 編集済み（新しい順）
+    lastModifiedOldToNew(OUTDATED): 編集済み（古い順）
+  layout:
+    layout(OUTDATED): レイアウト
+    masonryGrid(OUTDATED): メーソンリーグリッド
+    simpleGrid(OUTDATED): シンプルなグリッド
+sentry:
+  consent:
+    title: Saver アプリの改善を助けますか？
+    description:
+      question: 予期せぬエラーを自動的に報告しますか？問題の早期解決を助けます。
+      scope: レポートには、エラーとデバイスに関する情報が含まれている場合があります。 個人データをフィルタアウトするために、すべての努力をしましたが、一部残っている可能性があります。
+      currentlyOff: 同意すると、アプリの再起動後にエラーのレポートが有効になります。
+      currentlyOn: 同意を取り消す場合は、アプリを再起動することでエラーレポートが無効になります。
+      learnMoreInPrivacyPolicy(rich): ${link(プライバシーポリシー)}で詳細を確認してください。
+    answers:
+      yes: はい
+      no: いいえ
+      later: あとで回答する
+settings:
+  prefCategories:
+    general: 一般
+    writing: 文章
+    editor: 編集
+    performance: パフォーマンス
+    advanced: アドバンスド
+  prefLabels:
+    locale: アプリの言語
+    appTheme: アプリのテーマ
+    platform: テーマの種類
+    layoutSize: レイアウトの種類
+    customAccentColor: オリジナルの色
+    hyperlegibleFont: Hyperlegible フォント
+    shouldCheckForUpdates: Saberの更新を自動的に確認する
+    shouldAlwaysAlertForUpdates: より速いアップデート
+    allowInsecureConnections: 安全でない接続を許可する
+    editorToolbarAlignment: 編集ツールバーの位置調整
+    editorToolbarShowInFullscreen: フルスクリーンモードで編集ツールバーを表示する
+    editorAutoInvert: ダークモードでメモを反転
+    preferGreyscale: グレースケールを優先
+    maxImageSize: 最大画像サイズ
+    autoClearWhiteboardOnExit: アプリを終了したらホワイトボードを消去する
+    disableEraserAfterUse: 消しゴムの自動無効化
+    editorPromptRename: 新しいメモの名前を変更するよう促す
+    recentColorsDontSavePresets: 最近使用した色をプリセットに登録しない
+    recentColorsLength: 最近使用した色を記憶する数
+    printPageIndicators: 印刷ページのインジケーター
+    autosave: 自動保存
+    shapeRecognitionDelay: 形状認識遅延
+    autoStraightenLines: 自動で線分を直す
+    sentry: エラー報告
+    autoDisableFingerDrawingWhenStylusDetected(OUTDATED): 指の描画を自動的に無効にする
+    customDataDir(OUTDATED): カスタムデータディレクトリ
+    hideFingerDrawingToggle(OUTDATED): 指の描画トグルを非表示にする
+  prefDescriptions:
+    hyperlegibleFont: Atkinson Hyperlegibleは、弱視読者の読みやすさを向上させます。
+    allowInsecureConnections: (非推奨) Saber が自己署名/信頼できない証明書を持つサーバーに接続できるようにする
+    preferGreyscale: e-inkディスプレイ用
+    autoClearWhiteboardOnExit: 他のデバイスと同期されます
+    disableEraserAfterUse: 消しゴムの使用後、自動的にペンに戻す
+    maxImageSize: これより大きな画像は圧縮されます
+    hideFingerDrawing:
+      shown: 誤ったトグルを防ぐ
+      fixedOn(OUTDATED): 指の描画が有効に固定される
+      fixedOff(OUTDATED): 指の描画が無効に固定される
+    editorPromptRename: メモの名前は後でいつでも変更できます
+    printPageIndicators: エクスポートにページインジケーターを表示
+    autosave: 短い遅延のあとに自動保存するか
+    shapeRecognitionDelay: 形のプレビューを更新する頻度
+    autoStraightenLines: シェイプペンを使わずに長い線真っすぐにする
+    shouldAlwaysAlertForUpdates: 更新が利用可能になったらすぐに教えてください
+    sentry:
+      active: 有効
+      inactive: 無効
+      activeUntilRestart: アプリを再起動するまで有効
+      inactiveUntilRestart: アプリを再起動するまでの無効
+    autoDisableFingerDrawingWhenStylusDetected(OUTDATED): スタイラスが検出されたときに指の描画をオフにする
+  themeModes:
+    system: システム
+    light: ライト
+    dark: ダーク
+  layoutSizes:
+    auto: 自動
+    phone: 電話
+    tablet: タブレット
+  accentColorPicker:
+    pickAColor: 色を選択する
+  systemLanguage: システムの言語
+  axisDirections:
+  - 上部
+  - 右側
+  - 下部
+  - 左側
+  reset:
+    title: この設定をリセットしますか？
+    button: リセット
+  resyncEverything: すべてを同期する
+  openDataDir: Saber フォルダーを開く
+  customDataDir:
+    cancel: 取消
+    select: 選択
+    mustBeEmpty: 選択するフォルダは空でなければなりません
+    mustBeDoneSyncing: フォルダを変更する前に、同期が完了していることを確認してください
+    unsupported: この機能は現在、開発者向けです。 これにより、データが失われる可能性があります.
+  autosaveDisabled(OUTDATED): 一度もない
+  shapeRecognitionDisabled(OUTDATED): 一度もない
+logs:
+  logs: ログ
+  viewLogs: ログを表示
+  debuggingInfo: ログにはデバッグや開発に役立つ情報が含まれています
+  noLogs: ログはありません！
+  useTheApp: ログはアプリを使うと表示されます
+login:
+  title: ログイン
+  form:
+    agreeToPrivacyPolicy(rich): ログインすることにより、${linkToPrivacyPolicy(プライベートポリシー)}に同意したものとみなされます。
+  signup(rich): まだアカウントをお持ちでないですか？ ${linkToSignup(今すぐ登録)}!
+  notYou(rich): お問い合わせ ${undoLogin(別のアカウントを選択)}.
+  status:
+    loggedOut: ログアウト
+    tapToLogin: タップしてNextcloudにログイン
+    hi: こんにちは、$u!
+    almostDone: 同期の準備がほぼ完了しました。タップしてログインを完了してください。
+    loggedIn: Nextcloudでログイン
+  ncLoginStep:
+    whereToStoreData: "データを保存する場所を選択してください:"
+    saberNcServer: Saber の Nextcloud サーバー
+    otherNcServer: その他のNextcloudサーバー
+    serverUrl: サーバーのURL
+    loginWithSaber: Saber にログイン
+    loginWithNextcloud: Nextcloudでログイン
+    loginFlow:
+      pleaseAuthorize: Saber に登録して、あなたのNextcloudアカウントにアクセスしてください
+      followPrompts: Nextcloud のプロンプトに従ってください
+      browserDidntOpen: ログインページが開かなかった場合はここをクリック
+  encLoginStep:
+    enterEncPassword: "データを保護するために、暗号化パスワードを入力してください:"
+    newToSaber: Saber は初めてですか？新しい暗号化パスワードを入力するだけです。
+    encPassword: 暗号化パスワード
+    encFaqTitle: よくある質問
+    wrongEncPassword: 入力されたパスワードでは、復号に失敗しました。 もう一度入力してください。
+    connectionFailed: サーバ接続時に問題が発生しました。後でもう一度お試しください.
+    encFaq:
+    - q: 暗号化パスワードとは何ですか？なぜ2つのパスワードを使用するのですか？
+    - q: 暗号化パスワードは未設定です。 どこで設定できますか？
+      a: |-
+        両方に新しい暗号化パスワードを入力してください。
+        Saber は自動で新しい暗号化キーを生成します。
+    - q: Nextcloud アカウントと同じパスワードを使うことはできますか?
+profile:
+  title: プロフィール
+  logout: ログアウト
+  quotaUsage: $total のうち、 $used ($percent%) を使用しています。
+  connectedTo: 接続する
+  quickLinks:
+    serverHomepage: サーバーホームページ
+    deleteAccount: アカウントの削除
+  faqTitle: よくある質問
+  faq:
+  - q: ログアウトするとメモが消えてしまいますか？
+    a: いいえ。メモはデバイスとサーバーの両方に残ります。ログインし直すまで、サーバーとは同期されません。データを失わないように、ログアウトする前に同期が完了したことを確認してください（ホーム画面の同期進行状況をご覧ください）。
+  - q: Nextcloudのパスワードを変更する方法を教えてください
+    a: サーバーのウェブサイトにアクセスし、ログインします。「設定」>「セキュリティ」>「パスワードの変更」を選択します。パスワード変更後は、Saberからログアウトし、再度ログインする必要があります。
+  - q: 暗号化パスワードの変更方法を教えてください。
+    a: |-
+      1. Saberからログアウトする。データが失われないように、ログアウトする前に同期が完了していることを確認してください（ホーム画面で同期の進行状況を確認できます）。
+      2. サーバーのウェブサイトにアクセスし、「Saber」フォルダを削除してください。これにより、サーバーからすべてのメモが削除されます。
+      3. セーバーに再ログインする。ログイン時に新しい暗号化パスワードを選択できます。
+      4. 他のデバイスでもログアウトしてログインし直すことをお忘れなく。
+  - q: アカウントを削除するにはどうすればよいですか？
+    a: "上部の\"@:profile.quickLinks.deleteAccount\"ボタンをタップし、必要であればログインしてください。Saber公式サーバーを利用している場合、1週間の猶予期間の後にアカウントが削除されます。この期間中であれば、adilhanney@disroot.orgまでご連絡いただければ、削除を取り消すことが可能です。サードパーティのサーバーをご利用の場合、アカウントを削除するオプションがない場合があります。詳細については、ご利用のサーバープライバシーポリシーをご確認ください。"
+  quotaUsageUncapped(OUTDATED): $used を使用しています
+appInfo:
+  licenseNotice: |-
+    Saber  Copyright © 2022-$buildYear  Adil Hanney
+    このプログラムには一切の保証がありません。これはフリーソフトウェアであり、一定の条件下で再配布することを歓迎します。
+  debug: デバッグ
+  sponsorButton: 私のスポンサーになる、またはストレージを購入する際は、ここをタップしてください。
+  licenseButton: ライセンス情報を見るには、ここをタップして
+  privacyPolicyButton: プライバシーポリシーを見るには、ここをタップして
+update:
+  updateAvailable: 更新が可能です
+  updateAvailableDescription: 新バージョンのアプリがリリースされ、以下の変更があった：
+  update: 更新
+  downloadNotAvailableYet(OUTDATED): お使いのプラットフォームではまだダウンロードできません。しばらくしてからもう一度ご確認ください。
+editor:
+  toolbar:
+    toggleColors: 色の切り替え (Ctrl C)
+    select: 選択
+    toggleEraser: 消しゴムに切り替え (Ctrl E)
+    photo: 画像
+    text: テキスト
+    toggleFingerDrawing: 指での描画に切り替え (Ctrl F)
+    undo: 元に戻す
+    redo: やり直す
+    export: エクスポート (Ctrl Shift S)
+    exportAs: "次にエキスポート:"
+    fullscreen: フルスクリーンに切り替え (F11)
+  pens:
+    fountainPen: 万年筆
+    ballpointPen: ボールペン
+    highlighter: 蛍光ペン
+    pencil: 鉛筆
+    shapePen: シェープペン
+    laserPointer: レーザーポインター
+  penOptions:
+    size: サイズ
+  colors:
+    colorPicker: カラーピッカー
+    customBrightnessHue: カスタム $b $h
+    customHue: カスタム $h
+    dark: ダークテーマ
+    light: ライトテーマ
+    black: 黒
+    darkGrey: 濃い灰色
+    grey: 灰色
+    lightGrey: 明るい灰色
+    white: 白色
+    red: 赤色
+    green: 緑色
+    cyan: シアン
+    blue: 青色
+    yellow: 黄色
+    purple: 紫色
+    pink: ピンク
+    orange: 橙色
+    pastelRed: パステル・赤
+    pastelOrange: パステル・橙色
+    pastelYellow: パステル・黄色
+    pastelGreen: パステル・緑色
+    pastelCyan: パステル・青緑色
+    pastelBlue: パステル・青色
+    pastelPurple: パステル・紫色
+    pastelPink: パステル・桃色
+  imageOptions:
+    title: 画像オプション
+    invertible: 不可逆
+    download: ダウンロード
+    setAsBackground: 背景に設定
+    removeAsBackground: 背景として削除
+    delete: 削除
+  selectionBar:
+    delete: 削除
+    duplicate: 複製
+  menu:
+    clearPage: ページを削除 $page/$totalPages
+    clearAllPages: すべてのページを消去する
+    insertPage: 以下のページを挿入
+    duplicatePage: 重複したページ
+    deletePage: ページの削除
+    lineHeight: 行の高さ
+    lineHeightDescription: 手書きメモのテキストサイズを調整することもできます
+    lineThickness: 線の太さ
+    lineThicknessDescription: 背景の線の太さ
+    backgroundPattern: 背景パターン
+    import: インポート
+    watchServer: サーバのアップデートを見る
+    watchServerReadOnly: サーバーに接続できないときは、編集できません
+    boxFits:
+      fill: 貼る
+      cover: カバー
+      contain: コンテイン
+    bgPatterns:
+      none: 空白
+      college: 罫線
+      collegeRtl: 罫線 (反転)
+      lined: 線
+      grid: 格子
+      dots: 点
+      staffs: スタッフ
+      tablature: タブ譜
+      cornell: 角
+    backgroundImageFit(OUTDATED): 背景画像
+  readOnlyBanner:
+    title: 読み取り専用モード
+    watchingServer: 現在、サーバーの更新を待っています。 このモードで編集が無効になっています.
+    corrupted: メモの読み込みに失敗しました。メモが破損しているか、ダウンロード中である可能性があります。
+  versionTooNew:
+    title: このメモは新しいバージョンのSaberを使用して編集されたものです
+    subtitle: このメモを編集すると、いくつかの情報が失われる可能性があります。これを無視して編集しますか？
+    allowEditing: 編集を許可する
+  quill:
+    typeSomething: ここに何かを入力してください…
+  hud:
+    unlockZoom: ズームの解除
+    lockZoom: ズームを固定する
+    unlockSingleFingerPan: 一本指でのパン操作を有効にする
+    lockSingleFingerPan: 一本指でのパン操作を無効にする
+    unlockAxisAlignedPan: 水平または垂直へのパンロックを解除
+    lockAxisAlignedPan: パンニングを水平または垂直にロックする
+  pages: ページ
+  untitled: 無題
+  needsToSaveBeforeExiting: 変更を保存する… 編集が終わったら、エディターを安全に終了することができます。

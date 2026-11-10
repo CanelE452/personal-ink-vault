@@ -1,0 +1,19 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="io.github.canele452.personalinkvault.office.OfficeEditorActivity"
+            android:exported="false"
+            android:theme="@style/InkVaultOfficeTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name="org.libreoffice.androidlib.SlideShowActivity"
+            android:exported="false"
+            android:theme="@style/InkVaultOfficeTheme" />
+        <provider
+            android:name="org.libreoffice.androidlib.ClipboardFileProvider"
+            android:authorities="${applicationId}.clipboard"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>
