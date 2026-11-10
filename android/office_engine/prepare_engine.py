@@ -538,10 +538,10 @@ def patch_activity(text):
         }""", 1)
     text = text.replace(ready_marker, """            case "hideProgressbar": {
                 runOnUiThread(() -> {
-                    if (!pivAwaitingReady || pivDestroyed || pivClosing || pivNativeClosed.get() || isFinishing()) return;
+                    if (isEmbeddedPreviewOnly() || !pivAwaitingReady || pivDestroyed || pivClosing || pivNativeClosed.get() || isFinishing()) return;
                     cancelEmbeddedNativeWatchdog();
                     if (mProgressDialog != null) mProgressDialog.dismiss();
-                    if (!isEmbeddedPreviewOnly() && canAllFilesAccessHelp()) askForAllFilesAccess();
+                    if (canAllFilesAccessHelp()) askForAllFilesAccess();
                 });
                 return false;
             }""", 1)
@@ -672,7 +672,7 @@ def main():
         "sourceRevision": lock["sourceRevision"],
         "sourceUrl": "https://github.com/CollaboraOnline/online.mirror/tree/" + lock["sourceRevision"],
         "apkUrl": lock["apk"]["url"], "apkSha256": lock["apk"]["sha256"],
-        "modificationVersion": "piv-5",
+        "modificationVersion": "piv-6",
         "assetPolicyVersion": ASSET_POLICY_VERSION,
         "changes": [
             "Embedded close/save hook in LOActivity",
@@ -684,6 +684,7 @@ def main():
             "Upstream APK dexopt profiles excluded from engine assets",
             "Cancellable PDF preview progress and opening-only readiness watchdog cancellation",
             "Expired native close work cannot begin exporting after the watchdog fires",
+            "Read-only export begins on native document status and unexpected closes report a failure",
         ],
         "licenses": ["license.html", "notice.txt", "office-engine-source-license.txt"],
     }

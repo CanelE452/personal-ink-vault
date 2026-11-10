@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136200,
+  "versionCode": 136201,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,7 +17,7 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "f5697907cc1c96131814571717d6ad654760143635124e4b0b0ebb98c54352e1",
+      "sha256": "d93573e9c47a98062f9362d03c0d02331952b8977d37f4b93e4245ca45e86e7a",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
@@ -189,7 +189,7 @@
       "mode": "100644"
     },
     "android/office_engine/README.md": {
-      "sha256": "5e7d79509b1e9a20147ea8dca55a7619408c5235060483bd0a621647af7d89b2",
+      "sha256": "a275325c4f6ae3d2644c768e706a5fd2ff2083899db2bdffa2cec0b0d133dac3",
       "mode": "100644"
     },
     "android/office_engine/build.gradle.kts": {
@@ -205,7 +205,7 @@
       "mode": "100644"
     },
     "android/office_engine/prepare_engine.py": {
-      "sha256": "d27b3797b42a06f22351f717ed00cb8b859b5d40e1b2e75684aafe021837e46a",
+      "sha256": "1f3f72404875569f448480adc04500e86606192ace7cdcb66dfdbebafee3bd3a",
       "mode": "100644"
     },
     "android/office_engine/src/main/AndroidManifest.xml": {
@@ -229,11 +229,11 @@
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEditorActivity.java": {
-      "sha256": "82c47086e965af8db8a8c7c7e448b21d24f16aeb77b0b55f8516753e25e25196",
+      "sha256": "e9ce9e8007a1a01ff62a084f8a4f375681c04b606fd99a718c9533de4e42374e",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEngineBridge.java": {
-      "sha256": "55aaeea9f179e1cd4ac642305bbc981f21c01e777beed53a573381348169372c",
+      "sha256": "33d8fa159bf6c28cef840b64c599ab5dc7875a7f0628688f90aba026bd596230",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEngineHealth.java": {
@@ -2316,8 +2316,8 @@
       "sha256": "ca46113c51d38e8bbc033590acab2959030179ff401585105b183a848e32c623",
       "mode": "100644"
     },
-    "scripts/build-android-200.sh": {
-      "sha256": "5cb0675e8f007440c4b4d5c228b030e40529bd2ab5b93290c03692b2d564171d",
+    "scripts/build-android-201.sh": {
+      "sha256": "a63bdd120aba8d2390c170a7e064995cbedd05cf2b6f919ee4f2483fcbcb1b07",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {

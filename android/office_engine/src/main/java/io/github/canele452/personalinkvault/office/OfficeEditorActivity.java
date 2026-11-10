@@ -24,6 +24,7 @@ import org.libreoffice.androidlib.LOActivity;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.security.MessageDigest;
@@ -146,8 +147,7 @@ public final class OfficeEditorActivity extends LOActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
                 if (previewOnly) {
-                    previewCancelled = true;
-                    finishWithProgress();
+                    cancelPreview();
                 } else if (presentationCells == null || !presentationCells.handleBack()) {
                     handleEmbeddedBack();
                 }
@@ -186,6 +186,22 @@ public final class OfficeEditorActivity extends LOActivity {
 
     @Override
     protected boolean onEmbeddedNativeMessage(byte[] message) {
+        if (previewOnly) {
+            // Collabora sends status after loading the native document. A WebView
+            // progress notification can also come from an unrelated dialog.
+            String prefix = "status: ";
+            if (message.length > prefix.length() && message[0] == 's'
+                    && prefix.equals(new String(message, 0, prefix.length(), StandardCharsets.US_ASCII))) {
+                runOnUiThread(() -> {
+                    if (previewRequested || previewCancelled || isFinishing() || isDestroyed()
+                            || OfficeEngineHealth.requiresRestart()) return;
+                    ready = true;
+                    previewRequested = true;
+                    finishWithProgress();
+                });
+            }
+            return false;
+        }
         return presentationCells != null && presentationCells.onNativeMessage(message);
     }
 
@@ -239,32 +255,37 @@ public final class OfficeEditorActivity extends LOActivity {
         content.addView(label);
         Button cancel = new Button(this);
         cancel.setText("취소");
-        cancel.setOnClickListener(view -> {
-            previewCancelled = true;
-            finishWithProgress();
-        });
+        cancel.setOnClickListener(view -> cancelPreview());
         content.addView(cancel);
         addContentView(content, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         content.requestFocus();
     }
 
+    private void cancelPreview() {
+        if (isFinishing()) return;
+        previewCancelled = true;
+        setResult(Activity.RESULT_CANCELED, new Intent().putExtra("sessionId", sessionId)
+                .putExtra(OfficeEngineBridge.PREVIEW_CANCELLED_EXTRA, true));
+        finishWithProgress();
+    }
+
+    private void deliverPreviewResult(int code, Intent result) {
+        runOnUiThread(() -> {
+            if (!previewCancelled && !isFinishing()) setResult(code, result);
+        });
+    }
+
     @Override
     @JavascriptInterface
     public void postMobileMessage(String message) {
-        if (message.equals("hideProgressbar") || message.startsWith("hideProgressbar ")) ready = true;
+        if (!previewOnly && (message.equals("hideProgressbar") || message.startsWith("hideProgressbar "))) ready = true;
         super.postMobileMessage(message);
         if (!previewOnly && ready && presentationCells != null) {
             runOnUiThread(() -> {
                 if (isCellEditorReady() && presentationCells != null) presentationCells.installButton();
             });
         }
-        if (previewOnly && ready) runOnUiThread(() -> {
-            if (!previewRequested && !previewCancelled && !isFinishing()) {
-                previewRequested = true;
-                finishWithProgress();
-            }
-        });
     }
 
     @Override
@@ -298,9 +319,11 @@ public final class OfficeEditorActivity extends LOActivity {
     }
 
     private boolean finishPreview() {
-        if (!ready || previewCancelled || directory == null) {
-            Intent result = new Intent().putExtra("sessionId", sessionId);
-            runOnUiThread(() -> setResult(Activity.RESULT_CANCELED, result));
+        if (previewCancelled) return true;
+        if (!ready || directory == null) {
+            deliverPreviewResult(Activity.RESULT_CANCELED, new Intent().putExtra("sessionId", sessionId)
+                    .putExtra("errorCode", "office_preview_load_failed")
+                    .putExtra("errorMessage", "변환기가 문서를 열지 못했습니다. PDF가 만들어지지 않았습니다."));
             return true;
         }
         if (legacyConversion) return finishLegacyConversion();
@@ -336,14 +359,14 @@ public final class OfficeEditorActivity extends LOActivity {
                         .putExtra("partCount", (Integer) observation.get("partCount"))
                         .putExtra("format", format);
             }
-            runOnUiThread(() -> setResult(previewCancelled ? Activity.RESULT_CANCELED : Activity.RESULT_OK, result));
+            deliverPreviewResult(Activity.RESULT_OK, result);
             return true;
         } catch (Exception error) {
             if (finishOnFormatMismatch(error)) return true;
             Intent result = new Intent().putExtra("sessionId", sessionId)
                     .putExtra("errorCode", nativeObservation ? OfficeNativeObservation.errorCode(error) : "office_preview_failed")
                     .putExtra("errorMessage", "PDF를 준비하지 못했습니다. 원본과 작업 복사본은 보관됩니다.");
-            runOnUiThread(() -> setResult(Activity.RESULT_CANCELED, result));
+            deliverPreviewResult(Activity.RESULT_CANCELED, result);
             return true;
         }
     }
@@ -366,14 +389,13 @@ public final class OfficeEditorActivity extends LOActivity {
                     .putExtra("targetExtension", target)
                     .putExtra("sourcePath", new File(getIntent().getStringExtra("piv.sessionDirectory"), converted.getName()).getPath())
                     .putExtra("sourceSha256", OfficeNativeObservation.sourceSha256(converted));
-            runOnUiThread(() -> setResult(previewCancelled ? Activity.RESULT_CANCELED : Activity.RESULT_OK, result));
+            deliverPreviewResult(Activity.RESULT_OK, result);
         } catch (IOException error) {
             if (finishOnFormatMismatch(error)) return true;
             Intent result = new Intent().putExtra("sessionId", sessionId)
                     .putExtra("errorCode", "office_legacy_conversion_failed")
                     .putExtra("errorMessage", "편집용 복사본을 만들지 못했습니다. 기존 문서는 보관됩니다.");
-            runOnUiThread(() -> setResult(Activity.RESULT_CANCELED,
-                    previewCancelled ? new Intent().putExtra("sessionId", sessionId) : result));
+            deliverPreviewResult(Activity.RESULT_CANCELED, result);
         }
         return true;
     }
@@ -383,7 +405,8 @@ public final class OfficeEditorActivity extends LOActivity {
         Intent result = new Intent().putExtra("sessionId", sessionId)
                 .putExtra("errorCode", FORMAT_MISMATCH)
                 .putExtra("errorMessage", OfficeLegacyContainer.MISMATCH_MESSAGE);
-        runOnUiThread(() -> setResult(Activity.RESULT_CANCELED, result));
+        if (previewOnly) deliverPreviewResult(Activity.RESULT_CANCELED, result);
+        else runOnUiThread(() -> setResult(Activity.RESULT_CANCELED, result));
         return true;
     }
 

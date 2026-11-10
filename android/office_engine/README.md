@@ -15,11 +15,12 @@ licenses, and source provenance go only into ignored `build/office-engine/`.
 must have the exact pinned SHA-256.
 
 The upstream `android/lib` Java/resource source is generated with the explicit
-`piv-5` embedded-close, preparation-cancellation, shared-message-thread, and
+`piv-6` embedded-close, preparation-cancellation, shared-message-thread, and
 read-only-preview changes recorded in its generated provenance. Original edits
 save a new original-format document and PDF before closing the embedded editor.
 PDF-only preview forces read-only permission, suppresses source autosave and
-editing messages, and automatically exports once the document is ready. Both
+editing messages, and starts export when the native engine reports a loaded
+document. Both
 paths release their WebView without removing the Flutter task. Native document
 open/save/close uses one process-wide FIFO, so external Activity destruction
 queues close behind an unfinished export and never waits for COKit's close mutex
@@ -66,7 +67,7 @@ launch from the current app process. The preview calls COKit `saveAs` only for P
 actual boolean result, checks source SHA-256 and modification time, and validates
 the PDF with `PdfRenderer`. It returns `previewed` with the original source hash,
 PDF path/hash/page count and session identity. Cancellation returns no new
-edition. Preview failure returns an error and retains working copies. Dart's
+edition. An unexpected close without a PDF reports a failure. Dart's
 `OfficePreviewEngine` also checks the caller's source hash and modification time.
 Its API makes no repository writes: only the UI's **PDF 필기 시작** commits an
 unchanged-original/PDF pair and opens the shared handwriting editor. Read-only

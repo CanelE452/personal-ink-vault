@@ -24,6 +24,7 @@ import java.util.concurrent.Executors;
 public final class OfficeEngineBridge {
     public static final int REQUEST_EDIT = 19472;
     private static final int REQUEST_REOPEN = 19475;
+    static final String PREVIEW_CANCELLED_EXTRA = "piv.previewCancelled";
     public static final String VERSION = "26.04.6.0-962";
     public static final List<String> FORMATS = Arrays.asList("docx", "pptx", "doc", "ppt", "odt", "odp");
     private final Activity activity;
@@ -632,9 +633,14 @@ public final class OfficeEngineBridge {
             } else if (data != null && data.hasExtra("errorCode")) {
                 errorCode = data.getStringExtra("errorCode");
                 errorMessage = data.getStringExtra("errorMessage");
-            } else if (resultCode != Activity.RESULT_OK || data == null) {
+            } else if (resultCode == Activity.RESULT_CANCELED && data != null && sessionId != null
+                    && sessionId.equals(data.getStringExtra("sessionId"))
+                    && data.getBooleanExtra(PREVIEW_CANCELLED_EXTRA, false)) {
                 result.put("status", "cancelled");
                 if (observeNative || conversionSourcePath != null) result.put("sessionId", sessionId);
+            } else if (resultCode != Activity.RESULT_OK || data == null) {
+                errorCode = "office_preview_interrupted";
+                errorMessage = "PDF가 만들어지기 전에 변환 화면이 닫혔습니다. 다시 시도해 주세요.";
             } else if (!disposed && completion != null && conversionSourcePath != null) {
                 try {
                     completeLegacyConversion(result, data, sessionId, expectedSourceHash, conversionSourcePath);
