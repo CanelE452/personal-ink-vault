@@ -742,6 +742,12 @@ class WorkspaceStore {
         ),
       ),
     };
+    final publishMetadata =
+        sharedRequestId != null &&
+            documentKind == VaultDocumentKind.pdf &&
+            expectedSourceHeads == null
+        ? repository.commitPreparedIfNoteHeads
+        : repository.commitPreparedIfHeads;
     final revision = sharedRequestId == null && expectedSourceHeads == null
         ? await repository.commit(
             entityId: id,
@@ -749,7 +755,7 @@ class WorkspaceStore {
             files: metadata,
             parentRevisionIds: [],
           )
-        : await repository.commitPreparedIfHeads(
+        : await publishMetadata(
             repository.prepareCommit(
               entityId: id,
               kind: EntityKind.metadata,
@@ -986,6 +992,8 @@ _prepareDatabaseRestore(
 });
 
 class NoteSession {
+  static const _initialPdfImport = 'initialPdfImport';
+
   NoteRepository repository;
   VaultNote note;
   List<RevisionRecord> inkHeads;
@@ -1043,7 +1051,12 @@ class NoteSession {
     Map<String, Uint8List> files, {
     Map<String, List<String>>? expectedHeads,
     void Function()? requireWrite,
+    bool initialPdfImport = false,
   }) {
+    if (initialPdfImport &&
+        (note.documentKind != VaultDocumentKind.pdf || expectedHeads == null)) {
+      throw StateError('An initial PDF save requires observed PDF revisions');
+    }
     final copied = files.map(
       (key, value) => MapEntry(key, Uint8List.fromList(value)),
     );
@@ -1057,7 +1070,7 @@ class NoteSession {
         entityId: target.inkEntityId,
         kind: EntityKind.ink,
         ownerNoteId: target.id,
-        operation: 'save',
+        operation: initialPdfImport ? _initialPdfImport : 'save',
         files: copied,
         parents: () async => List.of(inkParents),
         expectedHeads: guards,
@@ -1978,6 +1991,7 @@ class NoteSession {
           previous.$2,
           previous.$3,
           validatePending,
+          initialPdfImport: previous.$1 == _initialPdfImport,
         );
         if (same) return;
       }
@@ -1999,7 +2013,15 @@ class NoteSession {
               entry.key: List<String>.unmodifiable(entry.value),
           });
     _pending[entityId] = (operation, prepared, guards, requireWrite);
-    await _publish(repo, target, entityId, prepared, guards, requireWrite);
+    await _publish(
+      repo,
+      target,
+      entityId,
+      prepared,
+      guards,
+      requireWrite,
+      initialPdfImport: operation == _initialPdfImport,
+    );
   }
 
   Future<RevisionRecord> _publish(
@@ -2008,8 +2030,9 @@ class NoteSession {
     String entityId,
     PreparedCommit prepared,
     Map<String, List<String>>? expectedHeads,
-    void Function()? requireWrite,
-  ) async {
+    void Function()? requireWrite, {
+    bool initialPdfImport = false,
+  }) async {
     _requireNote(target);
     if (!prepared.belongsTo(repository))
       throw StateError('The session repository changed during a save');
@@ -2034,9 +2057,12 @@ class NoteSession {
           );
         }
       }
+      final publishWithHeads = initialPdfImport
+          ? repo.commitPreparedIfNoteHeads
+          : repo.commitPreparedIfHeads;
       record = expectedHeads == null
           ? await repo.commitPrepared(prepared)
-          : await repo.commitPreparedIfHeads(
+          : await publishWithHeads(
               prepared,
               expectedHeads: expectedHeads,
               beforePublish: () {

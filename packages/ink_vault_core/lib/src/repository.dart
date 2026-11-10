@@ -340,6 +340,45 @@ class NoteRepository {
     List<String>? expectedRevisionIds,
     void Function()? beforePublish,
     bool allowHistoricalParents = false,
+  }) => _commitPreparedIfHeads(
+    prepared,
+    expectedHeads: expectedHeads,
+    expectedRevisionIds: expectedRevisionIds,
+    beforePublish: beforePublish,
+    allowHistoricalParents: allowHistoricalParents,
+  );
+
+  /// Appends a revision guarded by the note and its dependencies. Incomplete
+  /// revisions outside that scope and unreadable manifests stay quarantined.
+  Future<RevisionRecord> commitPreparedIfNoteHeads(
+    PreparedCommit prepared, {
+    required Map<String, List<String>> expectedHeads,
+    void Function()? beforePublish,
+  }) {
+    final record = prepared.record;
+    final noteId = record.kind == EntityKind.metadata
+        ? record.entityId
+        : record.ownerNoteId;
+    if (noteId == null || !expectedHeads.containsKey(noteId)) {
+      return Future.error(
+        const FormatException('The write must guard its note'),
+      );
+    }
+    return _commitPreparedIfHeads(
+      prepared,
+      expectedHeads: expectedHeads,
+      beforePublish: beforePublish,
+      noteId: noteId,
+    );
+  }
+
+  Future<RevisionRecord> _commitPreparedIfHeads(
+    PreparedCommit prepared, {
+    required Map<String, List<String>> expectedHeads,
+    List<String>? expectedRevisionIds,
+    void Function()? beforePublish,
+    bool allowHistoricalParents = false,
+    String? noteId,
   }) {
     try {
       Set<String> copyIds(List<String> values) {
@@ -374,7 +413,16 @@ class NoteRepository {
           throw const FormatException(
             'Prepared commit belongs to another repository',
           );
-        if (pendingRevisionCount != 0 || _integrityIssues.isNotEmpty)
+        final incomplete = noteId == null
+            ? pendingRevisionCount != 0 || _integrityIssues.isNotEmpty
+            : pendingRevisionCount != 0 &&
+                  _records.values.any(
+                    (record) =>
+                        !_active.containsKey(record.revisionId) &&
+                        (record.ownerNoteId == noteId ||
+                            guards.containsKey(record.entityId)),
+                  );
+        if (incomplete)
           throw StateError(
             'Repair or finish receiving revisions before conditional publication',
           );

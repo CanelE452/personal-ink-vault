@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136201,
+  "versionCode": 136202,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,7 +17,7 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "d93573e9c47a98062f9362d03c0d02331952b8977d37f4b93e4245ca45e86e7a",
+      "sha256": "f132927bdad0422ce4a75b4b20e2af58d74bf4c8143f99a566c7cb9980df8cf5",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
@@ -1385,7 +1385,7 @@
       "mode": "100644"
     },
     "lib/data/vault/workspace_store.dart": {
-      "sha256": "6a0e47bc6c4b7f04b777bd4104758172caf50626d7408828de2a3ae7a1d1371b",
+      "sha256": "bd7e24c1a78735ccd91057b190f9ffbf916b7b54447ec7f5c8db5fcc50f0d2ba",
       "mode": "100644"
     },
     "lib/data/version.dart": {
@@ -1877,7 +1877,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_controller.dart": {
-      "sha256": "fb048aa09792254f89c7fd672d24b9f05720476e72e726d4e8c0357cc0fb8ddb",
+      "sha256": "4de6db0ba8ce58de3fa0ec771683b1f2a3613f46b99eba7c2f3cd4c1a69df3d8",
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_quick_switcher.dart": {
@@ -2053,7 +2053,7 @@
       "mode": "100644"
     },
     "packages/ink_vault_core/lib/src/repository.dart": {
-      "sha256": "38eee6d858d31fc8be20a4c431f3d17c2c9ac78c8348f45ad8e899bf5d56100f",
+      "sha256": "7b979f144ed1dd46aa9a410e958608b03286869f84da61f3c670915af1516c2d",
       "mode": "100644"
     },
     "packages/ink_vault_core/lib/src/revision.dart": {
@@ -2316,8 +2316,8 @@
       "sha256": "ca46113c51d38e8bbc033590acab2959030179ff401585105b183a848e32c623",
       "mode": "100644"
     },
-    "scripts/build-android-201.sh": {
-      "sha256": "a63bdd120aba8d2390c170a7e064995cbedd05cf2b6f919ee4f2483fcbcb1b07",
+    "scripts/build-android-202.sh": {
+      "sha256": "2b304a1fa46bffaf7006292617b6fa70474366a82da8040f12a2effb7ce3b8c2",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {

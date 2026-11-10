@@ -1749,9 +1749,11 @@ class WorkspaceController extends ChangeNotifier {
         }
         files[PdfImportMarker.fileName] = preparation.marker!.encode();
       }
+      final initialPdfImport = preparation != null && !preparation.complete;
       await owner.saveInk(
         files,
-        expectedHeads: preparation != null && !preparation.complete
+        initialPdfImport: initialPdfImport,
+        expectedHeads: initialPdfImport
             ? {
                 owner.note.id: [owner.note.revision.revisionId],
                 owner.note.inkEntityId: owner.inkParents,
