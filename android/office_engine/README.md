@@ -15,7 +15,7 @@ licenses, and source provenance go only into ignored `build/office-engine/`.
 must have the exact pinned SHA-256.
 
 The upstream `android/lib` Java/resource source is generated with the explicit
-`piv-4` embedded-close, preparation-cancellation, shared-message-thread, and
+`piv-5` embedded-close, preparation-cancellation, shared-message-thread, and
 read-only-preview changes recorded in its generated provenance. Original edits
 save a new original-format document and PDF before closing the embedded editor.
 PDF-only preview forces read-only permission, suppresses source autosave and
@@ -32,7 +32,8 @@ covers native open/save/close. If either deadline expires, the current operation
 returns `office_engine_restart_required` and the engine is quarantined for the
 rest of this process. Later Office requests fail immediately without entering
 native code. Original and private working files remain; other app features can
-continue. Recovery is **force stop the app in Android Settings, then reopen**;
+continue. A late loading event cannot cancel the close watchdog. Recovery is
+**force stop the app in Android Settings, then reopen**;
 removing a recent-app card may leave the process alive. The app never kills its
 own process or reuses a native session whose close could not be confirmed.
 The upstream font cache path uses the application's directory.
@@ -59,7 +60,9 @@ for recovery until that store has safely taken ownership.
 
 `OfficeEngineBridge.preview(sourcePath, sessionId, Completion)` uses the same
 private-copy preparation but launches a covered read-only Activity with only
-progress and cancel controls. It calls COKit `saveAs` only for PDF, checks its
+progress and cancel controls. The preview uses that screen for progress so the
+cancel button stays reachable. Restored temporary Activities require a matching
+launch from the current app process. The preview calls COKit `saveAs` only for PDF, checks its
 actual boolean result, checks source SHA-256 and modification time, and validates
 the PDF with `PdfRenderer`. It returns `previewed` with the original source hash,
 PDF path/hash/page count and session identity. Cancellation returns no new

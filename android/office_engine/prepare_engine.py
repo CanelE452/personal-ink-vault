@@ -135,6 +135,7 @@ def patch_activity(text):
         "            new java.util.concurrent.atomic.AtomicBoolean();\n"
         "    private boolean pivNativeOpened = false;\n"
         "    private volatile boolean pivNativeReleased = false;\n"
+        "    private boolean pivAwaitingReady;\n"
         "    private Runnable pivNativeWatchdog;\n"
         "    private static final long PIV_HANDSHAKE_TIMEOUT_MILLIS = 10000;\n"
         "    private static final long PIV_OPERATION_TIMEOUT_MILLIS = 45000;\n"
@@ -233,7 +234,7 @@ def patch_activity(text):
                         '    protected void onNewIntent(Intent intent) {\n        if (isEmbeddedDocumentBusy()) return;', 1)
     start = text.index("    private void finishWithProgress() {")
     end = text.index("    private void loadDocument() {", start)
-    replacement = """    private boolean pivClosing = false;
+    replacement = """    private volatile boolean pivClosing = false;
 
     protected void handleEmbeddedBack() {
         if (pivDestroyed || isDestroyed() || isFinishing() || pivClosing || pivNativeClosed.get() || isEmbeddedDocumentBusy()) return;
@@ -377,12 +378,13 @@ def patch_activity(text):
             String apkFile, AssetManager assetManager, String documentUrl,
             String uiMode, String userName, String webUrl) {
         watchEmbeddedNativeOperation();
+        pivAwaitingReady = true;
         nativeHandler.post(() -> {
             if (io.github.canele452.personalinkvault.office.OfficeEngineHealth.requiresRestart()) {
                 runOnUiThread(this::failEmbeddedNativeSession);
                 return;
             }
-            if (pivDestroyed || pivNativeClosed.get()) return;
+            if (pivDestroyed || isFinishing() || pivNativeClosed.get()) return;
             pivNativeOpened = true;
             createCOOLWSD(dataDir, cacheDir, apkFile, assetManager, documentUrl, uiMode, userName);
             documentLoaded = true;
@@ -398,6 +400,7 @@ def patch_activity(text):
     }
 
     private void cancelEmbeddedNativeWatchdog() {
+        pivAwaitingReady = false;
         if (pivNativeWatchdog != null) {
             getMainHandler().removeCallbacks(pivNativeWatchdog);
             pivNativeWatchdog = null;
@@ -442,9 +445,10 @@ def patch_activity(text):
         watchEmbeddedNativeOperation();
         mProgressDialog.indeterminate(R.string.exiting);
         nativeHandler.post(() -> {
-            if (!pivDestroyed && !beforeEmbeddedDocumentClose()) {
+            if (io.github.canele452.personalinkvault.office.OfficeEngineHealth.requiresRestart()) return;
+            if (!pivDestroyed && !isFinishing() && !beforeEmbeddedDocumentClose()) {
                 runOnUiThread(() -> {
-                    if (pivDestroyed) return;
+                    if (pivDestroyed || isFinishing()) return;
                     pivClosing = false;
                     cancelEmbeddedNativeWatchdog();
                     mProgressDialog.dismiss();
@@ -453,7 +457,7 @@ def patch_activity(text):
             }
             closeEmbeddedNativeDocument();
             runOnUiThread(() -> {
-                if (pivDestroyed) return;
+                if (pivDestroyed || isFinishing()) return;
                 destroyEmbeddedWebView();
                 mProgressDialog.dismiss();
                 finish();
@@ -487,9 +491,7 @@ def patch_activity(text):
             pivNativeHello.countDown();
             return;
         }
-        if (pivDestroyed) return;
-        if (message.equals("hideProgressbar") || message.startsWith("hideProgressbar "))
-            runOnUiThread(this::cancelEmbeddedNativeWatchdog);""", 1)
+        if (pivDestroyed) return;""", 1)
     text = text.replace(raw_marker, """    void rawCallFakeWebsocketOnMessage(final byte[] message) {
         if (pivDestroyed || pivNativeClosed.get()) return;
         if (onEmbeddedNativeMessage(message)) return;
@@ -502,13 +504,25 @@ def patch_activity(text):
                         mWebView.loadUrl("javascript:window.socket.doSend();");
                 });
             });""", 1)
-    text = text.replace("            runOnUiThread(() -> {\n                JSONObject messageJSON;", "            runOnUiThread(() -> {\n                if (pivDestroyed || pivNativeClosed.get()) return;\n                JSONObject messageJSON;", 1)
-    text = text.replace('            runOnUiThread(() -> mProgressDialog.dismiss());', '            runOnUiThread(() -> { if (!pivDestroyed && !pivNativeClosed.get()) mProgressDialog.dismiss(); });', 1)
+    text = text.replace("            runOnUiThread(() -> {\n                JSONObject messageJSON;", "            runOnUiThread(() -> {\n                if (pivDestroyed || pivClosing || pivNativeClosed.get() || isFinishing()) return;\n                JSONObject messageJSON;", 1)
+    text = text.replace('            runOnUiThread(() -> mProgressDialog.dismiss());', '            runOnUiThread(() -> { if (!pivDestroyed && !pivClosing && !pivNativeClosed.get() && !isFinishing()) mProgressDialog.dismiss(); });', 1)
     readonly_marker = "        if (!canDocumentBeExported())\n            isDocEditable = false;"
     pause_marker = '        if (documentLoaded)\n            postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1");'
     message_marker = "    private boolean beforeMessageFromWebView(String[] messageAndParam) {"
-    permission_marker = "                        if (canAllFilesAccessHelp())"
-    for marker in (readonly_marker, pause_marker, message_marker, permission_marker):
+    ready_marker = """            case "hideProgressbar": {
+                if (mProgressDialog != null)
+                    mProgressDialog.dismiss();
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (canAllFilesAccessHelp())
+                            askForAllFilesAccess();
+                    }
+                });
+                return false;
+            }"""
+    bye_marker = '            case "BYE":\n                finishWithProgress();\n                return false;'
+    for marker in (readonly_marker, pause_marker, message_marker, ready_marker, bye_marker):
         if text.count(marker) != 1:
             raise ValueError("Pinned Office preview patch no longer matches its source")
     text = text.replace(readonly_marker, readonly_marker + "\n        if (isEmbeddedPreviewOnly()) isDocEditable = false;", 1)
@@ -522,7 +536,25 @@ def patch_activity(text):
                     return false;
             }
         }""", 1)
-    text = text.replace(permission_marker, "                        if (!isEmbeddedPreviewOnly() && canAllFilesAccessHelp())", 1)
+    text = text.replace(ready_marker, """            case "hideProgressbar": {
+                runOnUiThread(() -> {
+                    if (!pivAwaitingReady || pivDestroyed || pivClosing || pivNativeClosed.get() || isFinishing()) return;
+                    cancelEmbeddedNativeWatchdog();
+                    if (mProgressDialog != null) mProgressDialog.dismiss();
+                    if (!isEmbeddedPreviewOnly() && canAllFilesAccessHelp()) askForAllFilesAccess();
+                });
+                return false;
+            }""", 1)
+    text = text.replace(bye_marker, bye_marker.replace("finishWithProgress();", "runOnUiThread(this::finishWithProgress);"), 1)
+    for kind, resource, expected in (
+        ("indeterminate", "preparing_for_the_first_start_after_an_update", 1),
+        ("indeterminate", "exiting", 2),
+        ("determinate", "loading", 2),
+    ):
+        show_progress = f"mProgressDialog.{kind}(R.string.{resource});"
+        if text.count(show_progress) != expected:
+            raise ValueError("Pinned Office modal progress patch no longer matches its source")
+        text = text.replace(show_progress, f"if (!isEmbeddedPreviewOnly()) {show_progress}")
     return text
 
 
@@ -640,9 +672,19 @@ def main():
         "sourceRevision": lock["sourceRevision"],
         "sourceUrl": "https://github.com/CollaboraOnline/online.mirror/tree/" + lock["sourceRevision"],
         "apkUrl": lock["apk"]["url"], "apkSha256": lock["apk"]["sha256"],
-        "modificationVersion": "piv-4",
+        "modificationVersion": "piv-5",
         "assetPolicyVersion": ASSET_POLICY_VERSION,
-        "changes": ["Embedded close/save hook in LOActivity", "Cancelled preparation lifecycle guards", "Shared native open/save/close FIFO with asynchronous destroy and close-once ownership", "Application font cache path", "Read-only automatic PDF preview with original autosave and edit messages disabled", "Destroyed Activity native and WebView callback guards", "Upstream APK dexopt profiles excluded from engine assets"],
+        "changes": [
+            "Embedded close/save hook in LOActivity",
+            "Cancelled preparation lifecycle guards",
+            "Shared native open/save/close FIFO with asynchronous destroy and close-once ownership",
+            "Application font cache path",
+            "Read-only automatic PDF preview with original autosave and edit messages disabled",
+            "Destroyed Activity native and WebView callback guards",
+            "Upstream APK dexopt profiles excluded from engine assets",
+            "Cancellable PDF preview progress and opening-only readiness watchdog cancellation",
+            "Expired native close work cannot begin exporting after the watchdog fires",
+        ],
         "licenses": ["license.html", "notice.txt", "office-engine-source-license.txt"],
     }
     write_if_changed(generated / "assets/office-engine-provenance.json",

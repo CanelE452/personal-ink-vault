@@ -575,7 +575,7 @@ public final class OfficeEngineBridge {
             } catch (IOException | InvalidPathException error) {
                 if (error instanceof OfficeLegacyContainer.FormatMismatch) errorCode = OfficeLegacyContainer.MISMATCH_CODE;
             } finally {
-                if (closed) {
+                if (closed && !OfficeEngineHealth.ERROR_CODE.equals(errorCode)) {
                     try { previews.discard(attempt); } catch (IOException ignored) {}
                 }
             }
@@ -592,7 +592,7 @@ public final class OfficeEngineBridge {
     private void discardClosedReopen(String attempt) {
         try {
             awaitClosed(attempt);
-            previews.discard(attempt);
+            if (!OfficeEngineHealth.requiresRestart()) previews.discard(attempt);
         } catch (IOException ignored) {}
     }
 
@@ -679,7 +679,8 @@ public final class OfficeEngineBridge {
                     errorMessage = "이 미리보기 작업에 속한 PDF를 확인하지 못했습니다.";
                 }
             }
-            if (!ready) {
+            // A timed-out native worker may still be using the private input.
+            if (!ready && !OfficeEngineHealth.ERROR_CODE.equals(errorCode)) {
                 try { previews.discard(sessionId); } catch (IOException ignored) {}
             }
             final String code = errorCode;

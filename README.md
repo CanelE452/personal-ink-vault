@@ -1,8 +1,8 @@
-# Personal Ink Vault Android 195 대응 소스
+# Personal Ink Vault Android 196 대응 소스
 
-[Android 195 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.195/personal-ink-vault-android-0.2.0-build195-136195-arm64-release.apk)
+[Android 196 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.196/personal-ink-vault-android-0.2.0-build196-136196-arm64-release.apk)
 
-이 스냅샷은 Android `io.github.canele452.personalinkvault` 버전 `0.2.0`의 설치 번호 `136195`에 대응합니다. `SOURCE-MANIFEST.json`에 파일별 SHA-256과 Git 모드를 기록했습니다. APK와 버전 안내는 [Android 195 릴리스](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.195)에서 받으세요.
+이 스냅샷은 Android `io.github.canele452.personalinkvault` 버전 `0.2.0`의 설치 번호 `136196`에 대응합니다. `SOURCE-MANIFEST.json`에 파일별 SHA-256과 Git 모드를 기록했습니다. APK와 버전 안내는 [Android 196 릴리스](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.196)에서 받으세요.
 
 앱 소스와 프로젝트 빌드 스크립트의 배포 조건은 [GNU GPL v3](LICENSE.md)에 따릅니다. 개별 구성 요소의 출처와 조건은 [제3자 고지](THIRD_PARTY_NOTICES.md)에 있습니다.
 
@@ -10,10 +10,10 @@
 
 1. Flutter `3.47.7`의 [고정 소스](https://github.com/flutter/flutter/tree/abaf9c523780a608bd46686fd5e53740a07077f8), Dart `3.13.5`, JDK `25.0.4.1+1`, Android SDK 및 Python 3.11 이상을 준비합니다. Flutter SDK가 래퍼를 준비하고 `android/gradle/wrapper/gradle-wrapper.properties`에서 Gradle `9.5.0`을 선택합니다. Gradle 데몬에는 저장소의 JVM 설정에 따라 JetBrains JDK 21을 자동으로 준비하거나 기존 설치를 사용합니다.
 2. Android SDK의 `platforms;android-37.0`, `ndk;28.2.13676358`, `ndk;29.0.14206865`, `cmake;3.22.1`을 준비합니다. Rust `1.99.1`에 `aarch64-linux-android` 타깃을 추가합니다. Android SDK 경로를 `ANDROID_SDK_ROOT`로 지정하세요.
-3. 소스 루트에서 `bash scripts/build-android-195.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
+3. 소스 루트에서 `bash scripts/build-android-196.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
 4. 사용자 본인의 서명 키로 설치용 APK를 만들려면 `android/key.properties`에 `storeFile`, `storePassword`, `keyAlias`, `keyPassword`를 로컬로 지정합니다. 서명 전 빌드만 하려면 이 파일 없이 빌드할 수 있습니다. 본인의 OAuth 공개 클라이언트 ID로 테스트하려면 `DRIVE_ANDROID_SERVER_CLIENT_ID`를 설정합니다.
 
-스크립트는 ARM64의 빌드 번호를 `136195`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
+스크립트는 ARM64의 빌드 번호를 `136196`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
 
 ## 고정된 업스트림 소스
 

@@ -57,11 +57,11 @@ public final class OfficeEditorActivity extends LOActivity {
     public void onCreate(Bundle savedInstanceState) {
         Map<String, Object> alreadyExported = null;
         sessionId = getIntent().getStringExtra("piv.sessionId");
+        previewOnly = getIntent().getBooleanExtra("piv.previewOnly", false);
+        boolean opened = sessionId != null && !sessionId.isEmpty()
+                && OfficeSessionJournal.editorOpened(sessionId, this, previewOnly);
         try {
-            if (sessionId == null || sessionId.isEmpty() || !OfficeSessionJournal.editorOpened(sessionId, this)) {
-                throw new IOException("Invalid or busy office session");
-            }
-            previewOnly = getIntent().getBooleanExtra("piv.previewOnly", false);
+            if (!opened) throw new IOException("Invalid or busy office session");
             nativeObservation = getIntent().getBooleanExtra("piv.nativeObservation", false);
             legacyConversion = getIntent().getBooleanExtra("piv.legacyConversion", false);
             reopenedSource = getIntent().getBooleanExtra("piv.reopenedSource", false);
@@ -120,7 +120,9 @@ public final class OfficeEditorActivity extends LOActivity {
             getIntent().putExtra("piv.previewOnly", true);
             getIntent().setData(null);
             super.onCreate(null);
-            if (!finishOnFormatMismatch(error)) {
+            if (previewOnly && !opened) {
+                setResult(Activity.RESULT_CANCELED, new Intent().putExtra("sessionId", sessionId));
+            } else if (!finishOnFormatMismatch(error)) {
                 setResult(Activity.RESULT_CANCELED, new Intent().putExtra("sessionId", sessionId)
                         .putExtra("errorCode", legacyConversion ? "invalid_office_conversion"
                                 : nativeObservation ? "invalid_office_observation"

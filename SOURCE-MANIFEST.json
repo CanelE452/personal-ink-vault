@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136195,
+  "versionCode": 136196,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,7 +17,7 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "228788f5351aed913ea6fafce85d84453d35f9d27168aece6990ac55c04b089e",
+      "sha256": "b485e65f03b9b4dcf54cfe28d92140c67fd5b17d9a22f341f6e47a7f15327ae1",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
@@ -189,7 +189,7 @@
       "mode": "100644"
     },
     "android/office_engine/README.md": {
-      "sha256": "fa0cc284f4bd42eee852a43f00cb7b8579d9afee2aeef3f82b59157aae2cce20",
+      "sha256": "5e7d79509b1e9a20147ea8dca55a7619408c5235060483bd0a621647af7d89b2",
       "mode": "100644"
     },
     "android/office_engine/build.gradle.kts": {
@@ -205,7 +205,7 @@
       "mode": "100644"
     },
     "android/office_engine/prepare_engine.py": {
-      "sha256": "6ef925fc30083adf9e79bfd1d66a2432e34b32601e81c1934b29758f57a6207d",
+      "sha256": "d27b3797b42a06f22351f717ed00cb8b859b5d40e1b2e75684aafe021837e46a",
       "mode": "100644"
     },
     "android/office_engine/src/main/AndroidManifest.xml": {
@@ -229,11 +229,11 @@
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEditorActivity.java": {
-      "sha256": "8ad99456d2cd81e9e0d760b8b2834de4ba7c02014662be46f5bc91f00a7200b9",
+      "sha256": "82c47086e965af8db8a8c7c7e448b21d24f16aeb77b0b55f8516753e25e25196",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEngineBridge.java": {
-      "sha256": "a69bbd873adaf9c186f5859096d02a44e00f2f9cc36c114e862043a41d0ad14c",
+      "sha256": "55aaeea9f179e1cd4ac642305bbc981f21c01e777beed53a573381348169372c",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEngineHealth.java": {
@@ -261,7 +261,7 @@
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeSessionJournal.java": {
-      "sha256": "2f57d449616a31c065515b178a7fa59b5537b33dcf9b885f30ed4814c6ca2a16",
+      "sha256": "cd9d11c9f41a5c80bddadc7f4aacaf546f589e951cd5d54b8a0c0174d572a82a",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeTextStylePlan.java": {
@@ -2316,8 +2316,8 @@
       "sha256": "ca46113c51d38e8bbc033590acab2959030179ff401585105b183a848e32c623",
       "mode": "100644"
     },
-    "scripts/build-android-195.sh": {
-      "sha256": "4dcc35030f68b6df2df36607cb87e627adb4bc0030cf918c6743038d635d6e82",
+    "scripts/build-android-196.sh": {
+      "sha256": "0ac8ec998e82f04a8ca6fecdf5c3193fe4039344f4e55b743cd4f3bcacea7509",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {

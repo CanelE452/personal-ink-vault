@@ -66,9 +66,14 @@ public final class OfficeSessionJournal {
         }
     }
 
-    static boolean editorOpened(String sessionId, Object owner) {
+    static boolean editorOpened(String sessionId, Object owner, boolean previewOnly) {
         synchronized (EDITOR_LOCK) {
-            if (liveEditor.get() != null && (editorActive || !sessionId.equals(liveSessionId))) return liveEditor.get() == owner;
+            Object currentOwner = liveEditor.get();
+            if (currentOwner == null && previewOnly) return false;
+            if (currentOwner != null) {
+                if (!sessionId.equals(liveSessionId)) return false;
+                if (editorActive) return currentOwner == owner;
+            }
             liveEditor = new WeakReference<>(owner);
             liveSessionId = sessionId;
             editorActive = true;
