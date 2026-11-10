@@ -4,13 +4,13 @@
 
 ## Android 휴대폰·태블릿에 설치
 
-**[Android 195 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.195/personal-ink-vault-android-0.2.0-build195-136195-arm64-release.apk)**
+**[Android 196 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.196/personal-ink-vault-android-0.2.0-build196-136196-arm64-release.apk)**
 
 1. Android 휴대폰 또는 태블릿에서 위 링크를 누릅니다.
 2. 다운로드한 APK를 열고 기존 Personal Ink Vault 앱을 업데이트합니다.
 3. 앱에서 새 노트, PDF 필기 또는 Office 원본을 엽니다. Drive를 연결하려면 앱의 **Drive → Google 로그인 / 재연결**을 사용합니다.
 
-Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 333MB입니다. Galaxy Tab S9+ 실기기와 두 Android 기기의 Drive 왕복 검증은 남아 있습니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.195) · [Android 195 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.195)
+Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 333MB입니다. Galaxy Tab S9+ 실기기와 두 Android 기기의 Drive 왕복 검증은 남아 있습니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.196) · [Android 196 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.196)
 
 
 ## 프로젝트 현황
