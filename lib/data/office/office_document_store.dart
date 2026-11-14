@@ -210,6 +210,7 @@ class OfficeDocumentStore {
     required Uint8List pdfBytes,
     required String engineVersion,
     required int pageCount,
+    bool noteScopedGuard = false,
     void Function()? beforePublish,
   }) async {
     _validateSession(session);
@@ -252,6 +253,7 @@ class OfficeDocumentStore {
           pageCount: pageCount,
         ),
       },
+      noteScopedGuard: noteScopedGuard,
       beforePublish: beforePublish,
     );
   }
@@ -544,6 +546,7 @@ class OfficeDocumentStore {
     required String engineVersion,
     required int pageCount,
     bool requireCurrentHeads = false,
+    bool noteScopedGuard = false,
     void Function()? beforePublish,
   }) async {
     final prepared = prepareEdited(
@@ -555,7 +558,7 @@ class OfficeDocumentStore {
       requireCurrentHeads: requireCurrentHeads,
       beforePublish: beforePublish,
     );
-    return commitPreparedEdition(prepared);
+    return commitPreparedEdition(prepared, noteScopedGuard: noteScopedGuard);
   }
 
   OfficePreparedEdition prepareEdited(
@@ -617,8 +620,9 @@ class OfficeDocumentStore {
   }
 
   Future<OfficeEdition> commitPreparedEdition(
-    OfficePreparedEdition edition,
-  ) async {
+    OfficePreparedEdition edition, {
+    bool noteScopedGuard = false,
+  }) async {
     final session = edition._session;
     _validateSession(session);
     if (!edition._prepared.belongsTo(repository)) {
@@ -650,8 +654,11 @@ class OfficeDocumentStore {
       edition._beforePublish?.call();
       return verified;
     }
-    if (edition._requireCurrentHeads) {
-      await repository.commitPreparedIfHeads(
+    if (edition._requireCurrentHeads || noteScopedGuard) {
+      final publish = noteScopedGuard
+          ? repository.commitPreparedIfNoteHeads
+          : repository.commitPreparedIfHeads;
+      await publish(
         edition._prepared,
         expectedHeads: {
           session.sourceEntityId: session.parentRevisionIds,

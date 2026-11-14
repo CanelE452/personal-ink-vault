@@ -1,0 +1,25 @@
+--- a/rhwp-studio/src/view/canvas-view.ts
++++ b/rhwp-studio/src/view/canvas-view.ts
+@@ -258,11 +258,18 @@
+   async loadDocument(): Promise<void> {
+     if (this.disposed) return;
+     if (!this.documentLoadPrepared) this.prepareDocumentLoad();
+-    const epoch = this.rendererSelectionEpoch;
+     this.documentLoadPrepared = false;
+-    if (this.disposed) return;
+-    const selected = await this.prepareRendererRevision(epoch, () => this.rendererSession.resolve(this.wasm));
+-    if (!selected) return;
++    // PIV (Personal Ink Vault): a renderer refresh that supersedes this preparation (e.g. the fonts "loadingdone"
++    // handler's document-view-changed on a slow tablet) used to return here before any page was laid out, leaving
++    // the blank placeholder. Retry with the new epoch unless a newer document load was prepared, at most 8 times.
++    for (let pivRetry = 0; ; pivRetry++) {
++      const epoch = this.rendererSelectionEpoch;
++      if (this.disposed) return;
++      const selected = await this.prepareRendererRevision(epoch, () => this.rendererSession.resolve(this.wasm));
++      if (selected) break;
++      if (this.disposed || this.documentLoadPrepared || epoch === this.rendererSelectionEpoch || pivRetry >= 8) return;
++      console.info(`[PIV] loadDocument superseded by a renderer refresh, retry ${pivRetry + 1}`);
++    }
+ 
+     const pageCount = this.wasm.pageCount;
+     this.pages = [];

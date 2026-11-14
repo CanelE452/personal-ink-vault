@@ -42,11 +42,14 @@ public final class OfficeEditorActivity extends LOActivity {
     private boolean legacyConversion;
     private boolean reopenedSource;
     private volatile boolean previewCancelled;
+    private volatile boolean previewLoadFailed;
     private boolean previewRequested;
+    private boolean previewResultSet;
     private File working;
     private String workingSha256;
     private long workingModified;
     private volatile OfficePresentationCells presentationCells;
+    private boolean engineAttached;
 
     static { System.loadLibrary("piv_office_bridge"); }
 
@@ -56,11 +59,17 @@ public final class OfficeEditorActivity extends LOActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        OfficeEngineProcess.prepare();
         Map<String, Object> alreadyExported = null;
         sessionId = getIntent().getStringExtra("piv.sessionId");
         previewOnly = getIntent().getBooleanExtra("piv.previewOnly", false);
-        boolean opened = sessionId != null && !sessionId.isEmpty()
-                && OfficeSessionJournal.editorOpened(sessionId, this, previewOnly);
+        String launchId = getIntent().getStringExtra("piv.launchId");
+        // This Activity runs in the ":office" process; the main process owns the launch it belongs to.
+        engineAttached = sessionId != null && !sessionId.isEmpty()
+                && OfficeEngineProcess.attach(this, sessionId, launchId, previewOnly);
+        boolean opened = engineAttached && OfficeSessionJournal.engineEditorOpened(sessionId, this);
+        OfficeEngineProcess.log("editor create preview=" + previewOnly + " opened=" + opened
+                + " session=" + sessionId + " launch=" + launchId);
         try {
             if (!opened) throw new IOException("Invalid or busy office session");
             nativeObservation = getIntent().getBooleanExtra("piv.nativeObservation", false);
@@ -133,6 +142,10 @@ public final class OfficeEditorActivity extends LOActivity {
             finish();
             return;
         }
+        if (!previewOnly && alreadyExported == null) {
+            // Every intended close of the editor carries data; a result without data means its process died.
+            setResult(Activity.RESULT_CANCELED, new Intent().putExtra("sessionId", sessionId));
+        }
         super.onCreate(alreadyExported == null ? savedInstanceState : null);
         if (alreadyExported != null) {
             setResult(Activity.RESULT_OK, editResult(alreadyExported));
@@ -157,15 +170,24 @@ public final class OfficeEditorActivity extends LOActivity {
 
     @Override
     protected void onDestroy() {
+        OfficeEngineProcess.log("editor destroy session=" + sessionId);
         try {
-            try {
-                if (presentationCells != null) presentationCells.close();
-            } finally {
-                super.onDestroy();
-            }
+            if (presentationCells != null) presentationCells.close();
         } finally {
-            OfficeSessionJournal.releaseEditor(this);
+            super.onDestroy();
         }
+    }
+
+    @Override
+    protected void onEmbeddedActivityReleased() {
+        OfficeSessionJournal.releaseEditor(this);
+        // A refused Activity's process may be reused for the next launch; only an attached one ends it.
+        if (engineAttached) OfficeEngineProcess.stopAfterRelease(this);
+    }
+
+    @Override
+    protected boolean hasEmbeddedPreviewResult() {
+        return previewResultSet;
     }
 
     @Override
@@ -173,7 +195,8 @@ public final class OfficeEditorActivity extends LOActivity {
         // Flutter owns the next private session; do not open an unbound base Activity.
         if (previewOnly) {
             previewCancelled = true;
-            finishWithProgress();
+            OfficePreviewOutputs.deleteResultRecord(directory);
+            finish();
         } else if (presentationCells == null || !presentationCells.handleBack()) {
             finishWithProgress();
         }
@@ -190,19 +213,42 @@ public final class OfficeEditorActivity extends LOActivity {
             // Collabora sends status after loading the native document. A WebView
             // progress notification can also come from an unrelated dialog.
             String prefix = "status: ";
-            if (message.length > prefix.length() && message[0] == 's'
-                    && prefix.equals(new String(message, 0, prefix.length(), StandardCharsets.US_ASCII))) {
-                runOnUiThread(() -> {
-                    if (previewRequested || previewCancelled || isFinishing() || isDestroyed()
-                            || OfficeEngineHealth.requiresRestart()) return;
+            boolean loaded = message.length > prefix.length() && message[0] == 's'
+                    && prefix.equals(new String(message, 0, prefix.length(), StandardCharsets.US_ASCII));
+            String failure = loaded ? null : previewLoadFailure(message);
+            if (!loaded && failure == null) return false;
+            runOnUiThread(() -> {
+                if (previewRequested || previewCancelled || isFinishing() || isDestroyed()
+                        || OfficeEngineHealth.requiresRestart()) return;
+                previewRequested = true;
+                if (loaded) {
+                    OfficeEngineProcess.log("document loaded session=" + sessionId);
                     ready = true;
-                    previewRequested = true;
                     finishWithProgress();
-                });
-            }
-            return false;
+                } else {
+                    previewLoadFailed = true;
+                    deliverPreviewResult(Activity.RESULT_CANCELED, new Intent().putExtra("sessionId", sessionId)
+                            .putExtra("errorCode", "office_preview_load_failed").putExtra("errorMessage", failure));
+                }
+            });
+            return failure != null;
         }
         return presentationCells != null && presentationCells.onNativeMessage(message);
+    }
+
+    private static String previewLoadFailure(byte[] message) {
+        if (message.length == 0 || message[0] != 'e') return null;
+        String prefix = "error: cmd=load kind=";
+        String header = new String(message, 0, Math.min(message.length, 256), StandardCharsets.US_ASCII);
+        if (!header.startsWith(prefix)) return null;
+        String kind = header.substring(prefix.length()).split("\\s", 2)[0];
+        return switch (kind) {
+            case "passwordrequired", "passwordrequired:to-view", "passwordrequired:to-modify", "wrongpassword" ->
+                    "암호가 걸린 문서입니다. 암호를 해제한 사본으로 PDF 만들기를 다시 시도해 주세요.";
+            case "faileddocloading", "docloadtimeout", "uriinvalid", "syntax" ->
+                    "변환기가 문서를 열지 못했습니다. 원본을 확인한 뒤 다시 시도해 주세요.";
+            default -> null;
+        };
     }
 
     boolean isCellEditorReady() {
@@ -265,14 +311,24 @@ public final class OfficeEditorActivity extends LOActivity {
     private void cancelPreview() {
         if (isFinishing()) return;
         previewCancelled = true;
+        OfficePreviewOutputs.deleteResultRecord(directory);
         setResult(Activity.RESULT_CANCELED, new Intent().putExtra("sessionId", sessionId)
                 .putExtra(OfficeEngineBridge.PREVIEW_CANCELLED_EXTRA, true));
-        finishWithProgress();
+        previewResultSet = true;
+        finish();
     }
 
     private void deliverPreviewResult(int code, Intent result) {
+        long posted = System.nanoTime();
         runOnUiThread(() -> {
-            if (!previewCancelled && !isFinishing()) setResult(code, result);
+            OfficeEngineProcess.log("preview result " + code + " reached the UI thread after "
+                    + (System.nanoTime() - posted) / 1_000_000 + " ms session=" + sessionId);
+            if (!previewCancelled && !isFinishing()) {
+                setResult(code, result);
+                previewResultSet = code == Activity.RESULT_CANCELED
+                        || result.getBooleanExtra(OfficeEngineBridge.PREVIEW_PDF_READY_EXTRA, false);
+                if (previewResultSet) finish();
+            }
         });
     }
 
@@ -293,7 +349,8 @@ public final class OfficeEditorActivity extends LOActivity {
         if (isEmbeddedDocumentBusy()) return false;
         if (previewOnly) return finishPreview();
         if (!ready || directory == null) {
-            setResult(Activity.RESULT_CANCELED);
+            // Carries data: a result without data means the engine process died first.
+            setResult(Activity.RESULT_CANCELED, new Intent().putExtra("sessionId", sessionId));
             return true;
         }
         File source = new File(directory, "edited." + format);
@@ -319,7 +376,7 @@ public final class OfficeEditorActivity extends LOActivity {
     }
 
     private boolean finishPreview() {
-        if (previewCancelled) return true;
+        if (previewCancelled || previewLoadFailed) return true;
         if (!ready || directory == null) {
             deliverPreviewResult(Activity.RESULT_CANCELED, new Intent().putExtra("sessionId", sessionId)
                     .putExtra("errorCode", "office_preview_load_failed")
@@ -349,8 +406,19 @@ public final class OfficeEditorActivity extends LOActivity {
                 pages = renderer.getPageCount();
                 if (pages == 0) throw new IOException("PDF 페이지를 만들지 못했습니다.");
             }
+            String pdfSha256 = sha256(pdf);
+            OfficeEngineProcess.log("pdf ready pages=" + pages + " session=" + sessionId);
+            if (!nativeObservation && !reopenedSource && !previewCancelled) {
+                try {
+                    // Lets the main process still accept this PDF if the engine process dies before finish().
+                    OfficePreviewOutputs.writeResultRecord(directory, sessionId, workingSha256, pdfSha256, pages);
+                    if (previewCancelled) OfficePreviewOutputs.deleteResultRecord(directory);
+                } catch (IOException recordError) {
+                    OfficeEngineProcess.log("preview result record not written session=" + sessionId);
+                }
+            }
             Intent result = new Intent().putExtra("pdfPath", pdf.getPath())
-                    .putExtra("sourceSha256", workingSha256).putExtra("pdfSha256", sha256(pdf))
+                    .putExtra("sourceSha256", workingSha256).putExtra("pdfSha256", pdfSha256)
                     .putExtra("pdfPageCount", pages).putExtra("sessionId", sessionId);
             if (observation != null) {
                 result.putExtra("observationPath", (String) observation.get("observationPath"))
@@ -358,6 +426,9 @@ public final class OfficeEditorActivity extends LOActivity {
                         .putExtra("observationByteLength", (Integer) observation.get("observationByteLength"))
                         .putExtra("partCount", (Integer) observation.get("partCount"))
                         .putExtra("format", format);
+            }
+            if (!nativeObservation && !reopenedSource) {
+                result.putExtra(OfficeEngineBridge.PREVIEW_PDF_READY_EXTRA, true);
             }
             deliverPreviewResult(Activity.RESULT_OK, result);
             return true;

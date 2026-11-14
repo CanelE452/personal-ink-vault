@@ -15,13 +15,18 @@ licenses, and source provenance go only into ignored `build/office-engine/`.
 must have the exact pinned SHA-256.
 
 The upstream `android/lib` Java/resource source is generated with the explicit
-`piv-6` embedded-close, preparation-cancellation, shared-message-thread, and
+`piv-8` embedded-close, preparation-cancellation, shared-message-thread, and
 read-only-preview changes recorded in its generated provenance. Original edits
 save a new original-format document and PDF before closing the embedded editor.
 PDF-only preview forces read-only permission, suppresses source autosave and
 editing messages, and starts export when the native engine reports a loaded
-document. Both
-paths release their WebView without removing the Flutter task. Native document
+document. A terminal load error closes the preparation screen and reports the
+failure, including when PDF conversion needs an unlocked copy. A validated PDF,
+reported failure, or explicit cancellation returns to Flutter while the engine
+closes. The app removes temporary files after the owning native session closes
+and the caller relinquishes a successful result. Legacy format promotion and
+publication of a reopened edited source retain their close confirmation.
+Both paths release their WebView while keeping the Flutter task. Native document
 open/save/close uses one process-wide FIFO, so external Activity destruction
 queues close behind an unfinished export and never waits for COKit's close mutex
 on the UI thread. Each native session closes once; a new Activity opens only
@@ -29,11 +34,11 @@ after the preceding close completes. The single native queue lives as long as
 the process-wide COKit engine. Late callbacks to destroyed sessions are ignored.
 An early close waits up to 10 seconds for the initial native HULLO handshake;
 the owning WebView stays alive until close completes. A 45-second UI watchdog
-covers native open/save/close. If either deadline expires, the current operation
-returns `office_engine_restart_required` and the engine is quarantined for the
-rest of this process. Later Office requests fail immediately without entering
-native code. Original and private working files remain; other app features can
-continue. A late loading event cannot cancel the close watchdog. Recovery is
+covers native open/save/close. If either deadline expires, the engine is
+quarantined for the rest of this process. An unfinished operation returns
+`office_engine_restart_required`. Later Office requests fail immediately without
+entering native code. Original and private working files remain and other app
+features can continue. A late loading event cannot cancel the close watchdog. Recovery is
 **force stop the app in Android Settings, then reopen**;
 removing a recent-app card may leave the process alive. The app never kills its
 own process or reuses a native session whose close could not be confirmed.
@@ -67,11 +72,13 @@ launch from the current app process. The preview calls COKit `saveAs` only for P
 actual boolean result, checks source SHA-256 and modification time, and validates
 the PDF with `PdfRenderer`. It returns `previewed` with the original source hash,
 PDF path/hash/page count and session identity. Cancellation returns no new
-edition. An unexpected close without a PDF reports a failure. Dart's
-`OfficePreviewEngine` also checks the caller's source hash and modification time.
-Its API makes no repository writes: only the UI's **PDF 필기 시작** commits an
-unchanged-original/PDF pair and opens the shared handwriting editor. Read-only
-MCP rendering can reuse conversion without creating an edition.
+edition. If native teardown exceeds its deadline after PDF validation, the
+verified PDF still reaches the caller. The engine remains unavailable until the
+process restarts, and the active engine's temporary files stay in place. An
+unexpected close without a PDF reports a failure. Dart's `OfficePreviewEngine`
+also checks the caller's source hash and modification time. **PDF로 새 문서 만들기**
+saves a separate PDF and opens the shared handwriting editor. Read-only MCP
+rendering uses the same converter.
 
 ## App integration
 

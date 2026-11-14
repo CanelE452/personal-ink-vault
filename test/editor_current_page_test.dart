@@ -36,7 +36,7 @@ void main() {
     test('returns 0 when scroll position is within first page', () {
       expect(
         EditorState.getPageIndexFromScrollPosition(
-          scrollY: 50, // middle of first page
+          scrollY: 82, // center of the first page after the canvas inset
           screenWidth: 100,
           pages: pages,
         ),
@@ -47,7 +47,7 @@ void main() {
     test('returns 1 when scroll position is within second page', () {
       expect(
         EditorState.getPageIndexFromScrollPosition(
-          scrollY: 150, // middle of second page
+          scrollY: 248, // center of the second page
           screenWidth: 100,
           pages: pages,
         ),
@@ -58,8 +58,38 @@ void main() {
     test('returns 2 when scroll position is within third page', () {
       expect(
         EditorState.getPageIndexFromScrollPosition(
-          scrollY: 350, // middle of third page
+          scrollY: 514, // center of the third page
           screenWidth: 100,
+          pages: pages,
+        ),
+        2,
+      );
+    });
+
+    test('keeps the previous page in the gap and advances at the next top', () {
+      expect(
+        EditorState.getPageIndexFromScrollPosition(
+          scrollY: 363,
+          screenWidth: 100,
+          pages: pages,
+        ),
+        1,
+      );
+      expect(
+        EditorState.getPageIndexFromScrollPosition(
+          scrollY: 364,
+          screenWidth: 100,
+          pages: pages,
+        ),
+        2,
+      );
+    });
+
+    test('fits page heights to the canvas width before locating a page', () {
+      expect(
+        EditorState.getPageIndexFromScrollPosition(
+          scrollY: 214,
+          screenWidth: 50,
           pages: pages,
         ),
         2,

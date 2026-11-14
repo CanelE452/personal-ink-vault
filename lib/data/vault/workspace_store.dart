@@ -551,6 +551,7 @@ class WorkspaceStore {
     required String fileName,
     required Map<String, Uint8List> Function(String sourceEntityId)
     buildSourceFiles,
+    bool noteScopedGuard = false,
     void Function()? beforePublish,
   }) async {
     if (repository.formatVersion < 2 ||
@@ -596,6 +597,7 @@ class WorkspaceStore {
         originalNote.id: [originalNote.revision.revisionId],
         originalSource.entityId: [originalSource.revisionId],
       },
+      noteScopedGuard: noteScopedGuard,
       beforePublish: beforePublish,
     );
   }
@@ -682,6 +684,7 @@ class WorkspaceStore {
     String? sharedReceipt,
     Map<String, Uint8List> Function(String sourceEntityId)? buildSourceFiles,
     Map<String, List<String>>? expectedSourceHeads,
+    bool noteScopedGuard = false,
     void Function()? beforePublish,
   }) async {
     if (repository.formatVersion < 2 &&
@@ -697,6 +700,9 @@ class WorkspaceStore {
     await LibraryStore(repository).validateDestination(folderId);
     final id = sharedRequestId ?? newId(), ink = newId(), markdown = newId();
     final source = sourceFileName == null ? null : newId();
+    final publishWithHeads = noteScopedGuard || sharedRequestId != null
+        ? repository.commitPreparedIfNoteHeads
+        : repository.commitPreparedIfHeads;
     if (source != null) {
       final prepared = repository.prepareCommit(
         entityId: source,
@@ -709,9 +715,13 @@ class WorkspaceStore {
       if (expectedSourceHeads == null) {
         await repository.commitPrepared(prepared);
       } else {
-        await repository.commitPreparedIfHeads(
+        await publishWithHeads(
           prepared,
-          expectedHeads: {...expectedSourceHeads, source: const []},
+          expectedHeads: {
+            ...expectedSourceHeads,
+            source: const [],
+            if (noteScopedGuard) id: const [],
+          },
           beforePublish: beforePublish,
         );
       }
@@ -742,12 +752,6 @@ class WorkspaceStore {
         ),
       ),
     };
-    final publishMetadata =
-        sharedRequestId != null &&
-            documentKind == VaultDocumentKind.pdf &&
-            expectedSourceHeads == null
-        ? repository.commitPreparedIfNoteHeads
-        : repository.commitPreparedIfHeads;
     final revision = sharedRequestId == null && expectedSourceHeads == null
         ? await repository.commit(
             entityId: id,
@@ -755,7 +759,7 @@ class WorkspaceStore {
             files: metadata,
             parentRevisionIds: [],
           )
-        : await publishMetadata(
+        : await publishWithHeads(
             repository.prepareCommit(
               entityId: id,
               kind: EntityKind.metadata,

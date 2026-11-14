@@ -7,21 +7,30 @@ import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.github.canele452.personalinkvault.office.HwpEditorBridge
 import io.github.canele452.personalinkvault.office.OfficeEngineBridge
 import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
 
 class MainActivity: FlutterActivity() {
     private var officeBridge: OfficeEngineBridge? = null
+    private var hwpEditorBridge: HwpEditorBridge? = null
     private var cameraBridge: CameraBridge? = null
     private var documentChannel: MethodChannel? = null
-    private var starNoteSourceBridge: StarNoteSourceBridge? = null
+    private var starNoteSourceBridge: DocumentSourceBridge? = null
+    private var officeSourceBridge: DocumentSourceBridge? = null
+    private var obsidianFolderBridge: ObsidianFolderBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         documentChannel = DocumentImportBridge.attach(this, flutterEngine.dartExecutor.binaryMessenger)
-        starNoteSourceBridge = StarNoteSourceBridge(this, flutterEngine.dartExecutor.binaryMessenger)
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
+        starNoteSourceBridge = DocumentSourceBridge(this, messenger, DocumentSourceBridge.Kind.STARNOTE)
+        officeSourceBridge = DocumentSourceBridge(this, messenger, DocumentSourceBridge.Kind.OFFICE)
+        obsidianFolderBridge = ObsidianFolderBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         val bridge = OfficeEngineBridge(this)
         officeBridge = bridge
+        val hwpEditor = HwpEditorBridge(this)
+        hwpEditorBridge = hwpEditor
         val camera = CameraBridge(this)
         cameraBridge = camera
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "personal_ink_vault/camera")
@@ -39,6 +48,12 @@ class MainActivity: FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "capabilities" -> result.success(bridge.capabilities())
+                    "hwpEdit" -> hwpEditor.edit(call.argument<String>("sourcePath"), call.argument<String>("sessionId"),
+                        call.argument<String>("fileName"),
+                        object : HwpEditorBridge.Completion {
+                            override fun success(value: Map<String, Any>) { result.success(value) }
+                            override fun error(code: String, message: String) { result.error(code, message, null) }
+                        })
                     "edit" -> bridge.edit(call.argument<String>("sourcePath"), call.argument<String>("sessionId"),
                         object : OfficeEngineBridge.Completion {
                             override fun success(value: Map<String, Any>) { result.success(value) }
@@ -110,21 +125,29 @@ class MainActivity: FlutterActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (obsidianFolderBridge?.handleActivityResult(requestCode, resultCode, data) == true) return
         if (starNoteSourceBridge?.handleActivityResult(requestCode, resultCode, data) == true) return
+        if (officeSourceBridge?.handleActivityResult(requestCode, resultCode, data) == true) return
         if (cameraBridge?.handleActivityResult(requestCode, resultCode, data) == true) return
         if (officeBridge?.handleActivityResult(requestCode, resultCode, data) == true) return
+        if (hwpEditorBridge?.handleActivityResult(requestCode, resultCode, data) == true) return
         super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onDestroy() {
         documentChannel?.let { DocumentImportBridge.detach(it) }
         documentChannel = null
+        obsidianFolderBridge?.dispose()
+        obsidianFolderBridge = null
         starNoteSourceBridge?.dispose()
         starNoteSourceBridge = null
+        officeSourceBridge?.dispose()
+        officeSourceBridge = null
         cameraBridge?.dispose()
         cameraBridge = null
         officeBridge?.dispose()
         officeBridge = null
+        hwpEditorBridge = null
         super.onDestroy()
     }
 

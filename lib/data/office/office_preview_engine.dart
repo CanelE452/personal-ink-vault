@@ -76,7 +76,7 @@ class OfficePreviewEngine {
   bool _isHwpSource(String sourcePath) =>
       const {'.hwp', '.hwpx'}.contains(p.extension(sourcePath).toLowerCase());
 
-  Future<({Uint8List bytes, int pageCount})?> convertToPdf({
+  Future<({Uint8List bytes, int pageCount, String engineVersion})?> convertToPdf({
     required String fileName,
     required Uint8List original,
   }) async {
@@ -105,6 +105,7 @@ class OfficePreviewEngine {
       return (
         bytes: await readVerifiedPdf(source, expected, result),
         pageCount: result.pageCount,
+        engineVersion: result.engineVersion,
       );
     } finally {
       await result?.dispose();
@@ -167,8 +168,26 @@ class OfficePreviewEngine {
     try {
       final hwp = _isHwpSource(sourcePath);
       late OfficePreviewResult result;
-      if (hwp || _isWindows) {
-        final engine = hwp ? _hwp : _windows;
+      if (hwp) {
+        if (!await _hwp.available)
+          throw PlatformException(
+            code: 'office_unavailable',
+            message: '문서 미리보기 엔진이 준비되지 않았습니다.',
+          );
+        // A separate PDF does not need the structured editor's checks: rhwp
+        // renders every page of the original.
+        final pdf = await _hwp.renderPdf(sourcePath);
+        releasePreview = pdf.dispose;
+        result = OfficePreviewResult._owned(
+          pdfPath: pdf.pdfPath,
+          pdfSha256: pdf.pdfSha256,
+          pageCount: pdf.pageCount,
+          sourceSha256: pdf.sourceSha256,
+          engineVersion: 'piv-preview-v2/${pdf.engineVersion}',
+          onDispose: pdf.dispose,
+        );
+      } else if (_isWindows) {
+        final engine = _windows;
         if (!await engine.available)
           throw PlatformException(
             code: 'office_unavailable',
@@ -199,9 +218,7 @@ class OfficePreviewEngine {
           pdfSha256: await _hash(output),
           pageCount: snapshot.previewPageCount!,
           sourceSha256: snapshot.sourceSha256,
-          engineVersion: hwp
-              ? 'piv-preview-v1/hwp-cli-1.3.1'
-              : 'piv-preview-v1/LibreOffice-26.8.2.2',
+          engineVersion: 'piv-preview-v1/LibreOffice-26.8.2.2',
           onDispose: snapshot.disposePreview,
         );
       } else if (_isAndroid) {

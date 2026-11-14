@@ -11,13 +11,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as image;
 import 'package:ink_vault_core/ink_vault_core.dart';
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart' show PdfDocument, PdfImage, PdfImageExt;
 import 'package:saber/components/drive/drive_panel.dart';
+import 'package:saber/data/app_external_screen.dart';
 import 'package:saber/data/drive/drive_connection.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
-import 'package:saber/data/imports/android_starnote_source.dart';
+import 'package:saber/data/imports/android_document_source.dart';
+import 'package:saber/data/imports/android_obsidian_folder.dart';
 import 'package:saber/data/imports/image_capture.dart';
 import 'package:saber/data/imports/image_note_importer.dart';
 import 'package:saber/data/imports/shared_document_queue.dart';
@@ -27,6 +30,7 @@ import 'package:saber/data/mcp/vault_mcp_service.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
+import 'package:saber/data/office/pdf_note_original.dart';
 import 'package:saber/data/vault/block_page_document.dart';
 import 'package:saber/data/vault/card_canvas_document.dart';
 import 'package:saber/data/vault/card_canvas_raster.dart';
@@ -216,6 +220,9 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   final _thumbnailRequests = <(ThumbnailCache, String)>{};
   final _retiringThumbnailWrites = <Future<void>>{};
   String? _editorIdentity;
+  // The PDF note whose kept Office/HWP original was looked up, and whether it keeps one.
+  (NoteRepository, String)? _keptOriginalLookup;
+  var _keptOriginal = false;
   String? _pendingPdf;
   Object? _pendingPdfScope;
   String? _targetPage;
@@ -241,13 +248,18 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   var _automationForeground = true;
   Future<void>? _workspaceSave;
   var _driveLifecycleGeneration = 0;
+  AppLifecycleState? _appliedLifecycle;
+  Timer? _externalScreenGrace;
+  static final _importLog = Logger('PIVImport');
   @override
   void initState() {
     super.initState();
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _automationForeground =
         lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    _appliedLifecycle = lifecycle ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
+    AppExternalScreen.open.addListener(_externalScreenChanged);
     if (Platform.isWindows) {
       windowManager.addListener(this);
       unawaited(windowManager.setPreventClose(true));
@@ -849,36 +861,64 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         c.canCreateDocument &&
         !c.dirty &&
         StudyWorkspace.pendingDocumentImport.isCurrent(lease);
-    final bytes = await File(path).readAsBytes();
-    if (!current()) throw StateError('대상이 바뀌어 문서 가져오기 요청을 보관했습니다.');
+    final file = File(path);
     await _importOfficeFile(
       c,
-      original: (fileName: fileName, bytes: bytes),
+      fileName: fileName,
+      readOriginal: () => _readExternalDocument(
+        file.length,
+        file.openRead,
+        maxBytes: _officeImportMaxBytes,
+        tooLarge: _officeImportTooLarge,
+        current: current,
+      ),
       isCurrent: current,
       sharedRequestId: lease.request.sharedRequestId,
     );
   }
 
+  /// After the app's own picker or Office engine screen the workspace may still be finishing a
+  /// save or sync started around it. That is not a different vault or folder, so wait briefly.
+  Future<bool> _settledAfterExternalScreen(bool Function() current) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while (!current()) {
+      if (!mounted || !DateTime.now().isBefore(deadline)) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return true;
+  }
+
   Future<void> _importOfficeFile(
     WorkspaceController c, {
-    required SharedOfficeOriginal original,
+    required String fileName,
+    required Future<Uint8List?> Function() readOriginal,
     required bool Function() isCurrent,
+    String? Function()? staleReason,
     String? sharedRequestId,
   }) async {
     final repository = c.repository;
-    void requireCurrent() {
-      if (!isCurrent()) throw StateError('가져올 보관함이나 폴더가 바뀌었습니다.');
+    Future<void> requireCurrent() async {
+      if (await _settledAfterExternalScreen(isCurrent)) return;
+      _importLog.warning('Office import stopped: ${staleReason?.call() ?? 'not current'}');
+      throw StateError('가져올 보관함이나 폴더가 바뀌었습니다.');
     }
 
-    requireCurrent();
-    final prior = sharedRequestId == null
-        ? null
-        : await c.store.readSharedOfficeImport(sharedRequestId, original);
-    requireCurrent();
-    if (prior != null) {
-      if (!prior.trashed) await c.openNote(prior);
-      _finishOfficeImport(c, repository, prior);
-      return;
+    await requireCurrent();
+    Uint8List? bytes;
+    if (sharedRequestId != null) {
+      bytes = await readOriginal();
+      await requireCurrent();
+      if (bytes == null) return;
+      final prior = await c.store.readSharedOfficeImport(sharedRequestId, (
+        fileName: fileName,
+        bytes: bytes,
+      ));
+      await requireCurrent();
+      if (prior != null) {
+        if (!prior.trashed) await c.openNote(prior);
+        _finishOfficeImport(c, repository, prior);
+        return;
+      }
     }
 
     if (!mounted) return;
@@ -888,8 +928,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         key: const ValueKey('office-import-mode'),
         title: const Text('문서를 어떻게 열까요?'),
         content: Text(
-          '${original.fileName}\n\n'
-          'PDF 필기용은 PDF만 보관합니다. Office 편집용은 원본을 보관하고 나중에 별도 PDF를 만들 수 있습니다.',
+          '$fileName\n\n'
+          'PDF 필기용은 PDF와 함께 원본도 보관해, 나중에 새 엔진으로 PDF를 다시 만들 수 있습니다. Office 편집용은 원본을 보관하고 편집할 수 있습니다.',
         ),
         actions: [
           TextButton(
@@ -908,17 +948,19 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       ),
     );
     if (mode == null) return;
-    requireCurrent();
-    final title = p.basenameWithoutExtension(original.fileName);
+    await requireCurrent();
+    bytes ??= await readOriginal();
+    await requireCurrent();
+    if (bytes == null) return;
+    if (bytes.isEmpty)
+      throw const FormatException('빈 Office·한글 파일은 가져올 수 없습니다.');
+    final title = p.basenameWithoutExtension(fileName);
     final VaultNote note;
     if (mode == _OfficeImportMode.pdf) {
       final converted =
           await (widget.officePreviewEngine ?? OfficePreviewEngine())
-              .convertToPdf(
-                fileName: original.fileName,
-                original: original.bytes,
-              );
-      requireCurrent();
+              .convertToPdf(fileName: fileName, original: bytes);
+      await requireCurrent();
       if (converted == null) return;
       note = await _importConvertedOfficePdf(
         c,
@@ -927,14 +969,20 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         bytes: converted.bytes,
         pageCount: converted.pageCount,
         isCurrent: isCurrent,
+        staleReason: staleReason,
         sharedRequestId: sharedRequestId,
-        sharedOfficeOriginal: original,
+        sharedOfficeOriginal: (fileName: fileName, bytes: bytes),
+        keptOriginal: (
+          fileName: fileName,
+          bytes: bytes,
+          engineVersion: converted.engineVersion,
+        ),
       );
     } else {
       note = await OfficeDocumentStore(repository).importDocument(
         title: title,
-        fileName: original.fileName,
-        bytes: original.bytes,
+        fileName: fileName,
+        bytes: bytes,
         folderId: c.currentFolderId,
         sharedRequestId: sharedRequestId,
       );
@@ -943,6 +991,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     _finishOfficeImport(c, repository, note);
   }
 
+  static const _officeImportMaxBytes = 128 * 1024 * 1024;
+  static const _officeImportTooLarge = FormatException(
+    'Office·한글 파일은 최대 128 MiB까지 가져올 수 있습니다.',
+  );
+
   Future<VaultNote> _importConvertedOfficePdf(
     WorkspaceController c, {
     required String title,
@@ -950,9 +1003,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     required Uint8List bytes,
     required int? pageCount,
     required bool Function() isCurrent,
+    String? Function()? staleReason,
     int? pageNumber,
     String? sharedRequestId,
     SharedOfficeOriginal? sharedOfficeOriginal,
+    ({String fileName, Uint8List bytes, String? engineVersion})? keptOriginal,
   }) async {
     PdfDocument? pdf;
     try {
@@ -970,7 +1025,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     } finally {
       await pdf?.dispose();
     }
-    if (!isCurrent()) throw StateError('PDF를 저장할 보관함이나 폴더가 바뀌었습니다.');
+    if (!await _settledAfterExternalScreen(isCurrent)) {
+      _importLog.warning('Office PDF import stopped: ${staleReason?.call() ?? 'not current'}');
+      throw StateError('PDF를 저장할 보관함이나 폴더가 바뀌었습니다.');
+    }
     return c.importOfficePdf(
       title,
       fileName: fileName,
@@ -980,7 +1038,106 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       sharedOfficeOriginal: sharedRequestId == null
           ? null
           : sharedOfficeOriginal,
+      keptOriginal: keptOriginal,
     );
+  }
+
+  bool _keepsOriginal(WorkspaceController c, NoteSession session) {
+    final lookup = (c.repository, session.note.id);
+    if (_keptOriginalLookup != lookup) {
+      _keptOriginalLookup = lookup;
+      _keptOriginal = false;
+      unawaited(
+        PdfNoteOriginalStore(c.repository).has(session.note).then(
+          (kept) {
+            if (kept && mounted && _keptOriginalLookup == lookup) {
+              setState(() => _keptOriginal = true);
+            }
+          },
+          // Without the lookup the action stays hidden; the note is unaffected.
+          onError: (Object _) {},
+        ),
+      );
+    }
+    return _keptOriginal;
+  }
+
+  /// Converts the kept original of a "PDF 필기용" note again and opens the
+  /// result as a new PDF note. The note, its PDF and its ink stay as they are.
+  Future<void> _remakePdfFromOriginal(
+    WorkspaceController c,
+    NoteSession session,
+  ) async {
+    final repository = c.repository;
+    final folder = c.currentFolderId;
+    final note = session.note;
+    bool current() =>
+        mounted &&
+        identical(controller, c) &&
+        identical(c.repository, repository) &&
+        identical(c.activeSession, session) &&
+        c.currentFolderId == folder;
+    final original = await PdfNoteOriginalStore(repository).read(note);
+    if (!mounted || !current()) return;
+    if (original == null) throw StateError('이 노트에는 보관된 원본이 없습니다.');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('새 엔진으로 PDF 다시 만들기'),
+        content: Text(
+          '보관된 원본 ${original.fileName}을(를) 지금 엔진으로 다시 변환해 '
+          '새 노트로 엽니다. 이 노트와 PDF, 필기는 그대로 둡니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('새 노트로 만들기'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !current()) return;
+    // Saved before converting too: an Office conversion can end the app process.
+    await _save();
+    if (!current()) return;
+    final converted =
+        await (widget.officePreviewEngine ?? OfficePreviewEngine())
+            .convertToPdf(fileName: original.fileName, original: original.bytes);
+    if (converted == null || !current()) return;
+    for (final head in await repository.heads(note.sourceEntityId!)) {
+      final files = await repository.readFiles(head);
+      if (files.values.any((pdf) => listEquals(pdf, converted.bytes))) {
+        if (mounted && current()) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('새 엔진으로 만든 PDF가 지금 PDF와 같아 새 노트를 만들지 않았습니다.'),
+            ),
+          );
+        }
+        return;
+      }
+    }
+    await _save();
+    if (!current()) return;
+    final name = p.basenameWithoutExtension(original.fileName);
+    final pdf = await _importConvertedOfficePdf(
+      c,
+      title: '${note.title} (새 엔진)',
+      fileName: '$name.pdf',
+      bytes: converted.bytes,
+      pageCount: converted.pageCount,
+      isCurrent: current,
+      keptOriginal: (
+        fileName: original.fileName,
+        bytes: original.bytes,
+        engineVersion: converted.engineVersion,
+      ),
+    );
+    _finishOfficeImport(c, repository, pdf);
   }
 
   void _finishOfficeImport(
@@ -1695,26 +1852,62 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       final repository = c.repository;
       final session = c.activeSession;
       final folder = c.currentFolderId;
-      final file = await FilePicker.pickFile(
-        type: FileType.custom,
-        allowedExtensions: OfficeDocumentStore.supportedExtensions,
-      );
-      if (file == null) return;
-      await _importOfficeFile(
-        c,
-        original: (
+      String? stale() {
+        if (!mounted) return 'screen closed';
+        if (!identical(controller, c)) return 'workspace replaced';
+        if (!identical(c.repository, repository)) return 'vault replaced';
+        if (!identical(c.activeSession, session)) return 'open document changed';
+        if (c.currentFolderId != folder) return 'folder changed';
+        if (c.externalBusy) return 'automation running';
+        if (!c.canCreateDocument) return 'workspace busy';
+        if (c.dirty) return 'unsaved changes';
+        return null;
+      }
+
+      bool current() => stale() == null;
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        const source = AndroidDocumentSource.office;
+        final selection = await source.choose();
+        if (selection == null) return;
+        try {
+          if (!await _settledAfterExternalScreen(current)) {
+            _importLog.warning('Office import stopped after the picker: ${stale()}');
+            return;
+          }
+          await _importOfficeFile(
+            c,
+            fileName: selection.name,
+            staleReason: stale,
+            readOriginal: () async {
+              final staged = await source.stage(selection);
+              return _readExternalDocument(
+                staged.file.length,
+                staged.file.openRead,
+                expectedLength: staged.bytes,
+                maxBytes: _officeImportMaxBytes,
+                tooLarge: _officeImportTooLarge,
+                current: current,
+              );
+            },
+            isCurrent: current,
+          );
+        } finally {
+          await source.release(selection.id);
+        }
+      } else {
+        final file = await FilePicker.pickFile(
+          type: FileType.custom,
+          allowedExtensions: OfficeDocumentStore.supportedExtensions,
+        );
+        if (file == null) return;
+        final bytes = await file.readAsBytes();
+        await _importOfficeFile(
+          c,
           fileName: p.basename(file.name),
-          bytes: await file.readAsBytes(),
-        ),
-        isCurrent: () =>
-            mounted &&
-            identical(controller, c) &&
-            identical(c.repository, repository) &&
-            identical(c.activeSession, session) &&
-            c.currentFolderId == folder &&
-            c.canCreateDocument &&
-            !c.dirty,
-      );
+          readOriginal: () async => bytes,
+          isCurrent: current,
+        );
+      }
       return;
     }
     if (action == LibraryCreateAction.wordDocument ||
@@ -3492,8 +3685,9 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     await _save();
     if (!mounted || !current()) return;
 
+    final android = defaultTargetPlatform == TargetPlatform.android;
     final bool? useFolder =
-        !notion && defaultTargetPlatform == TargetPlatform.windows
+        !notion && (android || defaultTargetPlatform == TargetPlatform.windows)
         ? await showDialog<bool>(
             context: context,
             builder: (context) => SimpleDialog(
@@ -3520,7 +3714,15 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     Directory? folder;
     Uint8List? zip;
     final String name;
-    if (useFolder) {
+    const androidFolder = AndroidObsidianFolder();
+    String? stagedFolderId;
+    if (useFolder && android) {
+      final selected = await androidFolder.pick();
+      if (selected == null) return;
+      stagedFolderId = selected.id;
+      folder = selected.directory;
+      name = selected.name;
+    } else if (useFolder) {
       final selected = await FilePicker.getDirectoryPath(
         dialogTitle: 'Obsidian 보관함 폴더 선택',
       );
@@ -3540,7 +3742,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       final tooLarge = FormatException(
         '${notion ? 'Notion' : 'Obsidian'} ZIP은 최대 128 MiB까지 가져올 수 있습니다.',
       );
-      zip = await _readExternalVaultArchive(
+      zip = await _readExternalDocument(
         file.length,
         file.readAsByteStream,
         maxBytes: obsidianVaultZipMaxBytes,
@@ -3551,23 +3753,29 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       name = p.basenameWithoutExtension(file.name);
     }
 
-    final support = await getApplicationSupportDirectory();
-    if (!mounted || !current()) return;
-    final vaultsDirectory = Directory(p.join(support.path, 'vaults'));
-    final imported = notion
-        ? await importNotionVault(
-            vaultsDirectory: vaultsDirectory,
-            sourceZip: zip!,
-            sourceName: name,
-            native: c.native,
-          )
-        : await importObsidianVault(
-            vaultsDirectory: vaultsDirectory,
-            sourceFolder: folder,
-            sourceZip: zip,
-            sourceName: name,
-            native: c.native,
-          );
+    final ObsidianVaultImportResult imported;
+    try {
+      if (!mounted || !current()) return;
+      final support = await getApplicationSupportDirectory();
+      if (!mounted || !current()) return;
+      final vaultsDirectory = Directory(p.join(support.path, 'vaults'));
+      imported = notion
+          ? await importNotionVault(
+              vaultsDirectory: vaultsDirectory,
+              sourceZip: zip!,
+              sourceName: name,
+              native: c.native,
+            )
+          : await importObsidianVault(
+              vaultsDirectory: vaultsDirectory,
+              sourceFolder: folder,
+              sourceZip: zip,
+              sourceName: name,
+              native: c.native,
+            );
+    } finally {
+      if (stagedFolderId != null) await androidFolder.release(stagedFolderId);
+    }
     final summary = notion
         ? 'Notion 페이지 ${imported.noteCount}개, 데이터베이스 ${imported.databaseCount}개, '
               '폴더 ${imported.folderCount}개, 첨부 파일 ${imported.attachmentCount}개를 가져왔습니다. '
@@ -3617,7 +3825,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   }
 
   Future<Uint8List?> _readStarNoteArchive(bool Function() current) async {
-    const source = AndroidStarNoteSource();
+    const source = AndroidDocumentSource.starNote;
     final android = defaultTargetPlatform == TargetPlatform.android;
     final selection = android ? await source.choose() : null;
     try {
@@ -3658,7 +3866,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         'StarNote .note는 최대 128 MiB까지 가져올 수 있습니다.',
       );
       if (selection == null) {
-        return await _readExternalVaultArchive(
+        return await _readExternalDocument(
           picked!.length,
           picked.readAsByteStream,
           maxBytes: starNoteArchiveMaxBytes,
@@ -3666,9 +3874,9 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           current: current,
         );
       }
-      final staged = await source.stage(selection.id);
+      final staged = await source.stage(selection);
       if (!current()) return null;
-      return await _readExternalVaultArchive(
+      return await _readExternalDocument(
         staged.file.length,
         staged.file.openRead,
         expectedLength: staged.bytes,
@@ -3681,7 +3889,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     }
   }
 
-  Future<Uint8List?> _readExternalVaultArchive(
+  Future<Uint8List?> _readExternalDocument(
     Future<int?> Function() getLength,
     Stream<List<int>> Function() openRead, {
     int? expectedLength,
@@ -4029,6 +4237,17 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                 : () => unawaited(_showPdfTextSearch(c, session)),
             icon: const Icon(Icons.search),
           ),
+        if (session.note.documentKind == VaultDocumentKind.pdf &&
+            _pdfCanvasVisible() &&
+            _keepsOriginal(c, session))
+          IconButton(
+            key: const ValueKey('pdf-remake-from-original'),
+            tooltip: '새 엔진으로 PDF 다시 만들기',
+            onPressed: busy || c.externalBusy
+                ? null
+                : () => _run(() => _remakePdfFromOriginal(c, session)),
+            icon: const Icon(Icons.autorenew),
+          ),
       ],
       if (compact)
         PopupMenuButton<void>(
@@ -4067,16 +4286,19 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               : Text('저장소를 열 수 없습니다: $_startupError'),
         ),
       );
-    final extraPdfAction =
-        c.native != null &&
-        c.activeSession?.note.documentKind == VaultDocumentKind.pdf;
+    final session = c.activeSession;
+    final pdfNote = session?.note.documentKind == VaultDocumentKind.pdf;
+    final extraPdfAction = c.native != null && pdfNote;
+    final keptOriginalAction = pdfNote && _keepsOriginal(c, session!);
     return LayoutBuilder(
       builder: (context, constraints) => _buildWorkspace(
         context,
         c,
         compactToolbar:
             constraints.maxWidth <
-            (extraPdfAction ? 540 + kMinInteractiveDimension : 540),
+            540 +
+                (extraPdfAction ? kMinInteractiveDimension : 0) +
+                (keptOriginalAction ? kMinInteractiveDimension : 0),
       ),
     );
   }
@@ -4934,6 +5156,26 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The app's own document picker or Office engine is in front: the user has not left the app.
+    if (AppExternalScreen.active) return;
+    _externalScreenGrace?.cancel();
+    _applyLifecycle(state);
+  }
+
+  void _externalScreenChanged() {
+    _externalScreenGrace?.cancel();
+    if (AppExternalScreen.active || !mounted) return;
+    // The screen's result can arrive just before Android resumes the app; give it a moment.
+    _externalScreenGrace = Timer(const Duration(seconds: 2), () {
+      if (!mounted || AppExternalScreen.active) return;
+      final state =
+          WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+      if (state != _appliedLifecycle) _applyLifecycle(state);
+    });
+  }
+
+  void _applyLifecycle(AppLifecycleState state) {
+    _appliedLifecycle = state;
     _automationForeground = state == AppLifecycleState.resumed;
     if (_automationForeground) {
       _driveLifecycleGeneration++;
@@ -4961,6 +5203,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   void dispose() {
     _retireThumbnailScope();
     _sharedDocumentTimer?.cancel();
+    _externalScreenGrace?.cancel();
+    AppExternalScreen.open.removeListener(_externalScreenChanged);
     _automation?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isWindows) windowManager.removeListener(this);

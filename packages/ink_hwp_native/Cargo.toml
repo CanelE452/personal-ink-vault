@@ -21,8 +21,15 @@ hwp5 = { git = "https://github.com/STAIxBWLB/hwp-cli", rev = "4e6e8c2a61694899e3
 hwpx = { git = "https://github.com/STAIxBWLB/hwp-cli", rev = "4e6e8c2a61694899e37b4f7c2f97523153a623b9" }
 hwp-render = { git = "https://github.com/STAIxBWLB/hwp-cli", rev = "4e6e8c2a61694899e37b4f7c2f97523153a623b9" }
 hwp-convert = { git = "https://github.com/STAIxBWLB/hwp-cli", rev = "4e6e8c2a61694899e37b4f7c2f97523153a623b9" }
+rhwp = { version = "=0.9.0", default-features = false }
 [dev-dependencies]
 tempfile = "=3.27.0"
+# Temporary (2026-11-14): rhwp from upstream devel + PR #9022 (refs/pull/9022/head, commit 4cf97fe5) instead of
+# crates.io 0.9.0. It fixes square-wrap pictures in table cells without stored line segments (text drawn over or
+# hidden under the picture). The pinned source and its provenance (SOURCE.json) are in the folder below.
+# Remove this section when a released rhwp includes #9022, and pin that release above.
+[patch.crates-io]
+rhwp = { path = "E:/CodexBuilds/rhwp-src/rhwp-0.9.0-dev-4cf97fe5" }
 [profile.release]
 lto = "thin"
 strip = "debuginfo"

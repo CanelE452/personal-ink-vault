@@ -3,6 +3,7 @@ package io.github.canele452.personalinkvault.office;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Build;
+import android.util.Log;
 
 import java.io.File;
 import java.io.IOException;
@@ -20,13 +21,27 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public final class OfficeEngineBridge {
     public static final int REQUEST_EDIT = 19472;
     private static final int REQUEST_REOPEN = 19475;
     static final String PREVIEW_CANCELLED_EXTRA = "piv.previewCancelled";
+    static final String PREVIEW_PDF_READY_EXTRA = "piv.previewPdfReady";
     public static final String VERSION = "26.04.6.0-962";
     public static final List<String> FORMATS = Arrays.asList("docx", "pptx", "doc", "ppt", "odt", "odp");
+    private static final String LOG_TAG = "PIVOffice";
+    // After its result the engine process should exit on its own (Collabora force-exits ~4 s after the
+    // native close; Android may delay the Activity destroy up to ~10 s). Package-private for host tests.
+    static long engineExitGraceMillis = 25000;
+    private static final long ENGINE_STOP_CONFIRM_MILLIS = 3000;
+    private static final ScheduledExecutorService ENGINE_REAPER = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "piv-office-engine-reaper");
+        thread.setDaemon(true);
+        return thread;
+    });
     private final Activity activity;
     private final ExecutorService files = Executors.newSingleThreadExecutor();
     private final Object launchOwner = new Object();
@@ -43,6 +58,8 @@ public final class OfficeEngineBridge {
     private boolean previewResultPending;
     private String reopenAttempt;
     private String reopenSourceSha256;
+    private String editLaunchId;
+    private String reopenLaunchId;
 
     public interface Completion {
         void success(Map<String, Object> result);
@@ -114,11 +131,7 @@ public final class OfficeEngineBridge {
             return;
         }
         files.execute(() -> {
-            try {
-                previews.release(sessionId);
-            } catch (IOException ignored) {
-                // Cleanup is best effort and never changes the consumed result.
-            }
+            cleanPreviewWhenClosed(sessionId, false);
             activity.runOnUiThread(() -> completion.success(Collections.emptyMap()));
         });
     }
@@ -187,11 +200,34 @@ public final class OfficeEngineBridge {
             completion.error("office_interrupted", "문서 편집 화면이 종료되었습니다.");
             return false;
         }
-        if (pending != null || previewResultPending || OfficeSessionJournal.hasLiveEditor()) {
+        // An engine that already returned its result is only exiting; the open waits for it off the UI thread.
+        if (pending != null || previewResultPending
+                || (OfficeSessionJournal.hasLiveEditor() && !OfficeSessionJournal.hasClosingEditor())) {
             completion.error("office_busy", "문서 편집기가 이미 열려 있습니다.");
             return false;
         }
         return true;
+    }
+
+    /** Files thread: waits for a closing engine process, stopping it by its recorded PID if it stays. */
+    private static boolean awaitEngineSlot() {
+        try {
+            if (!OfficeSessionJournal.hasClosingEditor()) return !OfficeSessionJournal.hasLiveEditor();
+            if (OfficeSessionJournal.awaitAnyEditorRelease(engineExitGraceMillis)) return true;
+            String launch = OfficeSessionJournal.closingLaunch();
+            if (OfficeSessionJournal.stopEngine(launch)) log("closing engine stopped before a new launch launch=" + launch);
+            return OfficeSessionJournal.awaitAnyEditorRelease(ENGINE_STOP_CONFIRM_MILLIS);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private void failBusyEngine(Completion completion, boolean previewOnly) {
+        activity.runOnUiThread(() -> {
+            if (pending == completion) fail("office_busy", "이전 문서 엔진을 정리하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+            if (disposed && previewOnly) files.shutdown();
+        });
     }
 
     private OfficeSessionJournal journal() throws IOException {
@@ -214,6 +250,10 @@ public final class OfficeEngineBridge {
         pendingSessionId = sessionId;
         pendingInputSourceSha256 = inputSourceSha256;
         files.execute(() -> {
+            if (!awaitEngineSlot()) {
+                failBusyEngine(completion, false);
+                return;
+            }
             try {
                 Map<String, Object> result = journal().recover(sessionId, inputSourceSha256);
                 activity.runOnUiThread(() -> {
@@ -265,11 +305,11 @@ public final class OfficeEngineBridge {
 
     private void open(String sourcePath, String sessionId, boolean previewOnly, boolean observeNative,
             boolean convertLegacy, String expectedSourceSha256, Completion completion) {
-        if (!available(completion)) return;
         if (OfficeEngineHealth.requiresRestart()) {
             completion.error(OfficeEngineHealth.ERROR_CODE, OfficeEngineHealth.RECOVERY_MESSAGE);
             return;
         }
+        if (!available(completion)) return;
         if (!Boolean.TRUE.equals(capabilities().get("available"))) {
             completion.error("office_unavailable", "이 기기에 맞는 문서 편집 엔진이 없습니다.");
             return;
@@ -291,6 +331,10 @@ public final class OfficeEngineBridge {
         pendingSessionId = sessionId;
         pendingInputSourceSha256 = null;
         files.execute(() -> {
+            if (!awaitEngineSlot()) {
+                failBusyEngine(completion, previewOnly);
+                return;
+            }
             boolean previewCreated = false;
             try {
                 File original = convertLegacy
@@ -318,7 +362,8 @@ public final class OfficeEngineBridge {
                         throw new IOException(convertLegacy ? "Invalid conversion working digest" : "invalid_office_observation");
                     }
                     if (OfficeLegacyContainer.supports(extension)) OfficeSessionJournal.validateOffice(working, extension);
-                    inputHash = observeNative || convertLegacy ? expectedSourceSha256 : null;
+                    inputHash = observeNative || convertLegacy ? expectedSourceSha256
+                            : OfficeNativeObservation.sourceSha256(working);
                 } else {
                     Map<String, Object> prepared = journal().create(original, sessionId, extension);
                     working = new File((String) prepared.get("workingPath"));
@@ -362,13 +407,15 @@ public final class OfficeEngineBridge {
             if (previewOnly) discardPreview(sessionId, () -> fail("office_interrupted", "문서 미리보기 화면이 종료되었습니다."));
             return;
         }
-        if (!OfficeSessionJournal.reserveEditor(sessionId, launchOwner)) {
+        String launchId = UUID.randomUUID().toString();
+        if (!OfficeSessionJournal.reserveEditor(sessionId, launchOwner, launchId)) {
             if (previewOnly) discardPreview(sessionId, () -> fail("office_busy", "문서 편집기가 이미 열려 있습니다."));
             else fail("office_busy", "문서 편집기가 이미 열려 있습니다.");
             return;
         }
         try {
-            Class.forName(OfficeEditorActivity.class.getName(), true, activity.getClassLoader());
+            // Load without initializing: the engine's native libraries belong to the ":office" process.
+            Class.forName(OfficeEditorActivity.class.getName(), false, activity.getClassLoader());
             Intent intent = new Intent(activity, OfficeEditorActivity.class)
                     .setAction(previewOnly ? Intent.ACTION_VIEW : Intent.ACTION_EDIT)
                     .putExtra("piv.workingPath", working.getPath())
@@ -379,9 +426,14 @@ public final class OfficeEngineBridge {
                     .putExtra("piv.nativeObservation", pendingObservation)
                     .putExtra("piv.legacyConversion", pendingConversionSourcePath != null)
                     .putExtra("piv.reopenedSource", reopenedSource)
-                    .putExtra("piv.format", extension);
+                    .putExtra("piv.format", extension)
+                    .putExtra("piv.launchId", launchId);
             activity.startActivityForResult(intent, reopenedSource ? REQUEST_REOPEN : REQUEST_EDIT);
+            if (reopenedSource) reopenLaunchId = launchId;
+            else editLaunchId = launchId;
             if (previewOnly && !reopenedSource) launchedPreviewSessionId = sessionId;
+            log("launch session=" + sessionId + " launch=" + launchId + " preview=" + previewOnly
+                    + " reopen=" + reopenedSource);
         } catch (Throwable error) {
             OfficeSessionJournal.releaseEditor(launchOwner);
             String message = "문서 편집 엔진을 열지 못했습니다. " + error.getClass().getSimpleName();
@@ -392,10 +444,12 @@ public final class OfficeEngineBridge {
 
     public boolean handleActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_REOPEN) {
+            noteEngineResult(reopenLaunchId, resultCode, data);
             finishSourceReopen(resultCode, data);
             return true;
         }
         if (requestCode != REQUEST_EDIT) return false;
+        boolean engineAttached = noteEngineResult(editLaunchId, resultCode, data);
         if (reopenAttempt != null) return true;
         if (resultCode == Activity.RESULT_OK && data != null && data.getBooleanExtra("piv.sourceReady", false)) {
             if (pending != null && !pendingPreview && pendingInputSourceSha256 != null
@@ -404,6 +458,14 @@ public final class OfficeEngineBridge {
                 OfficeSessionJournal.releaseEditor(launchOwner);
                 startSourceReopen(data);
             }
+            return true;
+        }
+        if (resultCode != Activity.RESULT_OK && data == null && pending != null && !pendingPreview
+                && pendingSessionId != null && pendingInputSourceSha256 != null) {
+            // Every intended close of the editor carries data; none means its engine process died.
+            OfficeSessionJournal.releaseEditor(launchOwner);
+            if (engineAttached) rescueEditResult();
+            else fail("office_engine_load_failed", "문서 편집 엔진을 시작하지 못했습니다. 작업 복사본은 기기에 보관됩니다.");
             return true;
         }
         OfficeSessionJournal.releaseEditor(launchOwner);
@@ -436,6 +498,7 @@ public final class OfficeEngineBridge {
             return true;
         }
         if (data != null && data.hasExtra("errorCode")) {
+            log("returned to Dart session=" + expectedSession + " error=" + data.getStringExtra("errorCode"));
             completion.error(data.getStringExtra("errorCode"), data.getStringExtra("errorMessage"));
             return true;
         }
@@ -462,6 +525,7 @@ public final class OfficeEngineBridge {
                     }
                     if (!saved.get("pdfPageCount").equals(data.getIntExtra("pdfPageCount", 0))) throw new IOException("Saved page count mismatch");
                     activity.runOnUiThread(() -> {
+                        log("returned to Dart session=" + expectedSession + (disposed ? " error=office_interrupted" : " status=saved"));
                         if (disposed) completion.error("office_interrupted", "문서 결과는 기기에 보관됩니다. 복구에서 다시 확인하세요.");
                         else completion.success(saved);
                     });
@@ -480,6 +544,7 @@ public final class OfficeEngineBridge {
             }
             result.put("pdfPageCount", data.getIntExtra("pdfPageCount", 0));
         }
+        log("returned to Dart session=" + expectedSession + " status=" + result.get("status"));
         completion.success(result);
         return true;
     }
@@ -551,6 +616,15 @@ public final class OfficeEngineBridge {
                 && !attempt.equals(data.getStringExtra("sessionId")))) return;
         reopenSourceSha256 = null;
         OfficeSessionJournal.releaseEditor(launchOwner);
+        if (resultCode == Activity.RESULT_CANCELED && data != null
+                && attempt.equals(data.getStringExtra("sessionId"))
+                && (data.getBooleanExtra(PREVIEW_CANCELLED_EXTRA, false) || data.hasExtra("errorCode"))) {
+            String code = data.getStringExtra("errorCode");
+            files.execute(() -> cleanPreviewWhenClosed(attempt, true));
+            fail(code == null ? "office_reopen_cancelled" : code,
+                    "필기용 PDF를 마치지 못했습니다. 저장한 원본은 복구에 남아 있습니다.");
+            return;
+        }
         String sessionId = pendingSessionId;
         String inputHash = pendingInputSourceSha256;
         files.execute(() -> {
@@ -609,13 +683,28 @@ public final class OfficeEngineBridge {
 
     private void discardPreview(String sessionId, Runnable after) {
         files.execute(() -> {
-            try { previews.discard(sessionId); } catch (IOException ignored) {}
+            cleanPreviewWhenClosed(sessionId, true);
             activity.runOnUiThread(() -> {
                 previewResultPending = false;
                 if (after != null) after.run();
                 if (disposed) files.shutdown();
             });
         });
+    }
+
+    private void cleanPreviewWhenClosed(String sessionId, boolean discard) {
+        if (sessionId == null || OfficeEngineHealth.requiresRestart()) return;
+        OfficePreviewOutputs.Cleanup cleanup = previews.cleanup(sessionId, discard);
+        Runnable remove = () -> {
+            try {
+                if (!OfficeEngineHealth.requiresRestart()) cleanup.run();
+            } catch (IOException ignored) {
+                // Cleanup is best effort and never changes the consumed result.
+            }
+        };
+        if (!OfficeSessionJournal.deferUntilEditorReleased(sessionId, () -> ForkJoinPool.commonPool().execute(remove))) {
+            remove.run();
+        }
     }
 
     private void finishPreviewResult(String sessionId, Completion completion, int resultCode, Intent data,
@@ -626,21 +715,56 @@ public final class OfficeEngineBridge {
             String errorCode = null;
             String errorMessage = null;
             boolean ready = false;
-            if (data != null && data.hasExtra("sessionId")
-                    && (sessionId == null || !sessionId.equals(data.getStringExtra("sessionId")))) {
+            boolean wrongSession = data != null && data.hasExtra("sessionId")
+                    && (sessionId == null || !sessionId.equals(data.getStringExtra("sessionId")));
+            boolean sameSession = data != null && sessionId != null
+                    && sessionId.equals(data.getStringExtra("sessionId"));
+            boolean cancelled = resultCode == Activity.RESULT_CANCELED && sameSession
+                    && data.getBooleanExtra(PREVIEW_CANCELLED_EXTRA, false);
+            boolean completedPdf = resultCode == Activity.RESULT_OK && sameSession
+                    && !observeNative && conversionSourcePath == null
+                    && data.getBooleanExtra(PREVIEW_PDF_READY_EXTRA, false);
+            boolean reportedFailure = resultCode == Activity.RESULT_CANCELED && sameSession && data.hasExtra("errorCode");
+            boolean returnBeforeClose = completedPdf || cancelled || reportedFailure;
+            boolean restartRequired = OfficeEngineHealth.requiresRestart()
+                    || (!wrongSession && data != null
+                    && OfficeEngineHealth.ERROR_CODE.equals(data.getStringExtra("errorCode")));
+            boolean closed = false;
+            if (!wrongSession && !restartRequired && !returnBeforeClose) {
+                try {
+                    // Android may deliver the result before the old Activity and native queue release its working file.
+                    if (sessionId != null) awaitClosed(sessionId);
+                    closed = true;
+                } catch (IOException ignored) {
+                    // The current Activity still owns the files.
+                }
+                restartRequired = OfficeEngineHealth.requiresRestart();
+            }
+            if (wrongSession) {
                 errorCode = "invalid_office_result";
                 errorMessage = "다른 문서의 미리보기 결과를 거부했습니다.";
+            } else if (restartRequired && !returnBeforeClose) {
+                errorCode = OfficeEngineHealth.ERROR_CODE;
+                errorMessage = OfficeEngineHealth.RECOVERY_MESSAGE;
+            } else if (!closed && !restartRequired && !returnBeforeClose) {
+                errorCode = "office_busy";
+                errorMessage = "이전 문서 변환 화면을 정리하고 있습니다. 잠시 뒤 다시 시도해 주세요.";
             } else if (data != null && data.hasExtra("errorCode")) {
                 errorCode = data.getStringExtra("errorCode");
                 errorMessage = data.getStringExtra("errorMessage");
-            } else if (resultCode == Activity.RESULT_CANCELED && data != null && sessionId != null
-                    && sessionId.equals(data.getStringExtra("sessionId"))
-                    && data.getBooleanExtra(PREVIEW_CANCELLED_EXTRA, false)) {
+            } else if (cancelled) {
                 result.put("status", "cancelled");
                 if (observeNative || conversionSourcePath != null) result.put("sessionId", sessionId);
             } else if (resultCode != Activity.RESULT_OK || data == null) {
-                errorCode = "office_preview_interrupted";
-                errorMessage = "PDF가 만들어지기 전에 변환 화면이 닫혔습니다. 다시 시도해 주세요.";
+                Map<String, Object> rescued = data == null && closed && !observeNative && conversionSourcePath == null
+                        ? rescuePreview(sessionId, expectedSourceHash) : null;
+                if (rescued == null) {
+                    errorCode = "office_preview_interrupted";
+                    errorMessage = "PDF가 만들어지기 전에 변환 화면이 닫혔습니다. 다시 시도해 주세요.";
+                } else {
+                    result.putAll(rescued);
+                    ready = true;
+                }
             } else if (!disposed && completion != null && conversionSourcePath != null) {
                 try {
                     completeLegacyConversion(result, data, sessionId, expectedSourceHash, conversionSourcePath);
@@ -652,6 +776,12 @@ public final class OfficeEngineBridge {
             } else if (!disposed && completion != null) {
                 try {
                     File pdf = previews.complete(sessionId, data.getStringExtra("pdfPath"));
+                    if (completedPdf && (expectedSourceHash == null
+                            || !expectedSourceHash.equals(data.getStringExtra("sourceSha256"))
+                            || data.getIntExtra("pdfPageCount", 0) < 1
+                            || !OfficeNativeObservation.sourceSha256(pdf).equals(data.getStringExtra("pdfSha256")))) {
+                        throw new IOException("PDF result does not match the completed preview");
+                    }
                     result.put("status", "previewed");
                     result.put("sessionId", sessionId);
                     result.put("pdfPath", pdf.getPath());
@@ -685,10 +815,7 @@ public final class OfficeEngineBridge {
                     errorMessage = "이 미리보기 작업에 속한 PDF를 확인하지 못했습니다.";
                 }
             }
-            // A timed-out native worker may still be using the private input.
-            if (!ready && !OfficeEngineHealth.ERROR_CODE.equals(errorCode)) {
-                try { previews.discard(sessionId); } catch (IOException ignored) {}
-            }
+            if (!ready) cleanPreviewWhenClosed(sessionId, true);
             final String code = errorCode;
             final String message = errorMessage;
             final boolean retained = ready;
@@ -702,6 +829,8 @@ public final class OfficeEngineBridge {
                     if (completion != null) completion.error("office_interrupted", "문서 미리보기 화면이 종료되었습니다.");
                 } else {
                     previewResultPending = false;
+                    log("returned to Dart session=" + sessionId + (code != null ? " error=" + code
+                            : " status=" + result.get("status")));
                     if (code != null) completion.error(code, message == null ? code : message);
                     else completion.success(result);
                 }
@@ -719,9 +848,6 @@ public final class OfficeEngineBridge {
                 || !expectedSourceHash.equals(data.getStringExtra("inputSourceSha256"))) {
             throw new IOException("Invalid conversion result identity");
         }
-        // Android can dispatch Activity results before the old editor's onDestroy.
-        // Dart may immediately reopen the converted copy to create its PDF.
-        awaitClosed(sessionId);
         File input = OfficePreviewOutputs.conversionInput(activity.getCacheDir(), sourcePath, sourceFormat);
         File converted = previews.completeConversion(sessionId, data.getStringExtra("sourcePath"), sourceFormat);
         File working = new File(converted.getParentFile(), "working." + sourceFormat);
@@ -750,6 +876,7 @@ public final class OfficeEngineBridge {
         pendingConversionSourcePath = null;
         reopenAttempt = null;
         reopenSourceSha256 = null;
+        if (completion != null) log("returned to Dart error=" + code);
         if (completion != null) completion.error(code, message == null ? code : message);
     }
 
@@ -763,18 +890,82 @@ public final class OfficeEngineBridge {
         pendingConversionSourcePath = null;
         reopenAttempt = null;
         reopenSourceSha256 = null;
+        if (completion != null) log("returned to Dart status=" + result.get("status"));
         if (completion != null) completion.success(result);
     }
 
+    /** Waits until the engine process of this session is gone, stopping it by its recorded PID if it stays. */
     private static void awaitClosed(String sessionId) throws IOException {
         try {
-            if (!OfficeSessionJournal.awaitEditorRelease(sessionId, 10000)) {
-                throw new IOException("Timed out waiting for the office editor to close");
+            if (OfficeSessionJournal.awaitEditorRelease(sessionId, engineExitGraceMillis)) return;
+            String launch = OfficeSessionJournal.attachedLaunch(sessionId);
+            // Only an engine that already returned its result is stopped; a screen still in use is left alone.
+            if (launch != null && launch.equals(OfficeSessionJournal.closingLaunch())
+                    && OfficeSessionJournal.stopEngine(launch)) {
+                log("engine stopped after close timeout launch=" + launch);
+                if (OfficeSessionJournal.awaitEditorRelease(sessionId, ENGINE_STOP_CONFIRM_MILLIS)) return;
             }
+            throw new IOException("Timed out waiting for the office editor to close");
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while closing the office editor", error);
         }
+    }
+
+    /**
+     * Marks the result of a launch and makes sure a still-running engine process ends.
+     * Returns whether the launch's engine process ever attached (it may already be gone).
+     */
+    private static boolean noteEngineResult(String launchId, int resultCode, Intent data) {
+        boolean live = OfficeSessionJournal.markEditorResult(launchId);
+        boolean attached = OfficeSessionJournal.wasAttached(launchId);
+        log("result launch=" + launchId + " code=" + resultCode + " data=" + (data != null)
+                + " attached=" + attached + " engineAlive=" + live);
+        if (!live) return attached;
+        // A failed engine gets the same grace: its native thread may still be finishing a save.
+        ENGINE_REAPER.schedule(() -> {
+            if (OfficeSessionJournal.stopEngine(launchId)) log("engine stopped after result timeout launch=" + launchId);
+        }, engineExitGraceMillis, TimeUnit.MILLISECONDS);
+        return attached;
+    }
+
+    private void rescueEditResult() {
+        Completion completion = pending;
+        String sessionId = pendingSessionId;
+        String inputHash = pendingInputSourceSha256;
+        files.execute(() -> {
+            Map<String, Object> state = null;
+            try {
+                awaitClosed(sessionId);
+                state = journal().recover(sessionId, inputHash);
+            } catch (IOException | InvalidPathException ignored) {
+                // Nothing is claimed as saved without a closed engine and a verified journal entry.
+            }
+            final Map<String, Object> recovered = state;
+            activity.runOnUiThread(() -> {
+                if (disposed || pending != completion) return;
+                Object status = recovered == null ? null : recovered.get("status");
+                log("edit result rescue session=" + sessionId + " status=" + status);
+                if ("saved".equals(status)) succeed(recovered);
+                else if ("source_ready".equals(status)) startSourceReopen(null);
+                else fail("office_interrupted", "문서 편집 화면이 저장을 마치기 전에 닫혔습니다. 작업 복사본은 기기에 보관됩니다.");
+            });
+        });
+    }
+
+    private Map<String, Object> rescuePreview(String sessionId, String expectedSourceHash) {
+        try {
+            Map<String, Object> rescued = previews.rescuedResult(sessionId);
+            if (expectedSourceHash == null || !expectedSourceHash.equals(rescued.get("sourceSha256"))) return null;
+            log("preview result rescued after engine exit session=" + sessionId);
+            return rescued;
+        } catch (IOException | InvalidPathException error) {
+            return null;
+        }
+    }
+
+    private static void log(String message) {
+        Log.i(LOG_TAG, message);
     }
 
     private static String extension(String path) {

@@ -7,12 +7,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
-import 'package:saber/components/canvas/save_indicator.dart';
+import 'package:saber/components/canvas/canvas_gesture_detector.dart';
+import 'package:saber/components/toolbar/toolbar.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
+import 'package:saber/pages/workspace/library_home.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
 import '../utils/test_editor.dart';
@@ -78,16 +80,29 @@ void main() {
     await tester.runAsync(() async {
       tester
           .widget<IconButton>(
-            find.descendant(
-              of: find.byType(SaveIndicator),
-              matching: find.byType(IconButton),
-            ),
+            find.byKey(const ValueKey('workspace-back-to-library')),
           )
           .onPressed!();
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
     await drain(tester);
   }
+
+  testWidgets('workspace puts the pen toolbar above the tablet canvas', (
+    tester,
+  ) async {
+    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    await tester.runAsync(() => controller.createNote('Toolbar'));
+    await mount(tester);
+    expect(
+      tester.getCenter(find.byType(Toolbar)).dy,
+      lessThan(tester.getCenter(find.byType(CanvasGestureDetector)).dy),
+    );
+    await backArrow(tester);
+    expect(controller.activeSession, isNull);
+    await tester.pumpWidget(const SizedBox());
+    debugDefaultTargetPlatformOverride = null;
+  });
 
   testWidgets(
     'one back action saves ink and Markdown and returns to the list',
@@ -106,7 +121,8 @@ void main() {
       expect(controller.activeSession, isNull);
       expect(controller.dirty, isFalse);
       final scaffold = tester.state<ScaffoldState>(find.byType(Scaffold).first);
-      expect(scaffold.isDrawerOpen, isTrue);
+      expect(scaffold.isDrawerOpen, isFalse);
+      expect(find.byType(LibraryHome), findsOneWidget);
       expect(find.byType(Editor), findsNothing);
       await tester.runAsync(() async {
         final saved = await controller.loadInk(session: session);
@@ -148,7 +164,8 @@ void main() {
         await tester.runAsync(tester.binding.handlePopRoute);
         await drain(tester);
         expect(controller.activeSession, isNull);
-        expect(scaffold.isDrawerOpen, isTrue);
+        expect(scaffold.isDrawerOpen, isFalse);
+        expect(find.byType(LibraryHome), findsOneWidget);
         if (dirty) {
           expect(
             await tester.runAsync(session.readMarkdown),
@@ -219,8 +236,12 @@ void main() {
       );
       await tester.runAsync(() => controller.createNote('Wide back'));
       await mount(tester);
+      expect(find.text('내 문서'), findsNothing);
+      expect(find.byTooltip('문서 목록으로'), findsOneWidget);
+      expect(tester.getSize(find.byType(CanvasGestureDetector)).width, 1400);
       await backArrow(tester);
       expect(controller.activeSession, isNull);
+      expect(find.widgetWithText(ListTile, '내 문서'), findsOneWidget);
       expect(
         tester.widget<Scaffold>(find.byType(Scaffold).first).drawer,
         isNull,
@@ -239,7 +260,9 @@ void main() {
   ) async {
     addTearDown(() => tester.pumpWidget(const SizedBox()));
     await tester.runAsync(() => controller.createNote('Do not discard'));
-    final session = FailingInkSession(controller.activeSession!);
+    final session = (await tester.runAsync(
+      () async => FailingInkSession(controller.activeSession!),
+    ))!;
     controller.activeSession = session;
     final editor = await mount(tester);
     await tester.runAsync(() async => editor.drawTestStroke());
@@ -274,9 +297,17 @@ class FailingInkSession extends NoteSession {
   }
   var failSave = true;
   @override
-  Future<void> saveInk(Map<String, Uint8List> files) async {
+  Future<void> saveInk(
+    Map<String, Uint8List> files, {
+    Map<String, List<String>>? expectedHeads,
+    void Function()? requireWrite,
+  }) async {
     if (failSave) throw const FileSystemException('Storage unavailable');
-    await super.saveInk(files);
+    await super.saveInk(
+      files,
+      expectedHeads: expectedHeads,
+      requireWrite: requireWrite,
+    );
   }
 }
 
@@ -293,9 +324,17 @@ class DelayedInkSession extends NoteSession {
   }
   final entered = Completer<void>(), release = Completer<void>();
   @override
-  Future<void> saveInk(Map<String, Uint8List> files) async {
+  Future<void> saveInk(
+    Map<String, Uint8List> files, {
+    Map<String, List<String>>? expectedHeads,
+    void Function()? requireWrite,
+  }) async {
     entered.complete();
     await release.future;
-    await super.saveInk(files);
+    await super.saveInk(
+      files,
+      expectedHeads: expectedHeads,
+      requireWrite: requireWrite,
+    );
   }
 }

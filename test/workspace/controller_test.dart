@@ -9,6 +9,8 @@ import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/office/office_document_store.dart';
+import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/pages/workspace/workspace_controller.dart';
 
@@ -67,6 +69,73 @@ void main() {
       expect(c.remoteConflict, isTrue);
       await c.saveMarkdown();
       expect(await c.repository.heads(note.markdownEntityId), hasLength(2));
+    },
+  );
+  test(
+    'disk refresh applies a background revision to clean Markdown',
+    () async {
+      final note = await c.store.create('Test');
+      await c.openNote(note);
+      final session = c.activeSession!;
+      final worker = await NoteRepository.open(temp);
+      final remote = await worker.commit(
+        entityId: note.markdownEntityId,
+        kind: EntityKind.markdown,
+        ownerNoteId: note.id,
+        files: {'summary.md': Uint8List.fromList('background'.codeUnits)},
+        parentRevisionIds: session.markdownParents,
+      );
+      await worker.close();
+      await c.reloadFromDisk();
+      expect(c.markdown, 'background');
+      expect(session.markdownParents, [remote.revisionId]);
+      expect(c.remoteConflict, isFalse);
+    },
+  );
+  test(
+    'disk refresh keeps the active Word store open and receives updates',
+    () async {
+      final root = Directory('${temp.path}/office');
+      final repository = await NoteRepository.open(
+        root,
+        createFormatVersion: 2,
+      );
+      final controller = WorkspaceController(repository);
+      try {
+        final documents = OfficeDocumentStore(repository);
+        final original = OfficeTemplates.create(
+          OfficeTemplateKind.document,
+          title: 'Word',
+        );
+        final note = await documents.importDocument(
+          title: 'Word',
+          fileName: original.fileName,
+          bytes: original.bytes,
+        );
+        await controller.openNote(note);
+        final session = controller.activeSession;
+
+        final worker = await NoteRepository.open(root);
+        final remote = await WorkspaceStore(worker)
+            .create('Received from Drive');
+        await worker.close();
+        var updates = 0;
+        final subscription = repository.changes.listen((_) => updates++);
+        addTearDown(subscription.cancel);
+        await controller.reloadFromDisk();
+
+        expect(
+          (await documents.readLatest(note)).originalBytes,
+          original.bytes,
+        );
+        expect(controller.repository, same(repository));
+        expect(controller.activeSession, same(session));
+        expect(controller.notes.map((note) => note.id), contains(remote.id));
+        expect(updates, 1);
+      } finally {
+        await controller.repository.close();
+        controller.dispose();
+      }
     },
   );
   test(
@@ -252,13 +321,21 @@ class DelayedSession extends NoteSession {
   }
 
   @override
-  Future<void> saveMarkdown(String text) async {
+  Future<void> saveMarkdown(
+    String text, {
+    Map<String, List<String>>? expectedHeads,
+    void Function()? requireWrite,
+  }) async {
     if (delaySave) {
       delaySave = false;
       entered.complete();
       await release.future;
     }
-    await super.saveMarkdown(text);
+    await super.saveMarkdown(
+      text,
+      expectedHeads: expectedHeads,
+      requireWrite: requireWrite,
+    );
   }
 }
 

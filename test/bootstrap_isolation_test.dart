@@ -31,15 +31,44 @@ void main() {
     ];
     final providers = RegExp(r'<provider\b[^>]*\bandroid:name="([^"]+)"')
         .allMatches(manifest);
+    final namespace = RegExp(r'namespace\s*=\s*"([^"]+)"')
+        .firstMatch(File('android/app/build.gradle.kts').readAsStringSync())!
+        .group(1)!;
+    final appSources = Directory('android/app/src/main')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where(
+          (file) => file.path.endsWith('.java') || file.path.endsWith('.kt'),
+        )
+        .map((file) => file.readAsStringSync())
+        .toList();
 
     for (final provider in providers) {
-      final className = provider.group(1)!;
+      final declaredName = provider.group(1)!;
+      final className = declaredName.startsWith('.')
+          ? '$namespace$declaredName'
+          : declaredName;
       final classPath = className.replaceAll('.', '/');
-      final hasSource = sourceRoots.any(
-        (root) =>
-            File.fromUri(root.resolve('java/$classPath.java')).existsSync() ||
-            File.fromUri(root.resolve('kotlin/$classPath.kt')).existsSync(),
+      final separator = className.lastIndexOf('.');
+      final appDeclaration = appSources.any(
+        (source) =>
+            RegExp(
+                  r'^\s*package\s+([\w.]+)\s*;?\s*$',
+                  multiLine: true,
+                ).firstMatch(source)?.group(1) ==
+                className.substring(0, separator) &&
+            RegExp(
+              '\\bclass\\s+${RegExp.escape(className.substring(separator + 1))}\\b',
+            ).hasMatch(source),
       );
+      final hasSource =
+          appDeclaration ||
+          sourceRoots.any(
+            (root) =>
+                File.fromUri(root.resolve('java/$classPath.java'))
+                    .existsSync() ||
+                File.fromUri(root.resolve('kotlin/$classPath.kt')).existsSync(),
+          );
       expect(
         hasSource,
         isTrue,

@@ -3,6 +3,7 @@ mod hwp_body;
 mod hwp_paragraphs;
 mod hwp_table_rows;
 mod legacy_office;
+mod rhwp_pdf;
 mod text_ranges;
 mod xml;
 use serde_json::{Value, json};
@@ -95,7 +96,7 @@ pub unsafe extern "C" fn ink_hwp_free(value: *mut c_char) {
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn ink_hwp_version() -> *const c_char {
-    c"ink_hwp_native/0.1.0+hwp-cli.4e6e8c2".as_ptr()
+    c"ink_hwp_native/0.1.0+hwp-cli.4e6e8c2+rhwp.0.9.0-dev.4cf97fe5".as_ptr()
 }
 pub fn request_json(input: &str) -> Value {
     if input.len() > 4 * 1024 * 1024 {

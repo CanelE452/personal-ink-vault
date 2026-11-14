@@ -38,6 +38,12 @@ class CountingBlobFile implements File {
   }
 
   @override
+  Future<RandomAccessFile> open({FileMode mode = FileMode.read}) {
+    if (mode == FileMode.read) count();
+    return file.open(mode: mode);
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -79,6 +85,38 @@ void main() {
       'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     );
   });
+
+  test(
+    'disk refresh preserves live state if the vault identity changes',
+    () async {
+      final entity = newId();
+      final revision = await repo.commit(
+        entityId: entity,
+        kind: EntityKind.markdown,
+        files: {'summary.md': bytes('local')},
+        parentRevisionIds: [],
+      );
+      final config = File('${repo.root.path}/vault.json');
+      final original = await config.readAsString();
+      await config.delete();
+      await expectLater(
+        repo.reloadFromDisk(),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(await config.exists(), isFalse);
+      expect((await repo.heads(entity)).single.revisionId, revision.revisionId);
+
+      final changed = jsonDecode(original) as Map<String, dynamic>;
+      changed['formatVersion'] = 2;
+      await config.writeAsString(jsonEncode(changed));
+      await expectLater(repo.reloadFromDisk(), throwsFormatException);
+      expect((await repo.heads(entity)).single.revisionId, revision.revisionId);
+
+      await config.writeAsString(original);
+      await repo.reloadFromDisk();
+      expect(await repo.readFiles(revision), {'summary.md': bytes('local')});
+    },
+  );
 
   test(
     'same base forks survive and explicit merge consumes both heads',
@@ -678,4 +716,49 @@ void main() {
       expect(await repo.readBlob(hash), orderedEquals(bytes('valid')));
     },
   );
+  test('a wrong manifest length does not poison another revision sharing a valid blob', () async {
+    final root = repo.root, vaultId = repo.vaultId, deviceId = repo.deviceId;
+    await repo.close();
+    final payload = bytes('complete');
+    final hash = sha256.convert(payload).toString();
+    await File('${root.path}/blobs/$hash').writeAsBytes(payload);
+    final entityId = newId();
+    for (var i = 0; i < 2; i++) {
+      await File('${root.path}/revisions/${newId()}.json').writeAsString('{}');
+    }
+    final manifests = await Directory('${root.path}/revisions').list().toList();
+    final badId = manifests.first.uri.pathSegments.last.replaceFirst(
+      '.json',
+      '',
+    );
+    final goodId = manifests.last.uri.pathSegments.last.replaceFirst(
+      '.json',
+      '',
+    );
+    final good = RevisionRecord(
+      vaultId: vaultId,
+      entityId: entityId,
+      kind: EntityKind.ink,
+      revisionId: goodId,
+      parentRevisionIds: [],
+      deviceId: deviceId,
+      blobs: {'main.sbn2': BlobRef(hash: hash, length: payload.length)},
+    );
+    final bad = RevisionRecord(
+      vaultId: vaultId,
+      entityId: entityId,
+      kind: EntityKind.ink,
+      revisionId: badId,
+      parentRevisionIds: [goodId],
+      deviceId: deviceId,
+      blobs: {'main.sbn2': BlobRef(hash: hash, length: payload.length + 1)},
+    );
+    await File(manifests.first.path).writeAsString(jsonEncode(bad.toJson()));
+    await File(manifests.last.path).writeAsString(jsonEncode(good.toJson()));
+    repo = await NoteRepository.open(root);
+    expect((await repo.heads(entityId)).single.revisionId, goodId);
+    expect(repo.pendingRevisionCount, 1);
+    expect(repo.integrityIssues.single, contains(badId));
+    expect((await repo.readFiles(good))['main.sbn2'], payload);
+  });
 }

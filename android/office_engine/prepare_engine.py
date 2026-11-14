@@ -275,6 +275,10 @@ def patch_activity(text):
 
     protected boolean onEmbeddedNativeMessage(byte[] message) { return false; }
 
+    protected void onEmbeddedActivityReleased() {}
+
+    protected boolean hasEmbeddedPreviewResult() { return false; }
+
     protected final boolean sendEmbeddedScript(String requestId, String script) {
         if (requestId == null || !requestId.matches("[A-Za-z0-9_-]{1,96}") || script == null ||
                 !documentLoaded || !pivNativeOpened || isEmbeddedPreviewOnly() || pivDestroyed ||
@@ -360,17 +364,22 @@ def patch_activity(text):
 
     private void queueEmbeddedNativeClose() {
         final Handler queue = nativeHandler;
+        final Runnable release = () -> {
+            try {
+                destroyEmbeddedWebView();
+            } finally {
+                if (pivNativeReleased || io.github.canele452.personalinkvault.office.OfficeEngineHealth.requiresRestart())
+                    cancelEmbeddedNativeWatchdog();
+                if (pivDestroyed) onEmbeddedActivityReleased();
+            }
+        };
         if (queue != null) {
             queue.post(() -> {
                 closeEmbeddedNativeDocument();
-                runOnUiThread(() -> {
-                    destroyEmbeddedWebView();
-                    if (pivNativeReleased || io.github.canele452.personalinkvault.office.OfficeEngineHealth.requiresRestart())
-                        cancelEmbeddedNativeWatchdog();
-                });
+                runOnUiThread(release);
             });
         } else {
-            destroyEmbeddedWebView();
+            release.run();
         }
     }
 
@@ -420,11 +429,13 @@ def patch_activity(text):
         cancelEmbeddedNativeWatchdog();
         if (pivDestroyed) return;
         mProgressDialog.dismiss();
-        android.content.Intent failure = new android.content.Intent()
-                .putExtra("sessionId", getIntent().getStringExtra("piv.sessionId"))
-                .putExtra("errorCode", io.github.canele452.personalinkvault.office.OfficeEngineHealth.ERROR_CODE)
-                .putExtra("errorMessage", io.github.canele452.personalinkvault.office.OfficeEngineHealth.RECOVERY_MESSAGE);
-        setResult(android.app.Activity.RESULT_CANCELED, failure);
+        if (!hasEmbeddedPreviewResult()) {
+            android.content.Intent failure = new android.content.Intent()
+                    .putExtra("sessionId", getIntent().getStringExtra("piv.sessionId"))
+                    .putExtra("errorCode", io.github.canele452.personalinkvault.office.OfficeEngineHealth.ERROR_CODE)
+                    .putExtra("errorMessage", io.github.canele452.personalinkvault.office.OfficeEngineHealth.RECOVERY_MESSAGE);
+            setResult(android.app.Activity.RESULT_CANCELED, failure);
+        }
         if (!isFinishing()) finish();
     }
 
@@ -455,10 +466,13 @@ def patch_activity(text):
                 });
                 return;
             }
-            closeEmbeddedNativeDocument();
+            // Collabora force-exits this process once the document closes, so the result leaves
+            // with finish() first; onDestroy then sends the only native close (BYE).
             runOnUiThread(() -> {
-                if (pivDestroyed || isFinishing()) return;
-                destroyEmbeddedWebView();
+                if (pivDestroyed) return;
+                // The result is final; onDestroy arms a new watchdog for the native close.
+                cancelEmbeddedNativeWatchdog();
+                if (isFinishing()) return;
                 mProgressDialog.dismiss();
                 finish();
             });
@@ -672,7 +686,7 @@ def main():
         "sourceRevision": lock["sourceRevision"],
         "sourceUrl": "https://github.com/CollaboraOnline/online.mirror/tree/" + lock["sourceRevision"],
         "apkUrl": lock["apk"]["url"], "apkSha256": lock["apk"]["sha256"],
-        "modificationVersion": "piv-6",
+        "modificationVersion": "piv-8",
         "assetPolicyVersion": ASSET_POLICY_VERSION,
         "changes": [
             "Embedded close/save hook in LOActivity",
@@ -685,6 +699,8 @@ def main():
             "Cancellable PDF preview progress and opening-only readiness watchdog cancellation",
             "Expired native close work cannot begin exporting after the watchdog fires",
             "Read-only export begins on native document status and unexpected closes report a failure",
+            "Terminal load errors end PDF preview and result delivery waits for Activity and native close",
+            "Verified PDF and explicit cancellation survive a stalled native preview close",
         ],
         "licenses": ["license.html", "notice.txt", "office-engine-source-license.txt"],
     }

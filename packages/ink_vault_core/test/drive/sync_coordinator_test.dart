@@ -170,6 +170,237 @@ void main() {
     parentRevisionIds: parents,
   );
 
+  group('v2 folder conflicts', () {
+    setUp(() async {
+      await sa.close();
+      await sb.close();
+      await a.close();
+      await b.close();
+      a = await NoteRepository.open(
+        Directory('${temp.path}/v2a'),
+        createFormatVersion: 2,
+      );
+      b = await NoteRepository.open(
+        Directory('${temp.path}/v2b'),
+        vaultId: a.vaultId,
+        createFormatVersion: 2,
+      );
+      remote = MemoryRemote(a.vaultId);
+      sa = SyncCoordinator(
+        repository: a,
+        remote: remote,
+        stateDirectory: Directory('${temp.path}/v2sa'),
+      );
+      sb = SyncCoordinator(
+        repository: b,
+        remote: remote,
+        stateDirectory: Directory('${temp.path}/v2sb'),
+      );
+    });
+
+    Future<RevisionRecord> folder(
+      NoteRepository repository,
+      String title, {
+      String? entityId,
+      String? parentId,
+      List<String> parents = const [],
+      bool deleted = false,
+      Map<String, List<String>> bases = const {},
+    }) => repository.commit(
+      entityId: entityId ?? newId(),
+      kind: EntityKind.folder,
+      files: {
+        'folder.json': data(jsonEncode({'title': title, 'parentId': parentId})),
+      },
+      parentRevisionIds: parents,
+      deleted: deleted,
+      baseRefs: bases,
+    );
+    Future<RevisionRecord> document(
+      NoteRepository repository,
+      String folderId,
+    ) => repository.commit(
+      entityId: newId(),
+      kind: EntityKind.metadata,
+      files: {
+        'note.json': data(
+          jsonEncode({'title': 'Lecture', 'folderId': folderId}),
+        ),
+      },
+      parentRevisionIds: [],
+    );
+    Future<void> exchange() async {
+      await sa.syncOnce();
+      await sb.syncOnce();
+      await sa.syncOnce();
+    }
+
+    test('unchanged observed subtree tombstone is synced and preserves child history', () async {
+      final root = await folder(a, 'Root');
+      final child = await folder(a, 'Child', parentId: root.entityId);
+      final note = await document(a, child.entityId);
+      final source = await a.commit(
+        entityId: newId(),
+        kind: EntityKind.attachment,
+        ownerNoteId: note.entityId,
+        files: {
+          'source.pptx': Uint8List.fromList([80, 75, 0, 255]),
+        },
+        parentRevisionIds: [],
+      );
+      await exchange();
+      await folder(
+        a,
+        'Root',
+        entityId: root.entityId,
+        parents: [root.revisionId],
+        deleted: true,
+        bases: {
+          child.entityId: [child.revisionId],
+          note.entityId: [note.revisionId],
+          source.entityId: [source.revisionId],
+        },
+      );
+      await exchange();
+      expect(sa.status.phase, SyncPhase.synced);
+      expect(sb.status.phase, SyncPhase.synced);
+      expect((await b.heads(root.entityId)).single.deleted, isTrue);
+      expect((await b.readFiles(source))['source.pptx'], [80, 75, 0, 255]);
+      expect(await b.revisions(), hasLength(5));
+    });
+
+    test('tombstone versus offline owned payload edit reports conflict on both devices', () async {
+      final root = await folder(a, 'Root');
+      final child = await folder(a, 'Child', parentId: root.entityId);
+      final note = await document(a, child.entityId);
+      final ink = await a.commit(
+        entityId: newId(),
+        kind: EntityKind.ink,
+        ownerNoteId: note.entityId,
+        files: {'main.sbn2': data('before')},
+        parentRevisionIds: [],
+      );
+      await exchange();
+      await folder(
+        a,
+        'Root',
+        entityId: root.entityId,
+        parents: [root.revisionId],
+        deleted: true,
+        bases: {
+          child.entityId: [child.revisionId],
+          note.entityId: [note.revisionId],
+          ink.entityId: [ink.revisionId],
+        },
+      );
+      final edited = await b.commit(
+        entityId: ink.entityId,
+        kind: EntityKind.ink,
+        ownerNoteId: note.entityId,
+        files: {'main.sbn2': data('offline strokes')},
+        parentRevisionIds: [ink.revisionId],
+      );
+      await exchange();
+      expect(sa.status.phase, SyncPhase.conflict);
+      expect(sb.status.phase, SyncPhase.conflict);
+      expect(
+        (await a.heads(ink.entityId)).single.revisionId,
+        edited.revisionId,
+      );
+      expect(
+        utf8.decode((await a.readFiles(edited))['main.sbn2']!),
+        'offline strokes',
+      );
+    });
+
+    test('new offline child and its attachment conflict with an unobserving folder tombstone', () async {
+      final root = await folder(a, 'Root');
+      final child = await folder(a, 'Child', parentId: root.entityId);
+      await exchange();
+      await folder(
+        a,
+        'Root',
+        entityId: root.entityId,
+        parents: [root.revisionId],
+        deleted: true,
+        bases: {
+          child.entityId: [child.revisionId],
+        },
+      );
+      final note = await document(b, child.entityId);
+      final source = await b.commit(
+        entityId: newId(),
+        kind: EntityKind.attachment,
+        ownerNoteId: note.entityId,
+        files: {'source.docx': data('new offline document')},
+        parentRevisionIds: [],
+      );
+      await exchange();
+      expect(sa.status.phase, SyncPhase.conflict);
+      expect(sb.status.phase, SyncPhase.conflict);
+      expect(
+        (await a.heads(source.entityId)).single.revisionId,
+        source.revisionId,
+      );
+    });
+
+    test('concurrent descendant folder rename conflicts without discarding either operation', () async {
+      final root = await folder(a, 'Root');
+      final child = await folder(a, 'Child', parentId: root.entityId);
+      await exchange();
+      await folder(
+        a,
+        'Root',
+        entityId: root.entityId,
+        parents: [root.revisionId],
+        deleted: true,
+        bases: {
+          child.entityId: [child.revisionId],
+        },
+      );
+      final renamed = await folder(
+        b,
+        'Renamed offline',
+        entityId: child.entityId,
+        parentId: root.entityId,
+        parents: [child.revisionId],
+      );
+      await exchange();
+      expect(sa.status.phase, SyncPhase.conflict);
+      expect(sb.status.phase, SyncPhase.conflict);
+      expect((await a.heads(root.entityId)).single.deleted, isTrue);
+      expect(
+        (await a.heads(child.entityId)).single.revisionId,
+        renamed.revisionId,
+      );
+    });
+
+    test('independent concurrent moves forming a folder cycle report conflict with single heads', () async {
+      final first = await folder(a, 'A');
+      final second = await folder(a, 'B');
+      await exchange();
+      await folder(
+        a,
+        'A',
+        entityId: first.entityId,
+        parentId: second.entityId,
+        parents: [first.revisionId],
+      );
+      await folder(
+        b,
+        'B',
+        entityId: second.entityId,
+        parentId: first.entityId,
+        parents: [second.revisionId],
+      );
+      await exchange();
+      expect(await a.heads(first.entityId), hasLength(1));
+      expect(await a.heads(second.entityId), hasLength(1));
+      expect(sa.status.phase, SyncPhase.conflict);
+      expect(sb.status.phase, SyncPhase.conflict);
+    });
+  });
+
   test('two disk repositories receive complete snapshots with blobs before manifests', () async {
     final revision = await write(a, newId(), 'first');
     await sa.syncOnce();

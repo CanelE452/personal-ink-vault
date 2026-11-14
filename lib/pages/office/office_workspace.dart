@@ -4,7 +4,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart' show compute, listEquals, setEquals;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, compute, defaultTargetPlatform, listEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:path/path.dart' as p;
@@ -13,6 +14,7 @@ import 'package:pdfrx/pdfrx.dart' show PdfDocument;
 import 'package:saber/components/canvas/save_indicator.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
+import 'package:saber/data/office/android_hwp_editor.dart';
 import 'package:saber/data/office/android_office_engine.dart';
 import 'package:saber/data/office/docx_body_text.dart';
 import 'package:saber/data/office/docx_find_replace.dart';
@@ -184,6 +186,9 @@ class OfficeWorkspace extends StatefulWidget {
   final AndroidOfficeEngine? engine;
   final WindowsOfficeEngine? windowsEngine;
   final HwpStructuredOfficeEngine? hwpEngine;
+
+  /// Full HWP/HWPX editor (rhwp-studio screen). Android uses it by default; tests inject one.
+  final AndroidHwpEditor? hwpEditor;
   final OfficePreviewEngine? previewEngine;
   final DocxBodyTextEngine? docxBodyText;
   final DocxFindReplaceEngine? docxFindReplace;
@@ -224,6 +229,7 @@ class OfficeWorkspace extends StatefulWidget {
     this.engine,
     this.windowsEngine,
     this.hwpEngine,
+    this.hwpEditor,
     this.previewEngine,
     this.docxBodyText,
     this.docxFindReplace,
@@ -425,6 +431,12 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         '.hwpx',
       }.contains(p.extension(edition.originalFileName).toLowerCase());
   bool get _useHwp => widget.engine == null && _isHwp(_edition);
+
+  /// HWP/HWPX originals open in the full rhwp-studio editor on Android instead of the structured editor.
+  bool get _useHwpEditor =>
+      _useHwp && (widget.hwpEditor != null || Platform.isAndroid);
+  AndroidHwpEditor get _hwpEditor =>
+      widget.hwpEditor ?? AndroidHwpEditor(pdfEngine: _hwpEngine);
   WindowsOfficeEngine get _structuredEngine =>
       _useHwp ? _hwpEngine : _windowsEngine;
 
@@ -1759,6 +1771,11 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   }
 
   Future<void> _launchEdit() async {
+    if (_useHwpEditor) {
+      if (_nativeOperation != null || !_canEdit) return;
+      await _trackNativeEdit(_editOriginal(hwp: true));
+      return;
+    }
     if (_useWindows && (!_interactiveAvailable || _useHwp)) {
       return _launchWindowsEdit();
     }
@@ -1853,6 +1870,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
           pdfBytes: result.pdfBytes,
           engineVersion: result.engineVersion,
           pageCount: result.pageCount,
+          noteScopedGuard: !useWindows,
           beforePublish: requireCurrent,
         );
       } finally {
@@ -2317,6 +2335,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         engineVersion: preview.engineVersion,
         pageCount: preview.pageCount,
         requireCurrentHeads: true,
+        noteScopedGuard: !windows,
         beforePublish: requireCurrent,
       );
       if (!current()) return;
@@ -3291,6 +3310,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         engineVersion: preview.engineVersion,
         pageCount: preview.pageCount,
         requireCurrentHeads: true,
+        noteScopedGuard: !windows,
         beforePublish: requireCurrent,
       );
       if (!current()) return;
@@ -3723,8 +3743,9 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     if (!current()) throw StateError('다른 문서로 전환되어 이 편집 결과는 저장할 수 없습니다.');
     var edition = session.committedEdition;
     if (edition == null) {
+      final hwp = session.engine is HwpStructuredOfficeEngine;
       final deletesHwpParagraph =
-          session.engine is HwpStructuredOfficeEngine &&
+          hwp &&
           operations.any(
             (operation) => operation.toJson()['op'] == 'paragraphDelete',
           );
@@ -3799,6 +3820,10 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
             operations.any(
               (operation) => operation.toJson()['op'] == 'slideDuplicate',
             ),
+        noteScopedGuard:
+            hwp &&
+            editsHwpStructure &&
+            defaultTargetPlatform == TargetPlatform.android,
       );
       session.committedEdition = edition;
     }
@@ -3961,7 +3986,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     await cancellation;
   }
 
-  Future<void> _editOriginal() async {
+  Future<void> _editOriginal({bool hwp = false}) async {
     final selected = _edition;
     if (selected == null) return;
     final generation = _generation;
@@ -4007,10 +4032,13 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     });
     _report();
     try {
-      final result = await engine.edit(
-        sourcePath: working.path,
-        sessionId: sessionId,
-      );
+      final result = hwp
+          ? await _hwpEditor.edit(
+              sourcePath: working.path,
+              sessionId: sessionId,
+              fileName: captured.originalFileName,
+            )
+          : await engine.edit(sourcePath: working.path, sessionId: sessionId);
       await _acceptNativeResult(
         recovery: recovery,
         documents: documents,
@@ -4198,6 +4226,34 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       final inputHash = sha256
           .convert(restored.session.originalBytes)
           .toString();
+      if (_useHwpEditor) {
+        // The rhwp-studio screen keeps no session of its own: reopen it on the same working copy.
+        final working = File(restored.entry.workingPath);
+        if (FileSystemEntity.typeSync(working.path, followLinks: false) !=
+                FileSystemEntityType.file ||
+            await working.length() > 128 * 1024 * 1024 ||
+            sha256.convert(await working.readAsBytes()).toString() != inputHash)
+          throw const FormatException(
+            '기존 원본 작업 파일을 확인하지 못했습니다. 보관한 파일과 원본은 유지됩니다.',
+          );
+        if (!_current(generation)) return;
+        final result = await _hwpEditor.edit(
+          sourcePath: working.path,
+          sessionId: entry.sessionId,
+          fileName: restored.session.originalFileName,
+        );
+        await _acceptNativeResult(
+          recovery: recovery,
+          documents: documents,
+          note: note,
+          sessionId: entry.sessionId,
+          generation: generation,
+          workingPath: restored.entry.workingPath,
+          result: result,
+          continuePreserved: true,
+        );
+        return;
+      }
       if (_useWindows && _interactiveAvailable && !_useHwp) {
         final editing = _WindowsInteractiveEditing(
           restored.session,

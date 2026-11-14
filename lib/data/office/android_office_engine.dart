@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/services.dart';
 import 'package:ink_vault_core/ink_vault_core.dart' show newId, validateId;
 import 'package:path/path.dart' as p;
+import 'package:saber/data/app_external_screen.dart';
 import 'package:saber/data/office/office_original_edit_result.dart';
 
 export 'office_original_edit_result.dart';
@@ -148,11 +149,13 @@ class AndroidOfficeEngine {
     AndroidOfficePreviewResult? pdf;
     try {
       final response = _previewResponseMap(
-        await _channel.invokeMethod<Object?>('convertLegacy', {
-          'sourcePath': source.path,
-          'sessionId': sessionId,
-          'inputSourceSha256': expectedSourceSha256,
-        }),
+        await AppExternalScreen.run(
+          () => _channel.invokeMethod<Object?>('convertLegacy', {
+            'sourcePath': source.path,
+            'sessionId': sessionId,
+            'inputSourceSha256': expectedSourceSha256,
+          }),
+        ),
       );
       if (response == null || response['sessionId'] != sessionId) {
         throw _invalidConversion();
@@ -378,11 +381,13 @@ class AndroidOfficeEngine {
     }
     var retained = false, leaseGranted = false;
     try {
-      final raw = await _channel.invokeMethod<Object?>('inspect', {
-        'sourcePath': sourcePath,
-        'sessionId': sessionId,
-        'inputSourceSha256': inputSourceSha256,
-      });
+      final raw = await AppExternalScreen.run(
+        () => _channel.invokeMethod<Object?>('inspect', {
+          'sourcePath': sourcePath,
+          'sessionId': sessionId,
+          'inputSourceSha256': inputSourceSha256,
+        }),
+      );
       final response = _previewResponseMap(raw);
       if (response == null) throw _invalidObservation();
       if (response['status'] == 'cancelled') {
@@ -786,10 +791,12 @@ class AndroidOfficeEngine {
     required String inputSourceSha256,
   }) async {
     _validateRecoveryRequest(sessionId, inputSourceSha256);
-    final response = await _channel.invokeMapMethod<String, dynamic>('resume', {
-      'sessionId': sessionId,
-      'inputSourceSha256': inputSourceSha256,
-    });
+    final response = await AppExternalScreen.run(
+      () => _channel.invokeMapMethod<String, dynamic>('resume', {
+        'sessionId': sessionId,
+        'inputSourceSha256': inputSourceSha256,
+      }),
+    );
     if (response?['status'] == 'cancelled') {
       _requireRecoveryBinding(response, sessionId, inputSourceSha256);
       return AndroidOfficeEditResult(
@@ -934,10 +941,12 @@ class AndroidOfficeEngine {
       throw ArgumentError('Expected a source and preview session');
     var retained = false, leaseGranted = false;
     try {
-      final raw = await _channel.invokeMethod<Object?>('preview', {
-        'sourcePath': sourcePath,
-        'sessionId': sessionId,
-      });
+      final raw = await AppExternalScreen.run(
+        () => _channel.invokeMethod<Object?>('preview', {
+          'sourcePath': sourcePath,
+          'sessionId': sessionId,
+        }),
+      );
       final result = _previewResponseMap(raw);
       if (result == null) throw _invalidPreview();
       if (result['status'] == 'cancelled') {
@@ -1100,10 +1109,12 @@ class AndroidOfficeEngine {
     if (sourcePath.isEmpty || sessionId.trim().isEmpty) {
       throw ArgumentError('sourcePath and sessionId must not be empty.');
     }
-    final response = await _channel.invokeMapMethod<String, dynamic>('edit', {
-      'sourcePath': sourcePath,
-      'sessionId': sessionId,
-    });
+    final response = await AppExternalScreen.run(
+      () => _channel.invokeMapMethod<String, dynamic>('edit', {
+        'sourcePath': sourcePath,
+        'sessionId': sessionId,
+      }),
+    );
     final version = response?['engineVersion'] as String? ?? '';
     if (response?['status'] == 'cancelled') {
       return AndroidOfficeEditResult(

@@ -22,7 +22,7 @@
 - Windows: PDF+필기 보기와 Markdown 원문/수식 편집·미리보기의 분할 화면.
 - 공통: 고정 ID·문서/페이지 링크·제목/Markdown 본문 검색, 오프라인 재열기, 자동 동기화 상태·충돌 선택·삭제 복구, 백업/빈 저장소 복원.
 - **제안한 역할 제한:** 첫 UI는 Android 필기 편집, Windows Markdown 편집에 집중한다. 두 기기는 PDF·필기·Markdown을 모두 수신/보관한다.
-- 태그·일반 노트 역링크·그래프·AI·OCR·StarNote 가져오기·iOS·실시간 공동 편집은 후속 제안이다. 기존 PDF annotation 개별 편집과 원본 텍스트/링크 보존형 PDF 출력도 후속이다. 원본 PDF 자체는 보존한다.
+- 태그·일반 노트 역링크·그래프·AI·OCR·StarNote 가져오기·실시간 공동 편집은 첫 MVP 이후 제안이다. 기존 PDF annotation 개별 편집과 원본 텍스트/링크 보존형 PDF 출력도 후속이다. 원본 PDF 자체는 보존한다.
 
 ## 구성
 

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "family": "Noto Sans Symbols 2",
+  "style": "Regular",
+  "version": "2.008",
+  "fileName": "NotoSansSymbols2-Regular.ttf",
+  "bytes": 1233128,
+  "sha256": "7d5fb73b7ca67a6798101741f5d280a3d016a56a197afcd4199dbb57b4b82a21",
+  "sourceRepository": "https://github.com/google/fonts",
+  "sourceCommit": "29b4ec6df2522a8aee279414b78a07910b065874",
+  "sourcePath": "ofl/notosanssymbols2/NotoSansSymbols2-Regular.ttf",
+  "sourceUrl": "https://raw.githubusercontent.com/google/fonts/29b4ec6df2522a8aee279414b78a07910b065874/ofl/notosanssymbols2/NotoSansSymbols2-Regular.ttf",
+  "use": "Compiled into ink_hwp_native (include_bytes!). rhwp PDF fallback for symbols that Noto Sans CJK KR lacks (check marks, pointers, bullets).",
+  "license": {
+    "spdx": "OFL-1.1",
+    "fileName": "OFL-NotoSansSymbols2.txt",
+    "bytes": 4383,
+    "sha256": "b118dd41337806a5d4797052c77caf3bd096aed783e5eb21b4d11154351e1ac0",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/29b4ec6df2522a8aee279414b78a07910b065874/ofl/notosanssymbols2/OFL.txt",
+    "sourceBytes": 4383,
+    "sourceSha256": "b118dd41337806a5d4797052c77caf3bd096aed783e5eb21b4d11154351e1ac0"
+  }
+}

@@ -4,17 +4,25 @@
 
 ## Android 휴대폰·태블릿에 설치
 
-**[Android 202 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.202/personal-ink-vault-android-0.2.0-build202-136202-arm64-release.apk)**
+**[Android 217 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.217/personal-ink-vault-android-0.2.0-build217-136217-arm64-release.apk)**
 
 1. Android 휴대폰 또는 태블릿에서 위 링크를 누릅니다.
 2. 다운로드한 APK를 열고 기존 Personal Ink Vault 앱을 업데이트합니다.
-3. 앱에서 새 노트, PDF 필기 또는 Office 원본을 엽니다. Drive를 연결하려면 앱의 **Drive → Google 로그인 / 재연결**을 사용합니다.
+3. 앱에서 새 노트, PDF 필기 또는 Office·한글 원본을 엽니다. Drive를 연결하려면 앱의 **Drive → Google 로그인 / 재연결**을 사용합니다.
 
-Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 333MB입니다. Galaxy Tab S9+ 실기기와 두 Android 기기의 Drive 왕복 검증은 남아 있습니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.202) · [Android 202 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.202)
+Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 396MB입니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.217) · [Android 217 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.217)
 
-202는 다른 문서의 판본이 누락되거나 수신 중이어도 새 PDF 필기 노트를 저장합니다. 업데이트 전에 PDF 탭에서 **기기 저장 실패**가 표시됐다면, 업데이트 후 그 탭에서 **다시 저장**을 누르세요.
+### 202 이후 바뀐 점
 
-Office 파일을 처음 가져올 때 **PDF 필기용** 또는 **Office 편집용**을 고릅니다. **PDF 필기용**으로 저장하면 일반 PDF 노트가 열리며, 이 노트를 Office 편집용으로 바꿀 수 없습니다. Office 문서에서 **PDF로 새 문서 만들기**를 누르면 같은 폴더에 별도 PDF 노트가 생깁니다. Office 원본은 그대로 남습니다.
+- 한글(HWP·HWPX) 문서를 "Office 편집용"으로 열면 rhwp 편집 화면에서 원본을 직접 고치고 "저장하고 닫기"로 저장합니다. 한글의 PDF 변환도 같은 rhwp 엔진으로 바뀌었고, 표 칸 안의 그림과 본문이 겹치던 배치를 바로잡았습니다.
+- "PDF 필기용"으로 가져오면 원본 파일도 노트에 함께 보관합니다. PDF 노트 위쪽의 "새 엔진으로 PDF 다시 만들기"를 누르면 보관한 원본을 지금 엔진으로 다시 변환해 새 PDF 노트로 엽니다. 기존 노트와 필기는 바뀌지 않습니다. 217 이전에 가져온 노트에는 원본이 없으니, 새 엔진의 결과가 필요하면 파일을 다시 가져오세요.
+- "생성 → Office·한글 가져오기"에서 파일을 고른 뒤 "Office 편집용"이나 "PDF 필기용"을 고릅니다. 다른 앱에서 공유한 Office·한글 파일도 같은 선택을 거쳐 가져옵니다. 가져올 수 있는 원본은 최대 128 MiB입니다.
+- Word·PPT 변환 엔진을 앱과 다른 프로세스에서 실행해, 태블릿에서 PDF 변환 결과가 앱에 전달되지 않던 문제를 고쳤습니다. 변환을 취소하면 PDF를 추가하지 않고 돌아갑니다.
+- Android 기기에 있는 Obsidian 보관함 폴더를 "생성 → Obsidian 보관함 가져오기 → 폴더 선택"으로 가져올 수 있습니다.
+
+Galaxy Tab S9+에서 Word의 PDF 변환(211), 한글의 PDF 변환(212), 한글 편집 화면과 겹침 수정(216)을 확인했습니다. 한글 편집 화면에서의 저장, HWPX 편집, 저장한 파일을 한컴오피스에서 다시 여는 것, 217의 원본 보관과 다시 만들기는 실기기 확인 전입니다. 두 Android 기기의 Drive 왕복 검증도 남아 있습니다.
+
+"PDF 필기용"으로 저장한 노트는 일반 PDF 노트로 열리며, Office 편집용으로 바꿀 수 없습니다. Office·한글 문서에서 "PDF로 새 문서 만들기"를 누르면 같은 폴더에 별도 PDF 노트가 생기고, 원본은 그대로 남습니다.
 
 Android 빌드에 필요한 소스는 이 저장소의 기본 브랜치에 있으며, [빌드 안내](#android-arm64-빌드)와 [파일별 해시](SOURCE-MANIFEST.json)를 확인할 수 있습니다.
 
@@ -57,16 +65,17 @@ Drive 자동 동기화와 독립 백업/복원을 함께 구현합니다. portab
 
 1. Flutter `3.47.7`의 [고정 소스](https://github.com/flutter/flutter/tree/abaf9c523780a608bd46686fd5e53740a07077f8), Dart `3.13.5`, JDK `25.0.4.1+1`, Android SDK 및 Python 3.11 이상을 준비합니다. Flutter SDK가 래퍼를 준비하고 `android/gradle/wrapper/gradle-wrapper.properties`에서 Gradle `9.5.0`을 선택합니다. Gradle 데몬에는 저장소의 JVM 설정에 따라 JetBrains JDK 21을 자동으로 준비하거나 기존 설치를 사용합니다.
 2. Android SDK의 `platforms;android-37.0`, `ndk;28.2.13676358`, `ndk;29.0.14206865`, `cmake;3.22.1`을 준비합니다. Rust `1.99.1`에 `aarch64-linux-android` 타깃을 추가합니다. Android SDK 경로를 `ANDROID_SDK_ROOT`로 지정하세요.
-3. 소스 루트에서 `bash scripts/build-android-202.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
-4. 사용자 본인의 서명 키로 설치용 APK를 만들려면 `android/key.properties`에 `storeFile`, `storePassword`, `keyAlias`, `keyPassword`를 로컬로 지정합니다. 서명 전 빌드만 하려면 이 파일 없이 빌드할 수 있습니다. 본인의 OAuth 공개 클라이언트 ID로 테스트하려면 `DRIVE_ANDROID_SERVER_CLIENT_ID`를 설정합니다.
+3. 한글 PDF 엔진은 아직 출시되지 않은 rhwp 커밋을 씁니다. 먼저 [한글 엔진·편집 화면 빌드](docs/hwp-rhwp-build.md)에 따라 rhwp 원본을 받아 `packages/ink_hwp_native/Cargo.toml`의 임시 경로를 맞춥니다. 같은 문서에 따라 한글 편집 화면(rhwp-studio)을 빌드해 `android/app/src/main/assets/hwp-studio/`에 넣으면 APK의 `assets/hwp-studio/`로 들어갑니다.
+4. 소스 루트에서 `bash scripts/build-android-217.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
+5. 사용자 본인의 서명 키로 설치용 APK를 만들려면 `android/key.properties`에 `storeFile`, `storePassword`, `keyAlias`, `keyPassword`를 로컬로 지정합니다. 서명 전 빌드만 하려면 이 파일 없이 빌드할 수 있습니다. 본인의 OAuth 공개 클라이언트 ID로 테스트하려면 `DRIVE_ANDROID_SERVER_CLIENT_ID`를 설정합니다.
 
-스크립트는 ARM64의 빌드 번호를 `136202`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
+스크립트는 ARM64의 빌드 번호를 `136217`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
 
 ## 고정된 업스트림 소스
 
 - Office Android Java·C++ 및 편집기 웹 리소스는 [Collabora Online 고정 리비전](https://github.com/CollaboraOnline/online.mirror/tree/fd0b24ba59e043b2ed9087eb6324bbc6d281e93b)에서 확인할 수 있습니다. [엔진 준비 스크립트](android/office_engine/prepare_engine.py)는 잠금 파일의 공식 APK와 소스 파일 해시를 확인하고, 앱의 Android 통합에 필요한 변경을 적용합니다. 자세한 내용은 [Office 소스 안내](android/office_engine/README.md#source-and-notices)에 있습니다.
 - PDFium의 기본 Android 네이티브 배포물은 Flutter 의존성의 빌드 훅에서 받습니다. [PDFium 고정 소스 계열](https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/7811)과 [Android PDFium 빌드 스크립트](scripts/build_pdfium.sh)를 이용할 수 있습니다.
-- 한글 처리 라이브러리는 [hwp-cli 고정 리비전](https://github.com/STAIxBWLB/hwp-cli/tree/4e6e8c2a61694899e37b4f7c2f97523153a623b9)과 [Cargo 잠금 파일](packages/ink_hwp_native/Cargo.lock)에 연결됩니다.
+- 한글 처리 라이브러리는 [hwp-cli 고정 리비전](https://github.com/STAIxBWLB/hwp-cli/tree/4e6e8c2a61694899e37b4f7c2f97523153a623b9)과 [Cargo 잠금 파일](packages/ink_hwp_native/Cargo.lock)에 연결됩니다. 한글의 PDF 변환과 편집 화면은 [rhwp 고정 커밋](https://github.com/edwardkim/rhwp/commit/4cf97fe5f40bde52b6e80dfc461b5111b51139b6)(PR #9022, MIT)으로 만들며, 받는 방법과 앱이 더한 패치는 [한글 엔진·편집 화면 빌드](docs/hwp-rhwp-build.md)에 있습니다.
 - Dart 의존성은 [pubspec.lock](pubspec.lock), 공통 Rust 엔진은 [Cargo.lock](packages/ink_vault_native/Cargo.lock)을 사용합니다.
 
 Android 아이콘 원본은 `assets/icon/`의 세 SVG입니다. 변경 후 `python scripts/generate_android_icons.py`로 PNG를 다시 만들 수 있습니다. 동일한 렌더러를 사용하려면 `PyMuPDF==1.28.2` 및 `Pillow==12.0.0`을 설치하세요.

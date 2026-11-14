@@ -2,9 +2,16 @@
     <application>
         <activity
             android:name="io.github.canele452.personalinkvault.office.OfficeEditorActivity"
+            android:process=":office"
             android:exported="false"
             android:theme="@style/InkVaultOfficeTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name="io.github.canele452.personalinkvault.office.HwpEditorActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale|navigation"
             android:windowSoftInputMode="adjustResize" />
         <activity
             android:name="org.libreoffice.androidlib.SlideShowActivity"
@@ -15,5 +22,9 @@
             android:authorities="${applicationId}.clipboard"
             android:exported="false"
             android:grantUriPermissions="true" />
+        <provider
+            android:name="io.github.canele452.personalinkvault.office.OfficeEngineLink"
+            android:authorities="${applicationId}.office-link"
+            android:exported="false" />
     </application>
 </manifest>

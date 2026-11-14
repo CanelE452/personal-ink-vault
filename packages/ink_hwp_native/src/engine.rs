@@ -12,20 +12,21 @@ use std::{
 };
 const MAX_FILE: u64 = 64 * 1024 * 1024;
 const MAX_TABLE_CELL_UNITS: usize = 120;
-const FONT_SHA: &str = "6bcb2a0703aa137e874fc2dffa85f6c21ba9a67fa329e81b8c801663af7e992a";
+pub(crate) const FONT_SHA: &str =
+    "6bcb2a0703aa137e874fc2dffa85f6c21ba9a67fa329e81b8c801663af7e992a";
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
-fn hash(bytes: &[u8]) -> String {
+pub(crate) fn hash(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
 }
-fn file_hash(path: &Path) -> Result<String> {
+pub(crate) fn file_hash(path: &Path) -> Result<String> {
     Ok(hash(&fs::read(path).map_err(io_error)?))
 }
 pub(crate) fn dispatch(request: &Value) -> Result<Value> {
     let mode = text(request, "mode")?;
-    if !["inspect", "apply"].contains(&mode) {
+    if !["inspect", "apply", "pdf"].contains(&mode) {
         return Err(err(
             "unsupported_operation",
             "지원하지 않는 문서 작업입니다.",
@@ -76,7 +77,12 @@ pub(crate) fn dispatch(request: &Value) -> Result<Value> {
         }
     }
     let work = work.ok_or_else(|| err("file_error", "문서 작업 폴더를 만들지 못했습니다."))?;
-    execute(request, mode, &source, &source_hash, &bytes, &ext, &work).map_err(|mut e| {
+    let result = if mode == "pdf" {
+        crate::rhwp_pdf::render(request, &source_hash, &bytes, &work)
+    } else {
+        execute(request, mode, &source, &source_hash, &bytes, &ext, &work)
+    };
+    result.map_err(|mut e| {
         e.work = Some(work);
         e
     })

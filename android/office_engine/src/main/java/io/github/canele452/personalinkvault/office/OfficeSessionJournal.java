@@ -15,10 +15,12 @@ import java.nio.file.LinkOption;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -36,6 +38,13 @@ public final class OfficeSessionJournal {
     private static WeakReference<Object> liveEditor = new WeakReference<>(null);
     private static String liveSessionId;
     private static boolean editorActive;
+    private static String liveLaunchId;
+    private static EngineAttachment attachedEngine;
+    private static ProcessStopper processStopper;
+    // A death notice may arrive before the Activity result, so whether a launch attached outlives the attachment.
+    private static final Set<String> attachedLaunchIds = new java.util.LinkedHashSet<>();
+    private static final int REMEMBERED_LAUNCHES = 16;
+    private static final List<Runnable> editorReleaseCallbacks = new ArrayList<>();
     private static final long MAX_FILE_BYTES = 128L * 1024 * 1024;
     private static final int MAX_MARKER_BYTES = 8192;
     private static final Pattern ID = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
@@ -56,21 +65,147 @@ public final class OfficeSessionJournal {
         synchronized (EDITOR_LOCK) { return liveEditor.get() != null; }
     }
 
+    /** Stops one of this app's Office engine processes by PID; installed by {@link OfficeEngineLink}. */
+    interface ProcessStopper {
+        void stop(int pid);
+    }
+
+    /** Main process: an Office Activity running in the engine process (":office") for one launch. */
+    static final class EngineAttachment {
+        final String sessionId;
+        final String launchId;
+        final int pid;
+        boolean resultDelivered;
+
+        EngineAttachment(String sessionId, String launchId, int pid) {
+            this.sessionId = sessionId;
+            this.launchId = launchId;
+            this.pid = pid;
+        }
+    }
+
     public static boolean reserveEditor(String sessionId, Object owner) {
+        return reserveEditor(sessionId, owner, null);
+    }
+
+    public static boolean reserveEditor(String sessionId, Object owner, String launchId) {
         synchronized (EDITOR_LOCK) {
             if (liveEditor.get() != null) return false;
+            editorReleaseCallbacks.clear();
             liveEditor = new WeakReference<>(owner);
             liveSessionId = sessionId;
+            liveLaunchId = launchId;
+            attachedEngine = null;
             editorActive = false;
             return true;
         }
+    }
+
+    /**
+     * Main process: an Office Activity in the engine process binds itself to the launch that opened it.
+     * A preview must match the launch this process reserved, so a screen restored after an app restart
+     * is refused; an edit may attach without a reservation to continue its private recovery.
+     */
+    static EngineAttachment attachEditor(String sessionId, String launchId, boolean previewOnly, int pid) {
+        if (sessionId == null || launchId == null || pid <= 0) return null;
+        synchronized (EDITOR_LOCK) {
+            Object current = liveEditor.get();
+            if (current != null && current == attachedEngine) {
+                EngineAttachment attached = attachedEngine;
+                // An Activity recreated in the same engine process keeps its launch.
+                return attached.sessionId.equals(sessionId) && attached.launchId.equals(launchId) && attached.pid == pid
+                        ? attached : null;
+            }
+            if (current != null && liveLaunchId != null && !liveLaunchId.equals(launchId)) return null;
+            EngineAttachment attachment = new EngineAttachment(sessionId, launchId, pid);
+            if (!editorOpened(sessionId, attachment, previewOnly)) return null;
+            liveLaunchId = launchId;
+            // liveEditor only holds a weak reference.
+            attachedEngine = attachment;
+            attachedLaunchIds.add(launchId);
+            if (attachedLaunchIds.size() > REMEMBERED_LAUNCHES) {
+                attachedLaunchIds.remove(attachedLaunchIds.iterator().next());
+            }
+            return attachment;
+        }
+    }
+
+    /** Main process: whether the engine process of this launch ever attached, even if it already died. */
+    static boolean wasAttached(String launchId) {
+        synchronized (EDITOR_LOCK) {
+            return launchId != null && attachedLaunchIds.contains(launchId);
+        }
+    }
+
+    /** Main process: the engine process that held this launch is gone. */
+    static void editorProcessDied(Object attachment) {
+        if (attachment != null) releaseEditor(attachment);
+    }
+
+    /** Engine process: one Office Activity per process once the main process accepted its launch. */
+    static boolean engineEditorOpened(String sessionId, Object owner) {
+        return editorOpened(sessionId, owner, false);
+    }
+
+    /** Main process: the attached launch returned its result and is now only waiting for its process to exit. */
+    static boolean markEditorResult(String launchId) {
+        synchronized (EDITOR_LOCK) {
+            EngineAttachment attached = liveAttachment();
+            if (attached == null || launchId == null || !attached.launchId.equals(launchId)) return false;
+            attached.resultDelivered = true;
+            return true;
+        }
+    }
+
+    static boolean hasClosingEditor() {
+        return closingLaunch() != null;
+    }
+
+    static String closingLaunch() {
+        synchronized (EDITOR_LOCK) {
+            EngineAttachment attached = liveAttachment();
+            return attached != null && attached.resultDelivered ? attached.launchId : null;
+        }
+    }
+
+    static String attachedLaunch(String sessionId) {
+        synchronized (EDITOR_LOCK) {
+            EngineAttachment attached = liveAttachment();
+            return attached != null && attached.sessionId.equals(sessionId) ? attached.launchId : null;
+        }
+    }
+
+    static void setProcessStopper(ProcessStopper stopper) {
+        synchronized (EDITOR_LOCK) { processStopper = stopper; }
+    }
+
+    /** Main process: stops the engine process of exactly this launch, using the PID recorded at attach. */
+    static boolean stopEngine(String launchId) {
+        int pid;
+        ProcessStopper stopper;
+        synchronized (EDITOR_LOCK) {
+            EngineAttachment attached = liveAttachment();
+            if (launchId == null || attached == null || !attached.launchId.equals(launchId) || processStopper == null) {
+                return false;
+            }
+            pid = attached.pid;
+            stopper = processStopper;
+        }
+        stopper.stop(pid);
+        return true;
+    }
+
+    private static EngineAttachment liveAttachment() {
+        return attachedEngine != null && liveEditor.get() == attachedEngine ? attachedEngine : null;
     }
 
     static boolean editorOpened(String sessionId, Object owner, boolean previewOnly) {
         synchronized (EDITOR_LOCK) {
             Object currentOwner = liveEditor.get();
             if (currentOwner == null && previewOnly) return false;
-            if (currentOwner != null) {
+            if (currentOwner == null) {
+                editorReleaseCallbacks.clear();
+            } else {
                 if (!sessionId.equals(liveSessionId)) return false;
                 if (editorActive) return currentOwner == owner;
             }
@@ -82,13 +217,26 @@ public final class OfficeSessionJournal {
     }
 
     public static void releaseEditor(Object owner) {
+        List<Runnable> callbacks;
         synchronized (EDITOR_LOCK) {
-            if (liveEditor.get() == owner) {
-                liveEditor.clear();
-                liveSessionId = null;
-                editorActive = false;
-                EDITOR_LOCK.notifyAll();
-            }
+            if (liveEditor.get() != owner) return;
+            liveEditor.clear();
+            liveSessionId = null;
+            liveLaunchId = null;
+            attachedEngine = null;
+            editorActive = false;
+            callbacks = new ArrayList<>(editorReleaseCallbacks);
+            editorReleaseCallbacks.clear();
+            EDITOR_LOCK.notifyAll();
+        }
+        for (Runnable callback : callbacks) callback.run();
+    }
+
+    static boolean deferUntilEditorReleased(String sessionId, Runnable callback) {
+        synchronized (EDITOR_LOCK) {
+            if (!sessionId.equals(liveSessionId) || liveEditor.get() == null) return false;
+            editorReleaseCallbacks.add(callback);
+            return true;
         }
     }
 
@@ -96,6 +244,18 @@ public final class OfficeSessionJournal {
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         synchronized (EDITOR_LOCK) {
             while (sessionId.equals(liveSessionId) && liveEditor.get() != null) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) return false;
+                TimeUnit.NANOSECONDS.timedWait(EDITOR_LOCK, remaining);
+            }
+            return true;
+        }
+    }
+
+    static boolean awaitAnyEditorRelease(long timeoutMillis) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        synchronized (EDITOR_LOCK) {
+            while (liveEditor.get() != null) {
                 long remaining = deadline - System.nanoTime();
                 if (remaining <= 0) return false;
                 TimeUnit.NANOSECONDS.timedWait(EDITOR_LOCK, remaining);

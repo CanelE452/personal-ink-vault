@@ -73,7 +73,7 @@ void main() {
     ) as Map<String, dynamic>;
     final revision = note.toJson();
     final variants = [
-      {...raw, 'formatVersion': 2},
+      {...raw, 'formatVersion': 3},
       {
         ...raw,
         'revisions': [

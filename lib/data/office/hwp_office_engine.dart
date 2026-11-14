@@ -98,6 +98,44 @@ class HwpOfficeEngine {
     }
   }
 
+  /// Renders every page of the original to a separate PDF with rhwp. Unlike
+  /// [inspect], this does not require the document to be structurally editable.
+  Future<Map<String, dynamic>> renderPdf(String sourcePath) async {
+    _format(sourcePath);
+    final before = await _hash(File(sourcePath));
+    final result = await _invoke({'mode': 'pdf', 'sourcePath': sourcePath});
+    try {
+      if (result['sourceSha256'] != before ||
+          await _hash(File(sourcePath)) != before) {
+        throw const HwpOfficeException(
+          'source_changed',
+          '원본 판본이 바뀌었습니다. 문서를 다시 열어 주세요.',
+        );
+      }
+      final path = result['pdfPath'];
+      final hash = result['pdfSha256'];
+      final pages = result['pdfPageCount'];
+      final version = result['engineVersion'];
+      if (path is! String ||
+          hash is! String ||
+          pages is! int ||
+          pages < 1 ||
+          version is! String ||
+          version.trim().isEmpty ||
+          await _hash(File(path)) != hash ||
+          !await _isPdf(File(path))) {
+        throw const HwpOfficeException(
+          'invalid_preview',
+          '문서 미리보기를 확인하지 못했습니다.',
+        );
+      }
+      return result;
+    } catch (_) {
+      if (result is _OwnedHwpInspection) await result.dispose();
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> apply(
     String sourcePath, {
     required List<Map<String, Object?>> operations,
@@ -476,16 +514,18 @@ class HwpOfficeEngine {
       'personal-ink-vault-hwp-',
     );
     var retainOutput = false;
+    final pdf = request['mode'] == 'pdf';
     try {
       final nativeRequest = {...request, 'outputDirectory': work.path};
-      if (request['mode'] == 'apply' || request['preview'] == true)
+      if (request['mode'] == 'apply' || request['preview'] == true || pdf)
         nativeRequest['fontDirectories'] = [await _fonts()];
       final result = await Isolate.run(
         () => _NativeHwp.open(library).invoke(nativeRequest),
       );
       final response = _response(result);
-      retainOutput = request['mode'] == 'apply' || request['preview'] == true;
-      if (request['mode'] == 'inspect' && request['preview'] == true) {
+      retainOutput =
+          request['mode'] == 'apply' || request['preview'] == true || pdf;
+      if ((request['mode'] == 'inspect' && request['preview'] == true) || pdf) {
         return _OwnedHwpInspection(response, work);
       }
       return response;
@@ -621,6 +661,17 @@ class _OwnedHwpInspection extends MapView<String, dynamic> {
   }
 }
 
+/// A PDF of every page that [HwpStructuredOfficeEngine.renderPdf] made with rhwp.
+/// The PDF stays on disk until [dispose] runs.
+typedef HwpPdfPreview = ({
+  String pdfPath,
+  String pdfSha256,
+  int pageCount,
+  String sourceSha256,
+  String engineVersion,
+  Future<void> Function() dispose,
+});
+
 class HwpStructuredOfficeEngine extends WindowsOfficeEngine {
   new({
     HwpOfficeEngine? engine,
@@ -650,6 +701,24 @@ class HwpStructuredOfficeEngine extends WindowsOfficeEngine {
       'unsupported_operation',
       'HWP에서는 슬라이드 디자인 편집을 지원하지 않습니다.',
     );
+  }
+
+  Future<HwpPdfPreview> renderPdf(String sourcePath) async {
+    try {
+      final result = await _hwp.renderPdf(sourcePath);
+      return (
+        pdfPath: result['pdfPath'] as String,
+        pdfSha256: result['pdfSha256'] as String,
+        pageCount: result['pdfPageCount'] as int,
+        sourceSha256: result['sourceSha256'] as String,
+        engineVersion: result['engineVersion'] as String,
+        dispose: result is _OwnedHwpInspection
+            ? result.dispose
+            : () async {},
+      );
+    } on HwpOfficeException catch (error) {
+      throw WindowsOfficeException(error.code, error.message);
+    }
   }
 
   @override

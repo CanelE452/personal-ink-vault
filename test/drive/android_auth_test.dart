@@ -1,9 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:ink_vault_core/drive.dart';
+import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:saber/data/drive/drive_auth.dart';
+import 'package:saber/data/drive/drive_connection.dart';
 import 'package:saber/data/drive/oauth_flow.dart';
 
 const clientId = 'android-web-test-client';
@@ -124,6 +130,103 @@ void main() {
     expect(native.authenticateCalls, 0);
     expect(native.requests, isEmpty);
   });
+
+  test(
+    'Android automatic sync honors a saved hold before native auth',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('drive-android-hold-');
+      final repo = await NoteRepository.open(Directory('${dir.path}/vault'));
+      final settings = Directory('${dir.path}/settings');
+      final stateDirectory = Directory('${settings.path}/state/folder');
+      final deadline = DateTime.now().toUtc().add(const Duration(minutes: 1));
+      var driveRequests = 0;
+      final controller = DriveConnectionController(
+        repository: () => repo,
+        onRepositoryChanged: (_) async => fail('Unexpected vault change'),
+        onRemoteUpdated: () async {},
+        onResumeReload: () async {},
+        directoryProvider: () async => settings,
+        authFactory: (settings) =>
+            AndroidDriveAuth(settings.androidServerClientId),
+        remoteFactory: (token) => DriveRemoteStore(
+          accessToken: token,
+          client: MockClient((request) async {
+            driveRequests++;
+            expect(
+              request.headers['authorization'],
+              'Bearer native-cache-token',
+            );
+            return http.Response(switch (request.url.path) {
+              '/drive/v3/changes/startPageToken' =>
+                '{"startPageToken":"first"}',
+              '/drive/v3/files' => '{"files":[]}',
+              '/drive/v3/changes' =>
+                '{"changes":[],"newStartPageToken":"second"}',
+              _ => throw StateError('Unexpected synthetic Drive request'),
+            }, 200);
+          }),
+        ),
+      );
+      addTearDown(() async {
+        await controller.close();
+        await repo.close();
+        await dir.delete(recursive: true);
+      });
+      await saveIdentity();
+      await (DriveConnectionSettings()
+            ..androidServerClientId = clientId
+            ..accountId = 'account-a'
+            ..folderId = 'folder'
+            ..vaultId = repo.vaultId
+            ..rootPath = repo.root.path
+            ..vaultFormatVersion = repo.formatVersion)
+          .save(settings);
+      await stateDirectory.create(recursive: true);
+      await File('${stateDirectory.path}/sync-state.json').writeAsString(
+        jsonEncode({
+          'version': 1,
+          'vaultId': repo.vaultId,
+          'remoteId': 'folder',
+          'uploaded': [],
+          'pending': [],
+          'intents': {},
+          'knownFiles': {},
+          'removedFiles': [],
+          'cursor': null,
+          'attempts': 1,
+          'retryAt': deadline.toIso8601String(),
+          'lastSuccess': null,
+          'authStopped': false,
+          'blocked': false,
+        }),
+      );
+
+      await controller.initialize();
+      expect(controller.error, isNull);
+      await controller.coordinator!.syncOnce();
+      expect(native.requests, isEmpty);
+      expect(controller.coordinator!.status.retryAt, deadline);
+      await controller.setForeground(false);
+      await controller.setForeground(true);
+      expect(controller.error, isNull);
+      await controller.coordinator!.syncOnce();
+      expect(native.requests, isEmpty);
+      expect(controller.coordinator!.status.retryAt, deadline);
+      expect(driveRequests, 0);
+
+      await controller.retry();
+      expect(controller.coordinator!.status.phase, SyncPhase.synced);
+      expect(driveRequests, 3);
+      expect(native.requests, isNotEmpty);
+      for (final request in native.requests) {
+        expect(request.userId, 'account-a');
+        expect(request.email, 'a@example.test');
+        expect(request.promptIfUnauthorized, isFalse);
+      }
+      expect(native.lightweightCalls, 0);
+      expect(native.authenticateCalls, 0);
+    },
+  );
 
   test('headless restore silently authorizes the saved account only', () async {
     await saveIdentity();

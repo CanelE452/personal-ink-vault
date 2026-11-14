@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:ink_vault_core/drive.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:saber/data/drive/drive_auth.dart';
@@ -312,42 +313,112 @@ class DriveConnectionController extends ChangeNotifier {
   });
   Future<void> connectExisting(DriveVault selected) => run(() async {
     settings.requireAccount(auth?.accountId);
-    await _stop();
-    final remote = remoteFactory(auth!.accessToken);
+    await _stop(keepLease: true);
+    status = const SyncStatus(SyncPhase.idle);
     try {
-      final vault = await remote.connectVault(selected.id);
-      final support = await getApplicationSupportDirectory();
-      final next = await NoteRepository.open(
-        Directory('${support.path}/vaults/drive-${vault.vaultId}'),
-        vaultId: vault.vaultId,
-        createFormatVersion: vault.formatVersion,
-      );
-      if (next.formatVersion != vault.formatVersion) {
-        await next.close();
-        throw const FormatException('Local and Drive vault formats differ');
-      }
-      final previous = await DriveConnectionSettings.load(settingsDirectory);
+      // Serialize the binding change with the Android background worker.
+      await _acquireLease();
+      final remote = remoteFactory(auth!.accessToken);
+      final DriveVault vault;
       try {
-        settings.accountId = auth!.accountId;
-        settings.folderId = vault.id;
-        settings.vaultId = vault.vaultId;
-        settings.vaultFormatVersion = vault.formatVersion;
-        settings.rootPath = next.root.path;
-        settings.intentFileId = null;
-        // Publish the connection before the workspace switches to this vault.
-        await settings.save(settingsDirectory);
-        await onRepositoryChanged(next);
-      } catch (_) {
-        settings = previous;
-        await settings.save(settingsDirectory);
-        await next.close();
-        rethrow;
+        vault = await remote.connectVault(selected.id);
+      } finally {
+        remote.close();
       }
+      final previous = settings;
+      final next = await _openLocalRepository(vault);
+      final connection = DriveConnectionSettings()
+        ..androidServerClientId = previous.androidServerClientId
+        ..desktopClientId = previous.desktopClientId
+        ..leasePort = previous.leasePort
+        ..accountId = auth!.accountId
+        ..folderId = vault.id
+        ..vaultId = vault.vaultId
+        ..vaultFormatVersion = vault.formatVersion
+        ..rootPath = next.root.path;
+      try {
+        // Publish the connection before the workspace switches to this vault.
+        await connection.save(settingsDirectory);
+        settings = connection;
+        if (!identical(repository(), next)) {
+          try {
+            await onRepositoryChanged(next);
+          } catch (_) {
+            // A refresh can fail after the workspace adopts the repository.
+            if (!identical(repository(), next)) {
+              settings = previous;
+              await settings.save(settingsDirectory);
+            }
+            rethrow;
+          }
+        }
+      } finally {
+        if (!identical(repository(), next)) await next.close();
+      }
+      await _start(resume: true);
     } finally {
-      remote.close();
+      if (coordinator == null && !waitingForLease) await _stop();
     }
-    await _start(resume: true);
   });
+
+  Future<NoteRepository> _openLocalRepository(DriveVault vault) async {
+    final current = repository();
+    if (current.vaultId == vault.vaultId &&
+        current.formatVersion == vault.formatVersion) {
+      return current;
+    }
+
+    final knownRoot = settings.rootPath;
+    final useKnownRoot =
+        settings.folderId == vault.id &&
+        settings.vaultId == vault.vaultId &&
+        (settings.vaultFormatVersion ?? 1) == vault.formatVersion &&
+        knownRoot != null &&
+        File('$knownRoot/vault.json').existsSync();
+    final root = useKnownRoot
+        ? Directory(knownRoot)
+        : await _findLocalRoot(vault);
+    final next = await NoteRepository.open(
+      root,
+      vaultId: vault.vaultId,
+      createFormatVersion: vault.formatVersion,
+    );
+    if (next.formatVersion == vault.formatVersion) return next;
+    await next.close();
+    throw const FormatException('Local and Drive vault formats differ');
+  }
+
+  Future<Directory> _findLocalRoot(DriveVault vault) async {
+    final support = await getApplicationSupportDirectory();
+    final vaults = Directory(p.join(support.path, 'vaults'));
+    Directory? matching;
+    if (vaults.existsSync()) {
+      await for (final entry in vaults.list(followLinks: false)) {
+        if (entry is! Directory) continue;
+        final config = File(p.join(entry.path, 'vault.json'));
+        final Object? identity;
+        try {
+          identity = jsonDecode(await config.readAsString());
+        } on FormatException {
+          continue;
+        } on PathNotFoundException {
+          continue;
+        }
+        if (identity is! Map<String, dynamic> ||
+            identity['vaultId'] != vault.vaultId ||
+            identity['formatVersion'] != vault.formatVersion) {
+          continue;
+        }
+        if (matching != null) {
+          throw const OAuthFailure(
+            '이 Drive 보관함과 일치하는 기기 저장소가 여러 개 있습니다. ‘기기의 저장소’에서 사용할 보관함을 연 뒤 다시 연결하세요.',
+          );
+        }
+        matching = entry;
+      }
+    }
+    return matching ?? Directory(p.join(vaults.path, 'drive-${vault.vaultId}'));
+  }
 
   Future<bool> upgradeLegacyRepository(
     NoteRepository source,

@@ -12,6 +12,7 @@ import 'package:saber/data/drive/drive_connection.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/native/ink_vault_native.dart';
+import 'package:saber/data/office/pdf_note_original.dart';
 import 'package:saber/data/vault/block_page_document.dart';
 import 'package:saber/data/vault/block_page_history.dart';
 import 'package:saber/data/vault/block_page_media.dart';
@@ -383,6 +384,8 @@ class WorkspaceController extends ChangeNotifier {
     required Uint8List bytes,
   }) => _importPdf(title, fileName: fileName, bytes: bytes);
 
+  /// [keptOriginal] is the converted Office/HWP file; the new PDF note keeps it so a newer engine can convert it
+  /// into another PDF note later (PdfNoteOriginalStore).
   Future<VaultNote> importOfficePdf(
     String title, {
     required String fileName,
@@ -390,6 +393,7 @@ class WorkspaceController extends ChangeNotifier {
     int? pdfPageNumber,
     String? sharedRequestId,
     SharedOfficeOriginal? sharedOfficeOriginal,
+    ({String fileName, Uint8List bytes, String? engineVersion})? keptOriginal,
   }) => _importPdf(
     title,
     fileName: fileName,
@@ -397,6 +401,7 @@ class WorkspaceController extends ChangeNotifier {
     pdfPageNumber: pdfPageNumber,
     sharedRequestId: sharedRequestId,
     sharedOfficeOriginal: sharedOfficeOriginal,
+    keptOriginal: keptOriginal,
   );
 
   Future<VaultNote> importSharedPdf(
@@ -425,6 +430,7 @@ class WorkspaceController extends ChangeNotifier {
     String? sharedRequestId,
     SharedOfficeOriginal? sharedOfficeOriginal,
     int? pdfPageNumber,
+    ({String fileName, Uint8List bytes, String? engineVersion})? keptOriginal,
   }) async {
     if (dirty) throw StateError('먼저 현재 노트를 저장하세요.');
     final repo = repository, source = store;
@@ -442,6 +448,19 @@ class WorkspaceController extends ChangeNotifier {
       sharedOfficeOriginal: sharedOfficeOriginal,
     );
     if (note.trashed) return note;
+    if (keptOriginal != null) {
+      try {
+        await PdfNoteOriginalStore(repo).attach(
+          note,
+          fileName: keptOriginal.fileName,
+          bytes: keptOriginal.bytes,
+          engineVersion: keptOriginal.engineVersion,
+        );
+      } catch (error) {
+        // The PDF note is complete without it; only a later re-conversion needs the original.
+        debugPrint('PIVImport: the Office original was not kept: $error');
+      }
+    }
     _requireCreationTarget(repo, previous, generation, folderId);
     final session = await source.open(note);
     _requireCreationTarget(repo, previous, generation, folderId);

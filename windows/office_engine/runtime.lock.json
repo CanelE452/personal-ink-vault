@@ -1,0 +1,15 @@
+{
+  "version": "26.8.2.2",
+  "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.2/win/x86_64/LibreOffice_26.8.2_Win_x86-64.msi",
+  "checksumUrl": "https://download.documentfoundation.org/libreoffice/stable/26.8.2/win/x86_64/LibreOffice_26.8.2_Win_x86-64.msi.mirrorlist",
+  "sha256": "ff4b911403b67ee9e6249f820f9782c44bb32c94fdaa45b0da53a8e419e5307a",
+  "bytes": 375934976,
+  "maximumBytes": 390000000,
+  "sourceUrl": "https://download.documentfoundation.org/libreoffice/src/26.8.2/libreoffice-26.8.2.2.tar.xz",
+  "pdfReader": {
+    "version": "6.21.4",
+    "url": "https://files.pythonhosted.org/packages/3f/4b/77e8ad4ac42c9d93600f40541a50e9feb3a61d2bbee2d76f659346072051/pypdf-6.21.4-py3-none-any.whl",
+    "bytes": 410430,
+    "sha256": "33e4fb41ca352810eb4e9838aa0d82d6888a5f8bf682f43e99cce5faa666255c"
+  }
+}

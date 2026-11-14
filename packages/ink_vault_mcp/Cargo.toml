@@ -1,0 +1,25 @@
+[package]
+name = "ink_vault_mcp"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.1"
+license = "GPL-3.0-only"
+publish = false
+
+[dependencies]
+rmcp = { version = "=3.8.0", default-features = false, features = ["server", "macros", "schemars", "transport-io"] }
+reqwest = { version = "=0.13.5", default-features = false, features = ["json"] }
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "io-std", "net", "time", "process", "sync", "fs"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+uuid = "=1.29.0"
+base64 = "=0.23.1"
+
+[dev-dependencies]
+rmcp = { version = "=3.8.0", default-features = false, features = ["client", "transport-child-process"] }
+tempfile = "=3.27.0"
+axum = "=0.8.9"
+
+[profile.release]
+lto = true
+strip = "debuginfo"

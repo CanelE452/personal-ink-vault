@@ -6,12 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:pdfrx/pdfrx.dart';
+import 'package:saber/components/canvas/_asset_cache.dart';
+import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
+import 'package:saber/pages/workspace/library_home.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
 import '../utils/test_editor.dart';
@@ -35,13 +38,61 @@ void main() {
   });
   tearDown(() async {
     debugDefaultTargetPlatformOverride = null;
-    StudyWorkspace.pendingPdfImport.value = null;
+    StudyWorkspace.pendingDocumentImport.value = null;
     PdfrxEntryFunctions.instance = originalPdfBackend;
     await c.saveMarkdown();
     await c.repository.close();
     c.dispose();
     await temp.delete(recursive: true);
   });
+  Future<void> waitFor(
+    WidgetTester tester,
+    bool Function() ready,
+    String reason,
+  ) async {
+    for (var i = 0; i < 200 && !ready(); i++) {
+      await tester.runAsync(() async {
+        await tester.pump();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+    }
+    expect(ready(), isTrue, reason: '$reason\n${c.error}');
+  }
+
+  test('disposing a PDF image before its document opens is safe', () async {
+    final backend = DelayedPdfBackend();
+    PdfrxEntryFunctions.instance = backend;
+    final cache = AssetCache();
+    final file = File('${temp.path}/slow-image.pdf');
+    final document = TestPdfDocument(file.path);
+    final image = PdfEditorImage(
+      id: 1,
+      assetCache: cache,
+      pdfBytes: null,
+      pdfFile: file,
+      pdfPage: 0,
+      pageIndex: 0,
+      pageSize: const Size(300, 600),
+      naturalSize: const Size(300, 600),
+      onMoveImage: null,
+      onDeleteImage: null,
+      onMiscChange: null,
+    );
+
+    final loading = image.firstLoad();
+    expect(backend.opened, isTrue);
+    image.dispose();
+    try {
+      backend.release.complete(document);
+      await expectLater(loading, completes);
+      expect(document._disposed, isFalse);
+    } finally {
+      cache.dispose();
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(document._disposed, isTrue);
+  });
+
   testWidgets('Android new note closes the library and saves editable ink', (
     tester,
   ) async {
@@ -61,13 +112,29 @@ void main() {
     await tester.pumpAndSettle();
     await tester.runAsync(() async {
       tester
-          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '새 노트'))
-          .onPressed!();
+          .widget<LibraryHome>(find.byType(LibraryHome))
+          .onCreate(LibraryCreateAction.handwriting);
       await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    for (
+      var i = 0;
+      i < 20 && find.byType(AlertDialog).evaluate().isEmpty;
+      i++
+    ) {
+      await tester.runAsync(() async {
+        await tester.pump();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.runAsync(() async {
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '확인'))
+          .onPressed!();
     });
     for (var i = 0; i < 200; i++) {
       await tester.runAsync(() async {
-        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 20));
         await Future<void>.delayed(const Duration(milliseconds: 20));
       });
       if (find.byType(Editor).evaluate().isNotEmpty &&
@@ -77,7 +144,8 @@ void main() {
               .filePath
               .isNotEmpty &&
           !c.inkBusy &&
-          !c.dirty)
+          !c.dirty &&
+          !scaffold.isDrawerOpen)
         break;
     }
     await tester.pump(const Duration(milliseconds: 300));
@@ -103,11 +171,9 @@ void main() {
     });
     c.setInkDirty(true);
     scaffold.openDrawer();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
     await tester.runAsync(() async {
-      tester
-          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '새 노트'))
-          .onPressed!();
+      await tester.tap(find.byTooltip('새 폴더'));
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
     for (var i = 0; i < 10; i++) {
@@ -146,15 +212,10 @@ void main() {
       );
       await tester.pump();
       await tester.runAsync(() async {
-        StudyWorkspace.pendingPdfImport.value = pdf.path;
+        StudyWorkspace.pendingDocumentImport.value = pdf.path;
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });
-      for (var i = 0; i < 30 && !backend.opened; i++) {
-        await tester.runAsync(() async {
-          await tester.pump();
-          await Future<void>.delayed(const Duration(milliseconds: 20));
-        });
-      }
+      await waitFor(tester, () => backend.opened, 'PDF 가져오기가 시작되어야 합니다.');
       expect(
         c.activeSession,
         isNotNull,
@@ -167,15 +228,11 @@ void main() {
       final session = c.activeSession!;
       final previous = List<String>.of(session.inkParents);
       backend.release.completeError(StateError('cannot read PDF'));
-      for (var i = 0; i < 30; i++) {
-        await tester.runAsync(() async {
-          await tester.pump();
-          await Future<void>.delayed(const Duration(milliseconds: 20));
-        });
-        if (find.textContaining('필기를 열 수 없습니다').evaluate().isNotEmpty) {
-          break;
-        }
-      }
+      await waitFor(
+        tester,
+        () => find.textContaining('필기를 열 수 없습니다').evaluate().isNotEmpty,
+        'PDF 읽기 실패를 표시해야 합니다.',
+      );
       expect(c.dirty, isTrue);
       expect(find.textContaining('필기를 열 수 없습니다'), findsOneWidget);
       expect(find.text('PDF 가져오기 취소'), findsOneWidget);
@@ -185,12 +242,7 @@ void main() {
             .onPressed!();
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });
-      for (var i = 0; i < 30 && c.dirty; i++) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-      }
+      await waitFor(tester, () => !c.dirty, '가져오기 취소가 끝나야 합니다.');
       expect(c.dirty, isFalse);
       expect(session.inkParents, previous);
       expect(await tester.runAsync(pdf.readAsBytes), bytes);
@@ -306,10 +358,26 @@ class DelayedPdfBackend implements PdfrxEntryFunctions {
 
 class TestPdfDocument extends PdfDocument {
   new(String path) : super(sourceName: path);
+  final _events = StreamController<PdfDocumentEvent>.broadcast();
+  late final _pages = List<PdfPage>.unmodifiable([TestPdfPage(this)]);
+  var _disposed = false;
   @override
-  List<PdfPage> get pages => [TestPdfPage(this)];
+  Stream<PdfDocumentEvent> get events => _events.stream;
   @override
-  Future<void> dispose() async {}
+  PdfPermissions? get permissions => null;
+  @override
+  bool get isEncrypted => false;
+  @override
+  List<PdfPage> get pages => _pages;
+  @override
+  bool isIdenticalDocumentHandle(Object? other) => identical(this, other);
+  @override
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    unawaited(_events.close());
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -325,7 +393,45 @@ class TestPdfPage implements PdfPage {
   @override
   double get height => 600;
   @override
+  PdfPageRotation get rotation => PdfPageRotation.none;
+  @override
   bool get isLoaded => true;
   @override
+  PdfPageRenderCancellationToken createCancellationToken() =>
+      _TestPdfRenderCancellationToken();
+  @override
+  Future<PdfImage?> render({
+    int x = 0,
+    int y = 0,
+    int? width,
+    int? height,
+    double? fullWidth,
+    double? fullHeight,
+    int? backgroundColor,
+    PdfPageRotation? rotationOverride,
+    PdfAnnotationRenderingMode annotationRenderingMode =
+        PdfAnnotationRenderingMode.annotationAndForms,
+    int flags = PdfPageRenderFlags.none,
+    PdfPageRenderCancellationToken? cancellationToken,
+  }) async {
+    if (cancellationToken?.isCanceled ?? false) return null;
+    final w = width ?? (fullWidth ?? this.width).round();
+    final h = height ?? (fullHeight ?? this.height).round();
+    return PdfImage.createFromBgraData(
+      Uint8List(w * h * 4)..fillRange(0, w * h * 4, 255),
+      width: w,
+      height: h,
+    );
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _TestPdfRenderCancellationToken extends PdfPageRenderCancellationToken {
+  var _cancelled = false;
+  @override
+  bool get isCanceled => _cancelled;
+  @override
+  void cancel() => _cancelled = true;
 }

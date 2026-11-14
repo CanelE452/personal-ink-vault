@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "reason": "These registry crates ship no license file in their .crate archive. Their texts come from the upstream repository at a pinned commit; generate_licenses.py verifies the bytes and the elected alternative.",
+  "packages": [
+    {
+      "name": "wuff",
+      "version": "0.2.10",
+      "elected": "MIT",
+      "sourceRepository": "https://github.com/nicoburns/wuff",
+      "sourceCommit": "0bb77cb3448100b8f560abf796014c8b85d75e23",
+      "sourceTag": "v0.2.10",
+      "files": [
+        {
+          "path": "wuff-0.2.10/LICENSE",
+          "sourceUrl": "https://raw.githubusercontent.com/nicoburns/wuff/0bb77cb3448100b8f560abf796014c8b85d75e23/LICENSE",
+          "bytes": 1104,
+          "sha256": "4b373ba4395e35d44ba1f41202c179b57ca3c5ba5e4a1aaafa1547aede7e1eb7"
+        }
+      ]
+    },
+    {
+      "name": "zune-core",
+      "version": "0.4.12",
+      "elected": "Zlib",
+      "sourceRepository": "https://github.com/etemesi254/zune-image",
+      "sourceCommit": "fa2c767a01d7d9373911d0bf63e0588553d67e0e",
+      "sourceTag": "0.4.21-jpeg",
+      "note": "Project-wide license files; at this commit the repository has LICENSE.md and LICENSE-ZLIB but no MIT or Apache text, so Zlib is elected.",
+      "files": [
+        {
+          "path": "zune-core-0.4.12/LICENSE.md",
+          "sourceUrl": "https://raw.githubusercontent.com/etemesi254/zune-image/fa2c767a01d7d9373911d0bf63e0588553d67e0e/LICENSE.md",
+          "bytes": 357,
+          "sha256": "c6dff146a9f31848ac296faa5a08a4253caf2c384c86f906dc99e7fc0a39cc8c"
+        },
+        {
+          "path": "zune-core-0.4.12/LICENSE-ZLIB",
+          "sourceUrl": "https://raw.githubusercontent.com/etemesi254/zune-image/fa2c767a01d7d9373911d0bf63e0588553d67e0e/LICENSE-ZLIB",
+          "bytes": 818,
+          "sha256": "7fa429541e55b1509909e058f2d21a37467e4958ec713b357f6e0cf9dc4ee352"
+        }
+      ]
+    },
+    {
+      "name": "zune-jpeg",
+      "version": "0.4.21",
+      "elected": "Zlib",
+      "sourceRepository": "https://github.com/etemesi254/zune-image",
+      "sourceCommit": "fa2c767a01d7d9373911d0bf63e0588553d67e0e",
+      "sourceTag": "0.4.21-jpeg",
+      "note": "At this commit the repository has LICENSE.md and LICENSE-ZLIB but no MIT or Apache text, so Zlib is elected.",
+      "files": [
+        {
+          "path": "zune-jpeg-0.4.21/LICENSE.md",
+          "sourceUrl": "https://raw.githubusercontent.com/etemesi254/zune-image/fa2c767a01d7d9373911d0bf63e0588553d67e0e/LICENSE.md",
+          "bytes": 357,
+          "sha256": "c6dff146a9f31848ac296faa5a08a4253caf2c384c86f906dc99e7fc0a39cc8c"
+        },
+        {
+          "path": "zune-jpeg-0.4.21/LICENSE-ZLIB",
+          "sourceUrl": "https://raw.githubusercontent.com/etemesi254/zune-image/fa2c767a01d7d9373911d0bf63e0588553d67e0e/LICENSE-ZLIB",
+          "bytes": 818,
+          "sha256": "7fa429541e55b1509909e058f2d21a37467e4958ec713b357f6e0cf9dc4ee352"
+        }
+      ]
+    }
+  ]
+}

@@ -195,6 +195,11 @@ final class DocumentIntake {
     }
 
     static long copyBounded(Path destination, long limit, Source source, BooleanSupplier cancelled) throws IOException {
+        return copyBounded(destination, limit, source, cancelled, false);
+    }
+
+    static long copyBounded(Path destination, long limit, Source source,
+                            BooleanSupplier cancelled, boolean allowEmpty) throws IOException {
         if (cancelled.getAsBoolean()) throw new InterruptedIOException("Document copy cancelled");
         long bytes = 0;
         try (InputStream input = source.open()) {
@@ -208,7 +213,7 @@ final class DocumentIntake {
                     int count = input.read(buffer, 0, requested);
                     if (cancelled.getAsBoolean()) break;
                     if (count == -1) {
-                        if (bytes == 0) throw new IOException("Empty document");
+                        if (!allowEmpty && bytes == 0) throw new IOException("Empty document");
                         output.getFD().sync();
                         return bytes;
                     }

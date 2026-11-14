@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "method": "Observed Dart VM String.toLowerCase and String.toUpperCase for every Unicode scalar; no application source was extracted.",
+  "sdkVersion": "3.13.5",
+  "sdkRevision": "04bcd1036cdc799ac6564988f159ee454d42c822",
+  "runtimeVersion": "3.13.5 (stable) (Tue Sep 29 01:00:52 2026 -0700) on \"windows_x64\"",
+  "sdkExecutableName": "dart.exe",
+  "sdkExecutableSha256": "9033c8b5402f7d5b587311ddd4e9ab942acfa79b66aa296eb84cbfeac9d1cf23",
+  "generatorSha256": "d9525cea0e76b8202f3340abbd28d427c01dc90deccff608b6700da85f8dc563",
+  "scalarCount": 1112064,
+  "lowerMappings": 1023,
+  "upperMappings": 1031,
+  "expandingMappings": 0,
+  "tableSha256": "6c60340aeaaa5d8217b06a63a56fa63e5738ea686a96e6bfe55d968a9518cef5",
+  "sdkLicenseSha256": "2cfa3ee8e7512e6d44c854b986510810fadc815f93f890373b3a81c1b6ccd256",
+  "unpairedSurrogates": "Preserve unchanged in the UTF-16 query VM; they are not Unicode scalars."
+}

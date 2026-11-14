@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136202,
+  "versionCode": 136217,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,7 +17,7 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "f132927bdad0422ce4a75b4b20e2af58d74bf4c8143f99a566c7cb9980df8cf5",
+      "sha256": "d87a30930734f27d9af8e1719df1a29d2a57ca5aeab1c867d5ffed777bb34fcc",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
@@ -49,7 +49,11 @@
       "mode": "100644"
     },
     "android/app/src/main/java/io/github/canele452/personalinkvault/DocumentIntake.java": {
-      "sha256": "659d68c750889dc9c2f9a9e83afd3d353e6d1bdd56e20a2ed2c5d7139df58a24",
+      "sha256": "a348dc37b81bb7389ce2feceb353cef99245251301a75ad617551f27ffb88ed5",
+      "mode": "100644"
+    },
+    "android/app/src/main/java/io/github/canele452/personalinkvault/ObsidianFolderStager.java": {
+      "sha256": "66cb7783872ebbdc6ebc3a984c042c108bf2765e8c514abf0008f83f7ca208d9",
       "mode": "100644"
     },
     "android/app/src/main/kotlin/com/adilhanney/saber/CameraBridge.kt": {
@@ -64,12 +68,16 @@
       "sha256": "f6acba84f3df49e8edc9b47a956569dd831fb31854a56c880f9dd14c25e43649",
       "mode": "100644"
     },
-    "android/app/src/main/kotlin/com/adilhanney/saber/MainActivity.kt": {
-      "sha256": "520853b3d8b4cf69d438cc8ca542c380d4e0c8b95ccf9ba7e6cf715bb12caee7",
+    "android/app/src/main/kotlin/com/adilhanney/saber/DocumentSourceBridge.kt": {
+      "sha256": "2e3b7622a80e66e12d04a8705be1826330159e1f6a5e763aa37b0591ce4bf4f7",
       "mode": "100644"
     },
-    "android/app/src/main/kotlin/com/adilhanney/saber/StarNoteSourceBridge.kt": {
-      "sha256": "90d7b21f305f02b9c33ca85c27f7df393334ee5cfd9548b70f24f961b0d6c30c",
+    "android/app/src/main/kotlin/com/adilhanney/saber/MainActivity.kt": {
+      "sha256": "677b4687f2a92446c3f9d894d226cd3a3b713bfe5487ef0d2a9fd050456fb4ec",
+      "mode": "100644"
+    },
+    "android/app/src/main/kotlin/com/adilhanney/saber/ObsidianFolderBridge.kt": {
+      "sha256": "6b95c4b5743ae9d69718dcfa7d5f89f4ab8b179eb02fb4b3a7b5ea55101a4225",
       "mode": "100644"
     },
     "android/app/src/main/res/drawable-v21/launch_background.xml": {
@@ -168,6 +176,10 @@
       "sha256": "b01a4541a8144c15bc617bab7eb267c99fa1476368fbbda5a12cdbf4e316a34c",
       "mode": "100644"
     },
+    "android/app/test_document_intake.py": {
+      "sha256": "c9e87e5ef06f9c488f361c293382b5f12d7dac8c48916a980634e11434253cf5",
+      "mode": "100644"
+    },
     "android/build.gradle.kts": {
       "sha256": "e704c38144ab59a5b51375447918d81d386d9ff49afd6c648b233bca8d759ed2",
       "mode": "100644"
@@ -189,7 +201,7 @@
       "mode": "100644"
     },
     "android/office_engine/README.md": {
-      "sha256": "a275325c4f6ae3d2644c768e706a5fd2ff2083899db2bdffa2cec0b0d133dac3",
+      "sha256": "e045f391afda9c70bf0f10589ed99b10f4d0445ecca6916628561dc8119b8b48",
       "mode": "100644"
     },
     "android/office_engine/build.gradle.kts": {
@@ -204,12 +216,28 @@
       "sha256": "3b59d9fe16c6ea314085021263ab6f53a2c0d5b624ab54641300020c4285bf53",
       "mode": "100644"
     },
+    "android/office_engine/hwp_editor/host.html": {
+      "sha256": "b88c447704a9399885993584efed484f988cf0b07db0a9efca73bfe06820d6c5",
+      "mode": "100644"
+    },
+    "android/office_engine/hwp_editor/host.js": {
+      "sha256": "7aee4566f5dced6bfbe33e376021ed11e79c374f89003aacd04994186d847dc0",
+      "mode": "100644"
+    },
+    "android/office_engine/hwp_editor/rhwp-studio-loaddocument-retry.patch": {
+      "sha256": "59ea644e3556152c821ec4e8033c04cf6b37bc5ff7d2c992b8d0620d3f1d6d46",
+      "mode": "100644"
+    },
+    "android/office_engine/hwp_editor/studio-config.js": {
+      "sha256": "2aca6996e6a627842735e30cb41ca67bc8eb7aba92657c72b12e80d702e7f066",
+      "mode": "100644"
+    },
     "android/office_engine/prepare_engine.py": {
-      "sha256": "1f3f72404875569f448480adc04500e86606192ace7cdcb66dfdbebafee3bd3a",
+      "sha256": "44bae8996289d645b0d2f1f6d0e332c8419173b89b4fab219de1c935dd1228b2",
       "mode": "100644"
     },
     "android/office_engine/src/main/AndroidManifest.xml": {
-      "sha256": "43d6d36adc70fc1438c55cf7755e940bea82c0970335ebd51d69ee8711a313f9",
+      "sha256": "657fe75f998b8041991e5c562e58e5a0763978b866485df3817601f158b9167f",
       "mode": "100644"
     },
     "android/office_engine/src/main/assets/piv-presentation-cells.js": {
@@ -224,20 +252,36 @@
       "sha256": "b055d393bb5116624feba71c149f4e0ca177595eef9e7fd672e2f84c65401a48",
       "mode": "100644"
     },
+    "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/HwpEditorActivity.java": {
+      "sha256": "f3c28af513fd91b56a63bd0d533c1dd080e383843290c2f22f5a92b29bc0518f",
+      "mode": "100644"
+    },
+    "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/HwpEditorBridge.java": {
+      "sha256": "2c45827d63422e0bbbceb9df6efacf593390ccf2511dd0f5c245214182f6f540",
+      "mode": "100644"
+    },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeCellReply.java": {
       "sha256": "6497911b262d6e312585ce50dafc7c39de2de29143f66ee0eb02162ec54eb050",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEditorActivity.java": {
-      "sha256": "e9ce9e8007a1a01ff62a084f8a4f375681c04b606fd99a718c9533de4e42374e",
+      "sha256": "305fdc68342be7e209bc4fce83e31e168aa67022f1587fc8a645923bd68c43f9",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEngineBridge.java": {
-      "sha256": "33d8fa159bf6c28cef840b64c599ab5dc7875a7f0628688f90aba026bd596230",
+      "sha256": "b5a83ab7151a25fddaac2bdc0c33ccf6df8f2d3ca9c3f9a49909ab8da1028bce",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEngineHealth.java": {
-      "sha256": "97f3eb28f85e0b87242f3fd0e8750508417b17ffb5be09b1668612497b776436",
+      "sha256": "0686172fbca35619c5b02ca00eed6aad1dbdbda7ae5156961122e09df1b931c1",
+      "mode": "100644"
+    },
+    "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEngineLink.java": {
+      "sha256": "eb5f6452e9aea8d1e080a686ab9e0da2f488fae2be274f53cd526b8a0e75619d",
+      "mode": "100644"
+    },
+    "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeEngineProcess.java": {
+      "sha256": "74fb08c1a80cfa02a86f871f953450f841fd8e5b8d0d5ec632937e81f7c6c148",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeLegacyContainer.java": {
@@ -253,7 +297,7 @@
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficePreviewOutputs.java": {
-      "sha256": "7d4c0f3705a4c212ed6db1a14d1ae69812e55250b27eaf8d90ddec8671ef1990",
+      "sha256": "520e7cc8418567b59a3c963498b742500bc535aeeab9680fafa5304cd073561e",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeScriptSession.java": {
@@ -261,7 +305,7 @@
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeSessionJournal.java": {
-      "sha256": "cd9d11c9f41a5c80bddadc7f4aacaf546f589e951cd5d54b8a0c0174d572a82a",
+      "sha256": "6f53c55b83bb3e9b7b8f50553fa4c1733d06f18a1b42ba3817c041a9cfe25b44",
       "mode": "100644"
     },
     "android/office_engine/src/main/java/io/github/canele452/personalinkvault/office/OfficeTextStylePlan.java": {
@@ -270,6 +314,70 @@
     },
     "android/office_engine/src/main/res/values/styles.xml": {
       "sha256": "ce239d7bd9c5d3700a79a68d4483b65acc73ceae8e67a416d8c1fe15ae93ce92",
+      "mode": "100644"
+    },
+    "android/office_engine/test_cell_activity.py": {
+      "sha256": "05a26ba8d8ecc015898cd8ac865018945d4c80d7b3efb70a109052e8a68192bf",
+      "mode": "100644"
+    },
+    "android/office_engine/test_cell_reply.py": {
+      "sha256": "c4a5c47b8b3159a1f7d77249ff89730721a74c53c3d9327a2f4996136956d4b3",
+      "mode": "100644"
+    },
+    "android/office_engine/test_engine_process.py": {
+      "sha256": "9dabe5f892613a6da457907151f6f2c63cd473ce4110832aa565804205b5b93b",
+      "mode": "100644"
+    },
+    "android/office_engine/test_interaction.py": {
+      "sha256": "b1c43a45a62492acb2cf0cbb007a71bd2dbff69989bec72377e80304a2aca5b8",
+      "mode": "100644"
+    },
+    "android/office_engine/test_legacy_reopen_bridge.py": {
+      "sha256": "1fa9617e58780bbdf14415278a088b14f564472464a5c1db82912a01ac597a4b",
+      "mode": "100644"
+    },
+    "android/office_engine/test_lifecycle.py": {
+      "sha256": "29fd22157d5fc8d6dc4be06c73379ca5dce241959ffd5572835f49c083cc56fa",
+      "mode": "100644"
+    },
+    "android/office_engine/test_native_observation.py": {
+      "sha256": "fe7248a9ec1bd1c8f13268b7d299cb3b4122063de8cd95dd7db62ab1770b418e",
+      "mode": "100644"
+    },
+    "android/office_engine/test_prepare_assets.py": {
+      "sha256": "fd571fb2222264ea255256384709ebea8e11a90332c6a42dd5020f549750cdd1",
+      "mode": "100644"
+    },
+    "android/office_engine/test_presentation_cell_ui.py": {
+      "sha256": "6977b1089b1bb73cb7428fb64210a740bc01dc442d9cc02780129c89ce88f0fd",
+      "mode": "100644"
+    },
+    "android/office_engine/test_presentation_cells.py": {
+      "sha256": "e6efd459315985581e5e6f820a4e95903e706f405105b8aad518637a2ed42c90",
+      "mode": "100644"
+    },
+    "android/office_engine/test_preview_outputs.py": {
+      "sha256": "0eb68ff448f1ce56d2bdada47d32f2d3542fbe2af87422c8be2bbbad9c61eb13",
+      "mode": "100644"
+    },
+    "android/office_engine/test_script_session.py": {
+      "sha256": "b45285a8684e6dc772d2b80bcfefb006d42a402390f6a7d7c1cdf22be308464a",
+      "mode": "100644"
+    },
+    "android/office_engine/test_script_transport.py": {
+      "sha256": "8e61a231d24a8924916d2d3ee8343075cd364fa79946c01e974cf26507e4654f",
+      "mode": "100644"
+    },
+    "android/office_engine/test_session_journal.py": {
+      "sha256": "fbe6f90e352fd9dcee68059aad8b0e6ad01bb3905ac8cd67efc26e68f1895d0b",
+      "mode": "100644"
+    },
+    "android/office_engine/test_text_style_bridge.py": {
+      "sha256": "d4da507419beec9823d14754222f2e6624ac7c308c9d6db9fa74d96902c6bd39",
+      "mode": "100644"
+    },
+    "android/office_engine/test_text_style_plan.py": {
+      "sha256": "dcba954da55bb2ca2444fdc65335c1e553953248846187c43a1dfebd8c78ed7c",
       "mode": "100644"
     },
     "android/settings.gradle.kts": {
@@ -394,6 +502,10 @@
     },
     "assets/images/undraw_researching_re_fuod.svg": {
       "sha256": "03721c9a679b3c58b5fd8ece7a6320597753dd25a38872f6135dd9baa36af8ea",
+      "mode": "100644"
+    },
+    "docs/hwp-rhwp-build.md": {
+      "sha256": "4419a89b86a7c4efd53712a35f1859b5e39bcbaf0c2e896390ca109cc2aaf4df",
       "mode": "100644"
     },
     "docs/upstream-provenance.md": {
@@ -760,6 +872,10 @@
       "sha256": "50242021c5ec7fd0f29df529dd954e1b0054017c5651c8fb47a6c2d2eeb0bc91",
       "mode": "100644"
     },
+    "lib/data/app_external_screen.dart": {
+      "sha256": "6d953c46bd60a7051035afdf4fdb799e87d2c1bc4583c408eb4a039be9f8b9cd",
+      "mode": "100644"
+    },
     "lib/data/app_profile.dart": {
       "sha256": "0dd932c6125fc4b272bc9ea9eb2a18201c28ade66e213ff2866c9471ce11a513",
       "mode": "100644"
@@ -781,7 +897,7 @@
       "mode": "100644"
     },
     "lib/data/drive/drive_connection.dart": {
-      "sha256": "3857d02dd2ede142d104767688039cd99f0b05931289dfae0e23d433b4ddee1e",
+      "sha256": "9494bea6af30a2afd8af2d8e0c88f5b31797bf42173b590b65e7acbea4c7cc7f",
       "mode": "100644"
     },
     "lib/data/drive/oauth_flow.dart": {
@@ -840,12 +956,16 @@
       "sha256": "18c3780eacf38282cba02ac09885708f98b0360c5b3c4878704fd37d6099eaab",
       "mode": "100644"
     },
-    "lib/data/imports/android_shared_documents.dart": {
-      "sha256": "b4e12f910204005b3de68b24fa55275e2935d1550b989e2880f880ba47e7e98a",
+    "lib/data/imports/android_document_source.dart": {
+      "sha256": "53ea71433208cff43302f0b887aae4eb6733c472ea55049f3a32e0e5be7d3fd6",
       "mode": "100644"
     },
-    "lib/data/imports/android_starnote_source.dart": {
-      "sha256": "b2c955ada3e992abbd01f0a55387d5db5f60d3aa3d9db7045f24ef7f0cbc28c7",
+    "lib/data/imports/android_obsidian_folder.dart": {
+      "sha256": "30e4303197e0dfaff6614fb610e07ea527c24f7f489bb053a99895361f5d72b7",
+      "mode": "100644"
+    },
+    "lib/data/imports/android_shared_documents.dart": {
+      "sha256": "b4e12f910204005b3de68b24fa55275e2935d1550b989e2880f880ba47e7e98a",
       "mode": "100644"
     },
     "lib/data/imports/image_capture.dart": {
@@ -924,8 +1044,12 @@
       "sha256": "bc8d57e469a36149d0c02d75ece603093cf2ab339911e929715e4890d331e9eb",
       "mode": "100644"
     },
+    "lib/data/office/android_hwp_editor.dart": {
+      "sha256": "190a6212823df17812155db560647819cafa1755c2b8eb61eca41b66ab52d284",
+      "mode": "100644"
+    },
     "lib/data/office/android_office_engine.dart": {
-      "sha256": "356eb047e9f92af60ffd0119716cac17317a7a062f6519478521047b6627aaea",
+      "sha256": "d46c0f75153d694c42724e2b8700e530518557fedec3537a1c7d3d914a443016",
       "mode": "100644"
     },
     "lib/data/office/docx_body_text.dart": {
@@ -953,7 +1077,7 @@
       "mode": "100644"
     },
     "lib/data/office/hwp_office_engine.dart": {
-      "sha256": "85a12e8991b3370c1d7e78f110cc2ba8488c70b80db8cc54bb2f3afc92bc714b",
+      "sha256": "e4d74a2cab67585b77c79a2bcc2df85415926d2a1a52c5ab4fb4bf236ee1f25e",
       "mode": "100644"
     },
     "lib/data/office/hwpx_template_parts.dart": {
@@ -969,7 +1093,7 @@
       "mode": "100644"
     },
     "lib/data/office/office_document_store.dart": {
-      "sha256": "1ad7e2fdb7ce6e0c105c9f37f80b25f4df660f54deaf051a8501e2c3f47166fc",
+      "sha256": "94a7f0b3d9800bd4f0fc6e56482472f2aa69ac66005f2899caae2d519754ea03",
       "mode": "100644"
     },
     "lib/data/office/office_edit_recovery.dart": {
@@ -989,7 +1113,7 @@
       "mode": "100644"
     },
     "lib/data/office/office_preview_engine.dart": {
-      "sha256": "1ce0142568d8c5e59d0acf3227b3f9829185811de631d3e2b9b4aaa639300d88",
+      "sha256": "ec445c1fbcc48119f2192dbd554fcd66e69c856bd6cfdc0fae6b42388c6155f4",
       "mode": "100644"
     },
     "lib/data/office/office_templates.dart": {
@@ -998,6 +1122,10 @@
     },
     "lib/data/office/office_view_state.dart": {
       "sha256": "dfee2d98db04d055a807272e9355259674921ec888d82d83adcef47957602fa9",
+      "mode": "100644"
+    },
+    "lib/data/office/pdf_note_original.dart": {
+      "sha256": "c26cfb479b504599bbe5e35d48db2d72ac4f37a865dd7cbff1c46169f5c794bd",
       "mode": "100644"
     },
     "lib/data/office/pptx_annotation_carry.dart": {
@@ -1385,7 +1513,7 @@
       "mode": "100644"
     },
     "lib/data/vault/workspace_store.dart": {
-      "sha256": "bd7e24c1a78735ccd91057b190f9ffbf916b7b54447ec7f5c8db5fcc50f0d2ba",
+      "sha256": "1e00a79aa85d27939f26b0b55cc0782b78db5b77596f93cd7be5f070256c6b18",
       "mode": "100644"
     },
     "lib/data/version.dart": {
@@ -1685,7 +1813,7 @@
       "mode": "100644"
     },
     "lib/pages/office/office_workspace.dart": {
-      "sha256": "d819d0479bf646b6d1650d51b47866befe04955d0714453ea7dd43acf39f7159",
+      "sha256": "4b248a08b40335f954d53e78ba0a7527e4caf7a0c0f9bbdc1266b163d952edce",
       "mode": "100644"
     },
     "lib/pages/office/pptx_find_replace_dialog.dart": {
@@ -1865,7 +1993,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/study_workspace.dart": {
-      "sha256": "e262db280fc0f57a8b93bf6f7679663014546f68537513e8d55d5f5329dd84ec",
+      "sha256": "ec733b7df986b1d2ac0c602ad028546f7fe9334960138e3fada8b5e3f6876ae0",
       "mode": "100644"
     },
     "lib/pages/workspace/synced_block_view.dart": {
@@ -1877,7 +2005,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_controller.dart": {
-      "sha256": "4de6db0ba8ce58de3fa0ec771683b1f2a3613f46b99eba7c2f3cd4c1a69df3d8",
+      "sha256": "1aad423a7da5ba4e8c5affaea9f12b091b83c22e8481c1c547d1c1a8210f50d9",
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_quick_switcher.dart": {
@@ -1944,12 +2072,24 @@
       "sha256": "6891a567abd85a384630061b07ee7328f0ec5c03e742473082585eec0aa3af5b",
       "mode": "100644"
     },
+    "packages/flutter_markdown_plus/screenshots/code.png": {
+      "sha256": "fd73aca771788a72b12ab7765eee6e7509dd2e8700d9ababf02bd0b8248cc09b",
+      "mode": "100644"
+    },
+    "packages/flutter_markdown_plus/screenshots/formatting.png": {
+      "sha256": "bcb2dd27ca26e064b3e821524e7e00b76fef9ff33b1195c40c688a8ba8df5617",
+      "mode": "100644"
+    },
+    "packages/flutter_markdown_plus/screenshots/tables.png": {
+      "sha256": "73a139564c3bf1da7e8b96f56be93289a537eadaba5905662dfbccfed85a1b66",
+      "mode": "100644"
+    },
     "packages/ink_hwp_native/Cargo.lock": {
-      "sha256": "3d4a088cb6e194983ae03a2f5483df0e95694222a321fd104bb2518c59b39e66",
+      "sha256": "5fc78e9f8f96dc90f47c976ad1fc14de7899fb736fa76018c177fa1659281ded",
       "mode": "100644"
     },
     "packages/ink_hwp_native/Cargo.toml": {
-      "sha256": "742800aaad4d884aab3eddd13fcae9bf87afc2436fbecd84eb3551a0640ed187",
+      "sha256": "7f8b324b631dec77317a5aec73ed9dcd7cfeb24c2d440ba8f48835fe4ff170ba",
       "mode": "100644"
     },
     "packages/ink_hwp_native/README.md": {
@@ -1957,7 +2097,23 @@
       "mode": "100644"
     },
     "packages/ink_hwp_native/THIRD_PARTY_LICENSES.txt": {
-      "sha256": "cd0ec53ddbc704f1ecffb57f0310475645814b91d8cb1b2dc9f4c1b51198cbf9",
+      "sha256": "b08e2581000bb48cf25e1540360bfa719667dc95b9e2562993968c4ee4888e2f",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/examples/prepare_fixtures.rs": {
+      "sha256": "8656f9d9ed13a56174596be03401ea81fa92d9007e7425613a9c1195b67a4657",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/examples/prepare_hwpx_template.rs": {
+      "sha256": "619788d764b7ccade61e0d12201a04e864c570cddaa49efe4d1481a65f95cbfc",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/fonts/NotoSansSymbols2-Regular.ttf": {
+      "sha256": "7d5fb73b7ca67a6798101741f5d280a3d016a56a197afcd4199dbb57b4b82a21",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/fonts/OFL-NotoSansSymbols2.txt": {
+      "sha256": "b118dd41337806a5d4797052c77caf3bd096aed783e5eb21b4d11154351e1ac0",
       "mode": "100644"
     },
     "packages/ink_hwp_native/fonts/OFL.txt": {
@@ -1976,8 +2132,36 @@
       "sha256": "d9abf57e90f4c1c1b5c780bcdc3174126a5152355c0cdf40c7c1986eca1740a5",
       "mode": "100644"
     },
+    "packages/ink_hwp_native/fonts/symbols.json": {
+      "sha256": "87acb6ad0e9ebb5d6d9595a455bf3ce9ddb154f4d8b0ca1e9838d8487b9fcf09",
+      "mode": "100644"
+    },
     "packages/ink_hwp_native/include/ink_hwp_native.h": {
       "sha256": "ba82d610c4485a5d4002822b564afa4e9ba9b2a870cffd00e363d59e68fbb4a9",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/licenses/supplement.json": {
+      "sha256": "4381c24b6762eb6a517dcc299f97968e4a482dd255a9d46be2bc64d867f1c6ac",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/licenses/wuff-0.2.10/LICENSE": {
+      "sha256": "4b373ba4395e35d44ba1f41202c179b57ca3c5ba5e4a1aaafa1547aede7e1eb7",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/licenses/zune-core-0.4.12/LICENSE-ZLIB": {
+      "sha256": "7fa429541e55b1509909e058f2d21a37467e4958ec713b357f6e0cf9dc4ee352",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/licenses/zune-core-0.4.12/LICENSE.md": {
+      "sha256": "c6dff146a9f31848ac296faa5a08a4253caf2c384c86f906dc99e7fc0a39cc8c",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/licenses/zune-jpeg-0.4.21/LICENSE-ZLIB": {
+      "sha256": "7fa429541e55b1509909e058f2d21a37467e4958ec713b357f6e0cf9dc4ee352",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/licenses/zune-jpeg-0.4.21/LICENSE.md": {
+      "sha256": "c6dff146a9f31848ac296faa5a08a4253caf2c384c86f906dc99e7fc0a39cc8c",
       "mode": "100644"
     },
     "packages/ink_hwp_native/rust-toolchain.toml": {
@@ -1985,7 +2169,7 @@
       "mode": "100644"
     },
     "packages/ink_hwp_native/src/engine.rs": {
-      "sha256": "5f1043b39fd55fb3a534f476d99cbdfa023f4fbb0bfcfa5497dac350818e67f5",
+      "sha256": "55af91a4ce668b015a943a9d400275e2c834cafcfba2175fc70a6ea931105156",
       "mode": "100644"
     },
     "packages/ink_hwp_native/src/hwp_body.rs": {
@@ -2005,7 +2189,11 @@
       "mode": "100644"
     },
     "packages/ink_hwp_native/src/lib.rs": {
-      "sha256": "638bc352b7fcb73406d4a39468065a2d425d3bfe9f8ae84a064aeb0236e7e7ad",
+      "sha256": "d89af663fd07ef5b58da8ca8953935cc28fe4a67ac78f5619c578f7c4f9bc537",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/src/rhwp_pdf.rs": {
+      "sha256": "dcc4267064e68f446cf6633e4a02e2da1a49c979756154c32d3842b39647c474",
       "mode": "100644"
     },
     "packages/ink_hwp_native/src/table_structure.rs": {
@@ -2018,6 +2206,46 @@
     },
     "packages/ink_hwp_native/src/xml.rs": {
       "sha256": "6cadf30b088f549f98fab647333d1bb7de8c5fd1ea980d22273fbffe1b3512a5",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/tests/blank_hwpx_ranges.rs": {
+      "sha256": "a625fd0a31ba0bbde2b8e015f94b053b348a50433c80fdea6e0bc7e03190d407",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/tests/engine.rs": {
+      "sha256": "7f25da0b46bd1a5872530a5fa98c3f60bc9181e8b902c9ff632dc481fedeaf6a",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/tests/hwp5_paragraph_insert.rs": {
+      "sha256": "a7fca477d8ed77c3f4794d3a9192e5864a0612919971a210f2eecb7258a38289",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/tests/hwp5_table_rows.rs": {
+      "sha256": "7462754eec63cd8783cd04ba0a11627120bb0365c8a7e603867eb4a7ca0de1f1",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/tests/paragraph_alignment.rs": {
+      "sha256": "0e5c19fb27bc9de68f0aa5bf2771ac4d34220fd0d40b3c0c919cdec532f8a959",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/tests/paragraph_alignment_boundaries.rs": {
+      "sha256": "7a9d98a5bb92474b94f9ef8679f97d7fee6829a58720dc23be692d53b726d97d",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/tests/pdf_mode.rs": {
+      "sha256": "dafca58602b236d636e361aa62d1b6ee1d7bb640da21c7405625983954dc1d7a",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/tests/support/table_structure.rs": {
+      "sha256": "17ad796b18de6b2b538806de70ada20d44f043a48b81f510ed198152cf7abf4d",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/tests/table_insertion.rs": {
+      "sha256": "5e685a7cf4a10b169ca6bff7709a54736c5bfbaa4cc20c0ea167406bdd767fd6",
+      "mode": "100644"
+    },
+    "packages/ink_hwp_native/tests/text_style_ranges.rs": {
+      "sha256": "88904266052a7902e754078d58e154cccd54360920d3e97d93f86f18cdd1c3b8",
       "mode": "100644"
     },
     "packages/ink_vault_core/LICENSE": {
@@ -2097,7 +2325,7 @@
       "mode": "100644"
     },
     "packages/ink_vault_native/generate_licenses.py": {
-      "sha256": "c991f792574f9158b1175840c1623108077e9df12a15be1ac38a76f63c510210",
+      "sha256": "ebd5fc8f93d8625e73b3b4b7263e903c29c0148aa00747d5af2955bef9311bdf",
       "mode": "100644"
     },
     "packages/ink_vault_native/include/ink_vault_native.h": {
@@ -2256,6 +2484,70 @@
       "sha256": "665a443818bfdd4351f76d6315e8b90484382c042ba050ac0fe4e693e8405e7e",
       "mode": "100644"
     },
+    "packages/ink_vault_native/tests/contract.rs": {
+      "sha256": "9b92aacb588cc51c7328c3ba9577e39a1885c1b57f4d9932f490aa05d62ee056",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/docx_body_text.rs": {
+      "sha256": "4cbc92477fc950a53d155241b1aa2de6665f474bf6ed29e10e04437cf93fce61",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/docx_photo.rs": {
+      "sha256": "fbf5bd56bda67844edc72e1b3d4a89b3f01574ab2adeaa118e28f646a0624ae6",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/ffi.rs": {
+      "sha256": "b4d8878445607fc67bc0e66eb634de74a3fe5c7c21c9a2f13e9d34d1d72f188a",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/fixtures/dart_case_table_provenance.json": {
+      "sha256": "a8b90fc0e8a91fd4be39b64369893ddc3274c350d0982b8d6dadf8b1addc6b7f",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/fixtures/workspace_query_vectors.json": {
+      "sha256": "12f01be44df9b8b2e8887e781a7f3dcf59c8a3e5cef331e33a1e814147b221a4",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/knowledge_links.rs": {
+      "sha256": "96673b648a4a45d7f2c091efecba817c0745d9827b099d5777a4bcbf487e4b16",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/markdown_tasks.rs": {
+      "sha256": "785dce7a785dfc5c835c28372b68e2501fac4d7f249b0e0edd87004e35ddb565",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/pptx_clone.rs": {
+      "sha256": "56b968c2e76da52637c939389409915dcb93b4cc80113f944a957b345ad506ab",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/search_expression.rs": {
+      "sha256": "adefb62c776c2f609b644359769c08d57e48430b5280195861808f94068a647d",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/support/pptx_slide_identity.rs": {
+      "sha256": "fe129a5254f3c5e2aa25642b698cb14a27357b504ddf9c680df54dc138471469",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/support/pptx_speaker_notes.rs": {
+      "sha256": "eba1d4fb2d4897329994c1219aa2308690459eade98a90941b22e8a1eafbc1af",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/support/pptx_table_merge.rs": {
+      "sha256": "4797fede00ba5f0ff217786bdd7992159694d0cc1256bcdc23b834e3ee465b98",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/text_style_map.rs": {
+      "sha256": "3a9cef507ead1c6c0c5119e44f9ecbe7e1cc0c7c218696730e9f7f4f24ab3ae5",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/workspace_query.rs": {
+      "sha256": "d33e0e03d1b101d8e309aa0df4997a143cead282f863dc54164eb357b6c0bd6a",
+      "mode": "100644"
+    },
+    "packages/ink_vault_native/tests/workspace_task_links.rs": {
+      "sha256": "09e6096a10a4f30f8cb5817b97eb1d568fdcdaa8e1c2a024066681c80074a587",
+      "mode": "100644"
+    },
     "packages/sbn/.gitignore": {
       "sha256": "712e448794c564c16d038eff80a740448670e2dace13b7ce203f1e6e516da2c1",
       "mode": "100644"
@@ -2316,8 +2608,8 @@
       "sha256": "ca46113c51d38e8bbc033590acab2959030179ff401585105b183a848e32c623",
       "mode": "100644"
     },
-    "scripts/build-android-202.sh": {
-      "sha256": "2b304a1fa46bffaf7006292617b6fa70474366a82da8040f12a2effb7ce3b8c2",
+    "scripts/build-android-217.sh": {
+      "sha256": "771809ca8406841ffb67a778e1648db840d5ede894196890eee5094997f65478",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {
