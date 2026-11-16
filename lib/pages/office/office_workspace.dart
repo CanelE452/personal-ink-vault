@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, compute, defaultTargetPlatform, listEquals, setEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -29,6 +30,7 @@ import 'package:saber/data/office/office_annotation_store.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/office_edit_recovery.dart';
 import 'package:saber/data/office/office_image_asset.dart';
+import 'package:saber/data/office/office_open_edits.dart';
 import 'package:saber/data/office/office_page_link.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_view_state.dart';
@@ -176,15 +178,19 @@ typedef OfficePdfCopy = ({
 });
 
 /// What to do as soon as an Office document is open: the library card's tap
-/// edits the original, its ⋮ menu previews it or makes a PDF from it.
-enum OfficeOpenAction { edit, preview, pdf }
+/// edits the original, its ⋮ menu previews it or makes a PDF from it, and the
+/// tab's × asks an open editor to close.
+enum OfficeOpenAction { edit, preview, pdf, close }
 
 /// One [OfficeOpenAction] request; each request is a new object, so the
 /// screen runs it once.
 class OfficeOpenRequest {
-  new(this.action);
+  new(this.action, {this.returnTo});
 
   final OfficeOpenAction action;
+
+  /// Where the app goes when the user leaves the editor or it closes.
+  final OfficeEditorReturn? returnTo;
 }
 
 class OfficeWorkspace extends StatefulWidget {
@@ -202,6 +208,13 @@ class OfficeWorkspace extends StatefulWidget {
   /// button; [onOpenRequestHandled] reports it taken.
   final OfficeOpenRequest? openRequest;
   final ValueChanged<OfficeOpenRequest>? onOpenRequestHandled;
+
+  /// Documents whose editors are open behind the app's tabs (Android). Without it the screen
+  /// works as before 227.
+  final OfficeOpenEdits? openEdits;
+
+  /// How an editor this screen opened or brought back closed.
+  final ValueChanged<OfficeEditorOutcome>? onEditorFinished;
   final AndroidOfficeEngine? engine;
   final WindowsOfficeEngine? windowsEngine;
   final HwpStructuredOfficeEngine? hwpEngine;
@@ -247,6 +260,8 @@ class OfficeWorkspace extends StatefulWidget {
     this.onPageLinkHandled,
     this.openRequest,
     this.onOpenRequestHandled,
+    this.openEdits,
+    this.onEditorFinished,
     this.engine,
     this.windowsEngine,
     this.hwpEngine,
@@ -400,6 +415,10 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   var _editorBusy = false;
   var _annotationLoadFailed = false;
   var _nativeDirty = false;
+
+  /// This screen's call waits for an editor listed as open behind the app's tabs. The wait is neither
+  /// busy nor unsaved work here (the editor asks before it closes), so the tabs stay usable.
+  var _waitingForEditor = false;
   var _reportedDirty = false;
   var _reportedBusy = false;
   var _generation = 0;
@@ -422,20 +441,26 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   var _pageLinkScheduled = false;
   OfficeOpenRequest? _handledOpenRequest;
   var _openRequestScheduled = false;
+  OfficeEditorReturn? _editReturn;
+  String? _keptNotice;
+
+  /// This screen brought back an editor that another screen of this document opened.
+  var _showingOpenEditor = false;
+  OfficeOpenEdits? _listenedEdits;
   ({OfficePageLinkRequest request, OfficeAnnotationSession annotation})?
   _pageLinkReveal;
   _OriginalPdfPage? _originalPreviewPage;
   _OriginalPageReveal? _originalPageReveal;
   _OriginalPageConflict? _originalPageConflict;
 
-  bool get _dirty => _editorDirty || _nativeDirty;
+  bool get _dirty => _editorDirty || (_nativeDirty && !_waitingForEditor);
   bool get _busy =>
       _loading ||
       _switching ||
-      _nativeOperation != null ||
+      (_nativeOperation != null && !_waitingForEditor) ||
       _commitOperation != null ||
       _previewOperation != null ||
-      _recoveryOperation != null ||
+      (_recoveryOperation != null && !_waitingForEditor) ||
       _originalPreviewOperation != null ||
       _windowsPreparation != null ||
       _windowsCommit != null ||
@@ -492,6 +517,15 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   void initState() {
     super.initState();
     _bind();
+    _listenEdits();
+  }
+
+  void _listenEdits() {
+    final edits = widget.openEdits;
+    if (identical(edits, _listenedEdits)) return;
+    _listenedEdits?.removeListener(_onOpenEditsChanged);
+    _listenedEdits = edits;
+    edits?.addListener(_onOpenEditsChanged);
   }
 
   void _bind() {
@@ -553,6 +587,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       _editorDirty = false;
       _editorBusy = false;
       _nativeDirty = false;
+      _waitingForEditor = false;
       _pendingNative = null;
       _recoveries = [];
       _originalPreview = null;
@@ -575,6 +610,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     if (!identical(oldWidget.openRequest, widget.openRequest)) {
       _scheduleOpenRequest();
     }
+    _listenEdits();
   }
 
   bool _current(int generation) => mounted && generation == _generation;
@@ -614,24 +650,36 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       }
       _handledOpenRequest = current;
       widget.onOpenRequestHandled?.call(current);
-      unawaited(_runOpenRequest(current.action));
+      unawaited(_runOpenRequest(current));
     });
     binding.ensureVisualUpdate();
   }
 
   /// The library's request, with the same checks as the matching button; a
   /// request the document cannot take leaves this screen as it is.
-  Future<void> _runOpenRequest(OfficeOpenAction action) async {
+  Future<void> _runOpenRequest(OfficeOpenRequest request) async {
     if (_pendingNative != null) return;
-    switch (action) {
+    switch (request.action) {
       case OfficeOpenAction.edit:
-        // Only Android's HWP editor: it reports a close without changes.
-        // The Office editor saves the document again on every close, so
-        // opening it on a tap would add a version for each look; the
-        // Windows app keeps this screen and its edit tools. An unfinished
-        // earlier edit is offered on this screen first.
-        if (_canEdit && _useHwpEditor && !_hasUnfinishedEdit) {
-          await _run(_launchEdit);
+        // The Windows app keeps this screen and its own edit tools (LibreOffice asks before
+        // closing there). On Android both editors report a close without changes now.
+        if (!_androidEditor) return;
+        _editReturn = request.returnTo;
+        final open = widget.openEdits?.forNote(widget.note.id);
+        if (open != null) {
+          // This screen's own call may be the one waiting for it: the editor still comes back.
+          if (_waitingForEditor ||
+              (_nativeOperation == null && _recoveryOperation == null)) {
+            await _run(() => _showOpenEditor(open));
+          }
+          return;
+        }
+        if (_canEdit) await _run(_editOrResume);
+      case OfficeOpenAction.close:
+        // The tab's × on a document whose editor is open: that editor asks before it closes.
+        final open = widget.openEdits?.forNote(widget.note.id);
+        if (open != null && _androidEditor) {
+          await _run(() => _requestCloseOpenEditor(open));
         }
       case OfficeOpenAction.preview:
         if (!_canPreview) return;
@@ -1318,7 +1366,8 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     final originalPreviewing = _originalPreviewOperation;
     if (originalPreviewing != null) await originalPreviewing;
     final recovering = _recoveryOperation;
-    if (recovering != null) await recovering;
+    // An editor open behind the tabs is not waited for here: it asks before it closes.
+    if (recovering != null && !_waitingForEditor) await recovering;
     final transition = _transitionOperation;
     if (transition != null) await transition;
     final previewing = _previewOperation;
@@ -1377,7 +1426,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
 
   Future<void> _saveCurrentContents() async {
     final editing = _nativeOperation;
-    if (editing != null) await editing;
+    if (editing != null && !_waitingForEditor) await editing;
     if (_pendingNative != null) await _commitPending();
     await _saveAnnotations();
   }
@@ -1466,7 +1515,21 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     }
   }
 
+  /// The document's editor is open behind the app's tabs and this screen did not open it: the
+  /// screen shows and annotates, but nothing that changes the original runs here.
+  /// Android's own editors (the Office engine, the HWP editor). HWP originals take the structured
+  /// engine path ([_useWindows]) on every platform, so this is not simply the opposite of it.
+  bool get _androidEditor => _useHwpEditor || !_useWindows;
+
+  bool get _editorOpenElsewhere =>
+      _androidEditor &&
+      widget.openEdits?.forNote(widget.note.id) != null &&
+      _nativeOperation == null &&
+      _recoveryOperation == null &&
+      !_showingOpenEditor;
+
   bool get _canEdit {
+    if (_editorOpenElsewhere) return false;
     final edition = _edition;
     if (!_liveNote || edition == null || !_capabilities.available) return false;
     final extension = p
@@ -4164,23 +4227,35 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       ];
     });
     _report();
+    final inputHash = sha256.convert(captured.originalBytes).toString();
     try {
-      final result = hwp
-          ? await _hwpEditor.edit(
-              sourcePath: working.path,
-              sessionId: sessionId,
-              fileName: captured.originalFileName,
-            )
-          : await engine.edit(sourcePath: working.path, sessionId: sessionId);
-      await _acceptNativeResult(
-        recovery: recovery,
-        documents: documents,
-        note: note,
-        sessionId: sessionId,
-        generation: generation,
-        workingPath: working.path,
-        result: result,
-        cancelLeavesNothing: hwp,
+      await _withOpenEdit(
+        sessionId,
+        working.path,
+        inputHash,
+        open: () => hwp
+            ? _hwpEditor.edit(
+                sourcePath: working.path,
+                sessionId: sessionId,
+                fileName: captured.originalFileName,
+              )
+            : engine.edit(sourcePath: working.path, sessionId: sessionId),
+        accept: (result) => _acceptNativeResult(
+          recovery: recovery,
+          documents: documents,
+          note: note,
+          sessionId: sessionId,
+          generation: generation,
+          workingPath: working.path,
+          result: result,
+          cancelLeavesNothing: hwp,
+          discardEngine: hwp
+              ? null
+              : () => engine.discard(
+                  sessionId: sessionId,
+                  inputSourceSha256: inputHash,
+                ),
+        ),
       );
     } catch (_) {
       if (_current(generation) && _pendingNative == null) {
@@ -4194,7 +4269,10 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   /// [cancelLeavesNothing]: the editor writes nothing when it is closed
   /// without saving (the HWP editor), so a cancelled session whose working
   /// copy is still the original has nothing to resume.
-  Future<void> _acceptNativeResult({
+  /// [discardEngine] removes the Office engine's private copy when the session is dropped.
+  /// The outcome says how the editor closed; a save recorded while this screen was gone counts as
+  /// saved, and the screen that shows the document next publishes it.
+  Future<OfficeEditorOutcome> _acceptNativeResult({
     required OfficeEditRecoveryStore recovery,
     required OfficeDocumentStore documents,
     required VaultNote note,
@@ -4207,16 +4285,44 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     bool Function()? shouldPreserve,
     Future<void> Function()? onRecorded,
     VoidCallback? onPublishing,
+    Future<void> Function()? discardEngine,
   }) async {
     if (result.status == AndroidOfficeEditStatus.cancelled) {
-      // Closed without changes: nothing to resume or announce (a tap opens
-      // the HWP editor just to look).
+      final reason = result.closeReason;
+      if (reason != null) {
+        // Closed with nothing changed, or 저장 안 함: the session goes, nothing is announced.
+        try {
+          await discardEngine?.call();
+        } catch (error) {
+          // The engine's private copy only takes space; the recovery record decides.
+          logUserError(error);
+        }
+        await recovery.discard(note, sessionId);
+        if (_current(generation)) {
+          final entries = await recovery.list(note);
+          if (_current(generation)) {
+            setState(() {
+              _nativeDirty = false;
+              _recoveryPath = null;
+              _recoveries = entries;
+            });
+            _report();
+          }
+        }
+        return reason == 'discarded'
+            ? OfficeEditorOutcome.discarded
+            : OfficeEditorOutcome.unchanged;
+      }
+      // Closed without a reason (an older engine or an interrupted close): kept to resume.
       final unchanged =
           cancelLeavesNothing && await recovery.discardUnchanged(note, sessionId);
       if (!unchanged) await recovery.preserve(note, sessionId);
-      if (!_current(generation)) return;
+      final outcome = unchanged
+          ? OfficeEditorOutcome.unchanged
+          : OfficeEditorOutcome.failed;
+      if (!_current(generation)) return outcome;
       final entries = await recovery.list(note);
-      if (!_current(generation)) return;
+      if (!_current(generation)) return outcome;
       setState(() {
         _nativeDirty = false;
         _notice = unchanged ? null : '원본 편집을 취소했습니다.';
@@ -4224,7 +4330,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         _recoveries = entries;
       });
       _report();
-      return;
+      return outcome;
     }
     final OfficeEditRecoveryEntry saved;
     try {
@@ -4250,9 +4356,9 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
 
     if (shouldPreserve?.call() == true) {
       await preserveRecorded();
-      return;
+      return OfficeEditorOutcome.failed;
     }
-    if (!_current(generation)) return;
+    if (!_current(generation)) return OfficeEditorOutcome.saved;
     setState(() {
       _recoveries = [
         saved,
@@ -4262,21 +4368,21 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     if (saved.stage == OfficeEditRecoveryStage.preserved &&
         !continuePreserved) {
       final entries = await recovery.list(note);
-      if (!_current(generation)) return;
+      if (!_current(generation)) return OfficeEditorOutcome.failed;
       setState(() {
         _recoveries = entries;
         _nativeDirty = false;
         _notice = '편집 결과를 보관했습니다. 보관한 편집 작업에서 이어 저장할 수 있습니다.';
       });
       _report();
-      return;
+      return OfficeEditorOutcome.failed;
     }
     final restored = await recovery.read(note, sessionId);
     if (shouldPreserve?.call() == true) {
       await preserveRecorded();
-      return;
+      return OfficeEditorOutcome.failed;
     }
-    if (!_current(generation)) return;
+    if (!_current(generation)) return OfficeEditorOutcome.saved;
     onPublishing?.call();
     _pendingNative = _PendingNative(
       restored.session,
@@ -4291,6 +4397,300 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     _nativeDirty = true;
     _report();
     await _commitPending();
+    return OfficeEditorOutcome.saved;
+  }
+
+  /// Lists [sessionId]'s editor as open while [open] waits for it, so the app's tabs can bring it
+  /// back, then [accept]s its result and reports how it closed. A screen that is gone hands the
+  /// outcome to the screen that shows the document next.
+  Future<void> _withOpenEdit(
+    String sessionId,
+    String workingPath,
+    String inputHash, {
+    required Future<AndroidOfficeEditResult> Function() open,
+    required Future<OfficeEditorOutcome> Function(AndroidOfficeEditResult result)
+    accept,
+  }) async {
+    final edits = _androidEditor ? widget.openEdits : null;
+    final noteId = widget.note.id;
+    final generation = _generation;
+    final finished = widget.onEditorFinished;
+    await edits?.put(
+      OfficeOpenEdit(
+        noteId: noteId,
+        title: widget.note.title,
+        sessionId: sessionId,
+        kind: _useHwpEditor ? OfficeEditorKind.hwp : OfficeEditorKind.office,
+        workingPath: workingPath,
+        inputSourceSha256: inputHash,
+        returnTo: _editReturn ?? const OfficeEditorReturn(),
+      ),
+    );
+    var outcome = OfficeEditorOutcome.failed;
+    try {
+      final result = await _waitForListedEditor(edits, noteId, generation, open);
+      outcome = await accept(result);
+    } finally {
+      final current = _current(generation);
+      await edits?.remove(noteId, outcome: current ? null : outcome);
+      final kept = _keptNotice;
+      _keptNotice = null;
+      if (kept != null && mounted && current) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text(kept), duration: const Duration(seconds: 8)),
+        );
+      }
+      if (current) finished?.call(outcome);
+    }
+  }
+
+  /// While a listed editor is open its wait does not hold the tabs; once it returns, handling its
+  /// result counts as busy again, and other screens show the document as saving.
+  Future<AndroidOfficeEditResult> _waitForListedEditor(
+    OfficeOpenEdits? edits,
+    String noteId,
+    int generation,
+    Future<AndroidOfficeEditResult> Function() open,
+  ) async {
+    if (edits == null) return open();
+    edits.waiting(noteId);
+    _setWaitingForEditor(generation, true);
+    try {
+      return await open();
+    } finally {
+      edits.closed(noteId);
+      _setWaitingForEditor(generation, false);
+    }
+  }
+
+  void _setWaitingForEditor(int generation, bool waiting) {
+    if (!_current(generation)) return;
+    setState(() => _waitingForEditor = waiting);
+    _report();
+  }
+
+  /// The library's edit request. An unfinished edit of the current version continues (a save
+  /// that never became a version is published first, then a new edit opens); one that started
+  /// from an older version is kept instead, so the document does not split.
+  Future<void> _editOrResume() async {
+    const unfinishedStages = {
+      OfficeEditRecoveryStage.started,
+      OfficeEditRecoveryStage.nativeSaved,
+      OfficeEditRecoveryStage.prepared,
+    };
+    final unfinished = _recoveries
+        .where((entry) => unfinishedStages.contains(entry.stage))
+        .toList();
+    // Two versions already: this screen shows both and the user chooses.
+    if (unfinished.isNotEmpty && _sourceHeads.length != 1) return;
+    final head = _sourceHeads.length == 1 ? _sourceHeads.single : null;
+    final current =
+        unfinished
+            .where((entry) => entry.canResume && entry.sourceRevisionId == head)
+            .toList()
+          ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+    final keep = [
+      ...unfinished.where((entry) => !current.contains(entry)),
+      ...current.skip(1),
+    ];
+    if (keep.isNotEmpty) {
+      final outdated = keep.any((entry) => entry.sourceRevisionId != head);
+      for (final entry in keep) {
+        await _recovery.preserve(widget.note, entry.sessionId);
+      }
+      final entries = await _recovery.list(widget.note);
+      if (!mounted) return;
+      const kept = "다른 곳에서 바뀐 문서라 이전에 마치지 못한 편집은 '기록·도구'에 보관했습니다.";
+      setState(() {
+        _recoveries = entries;
+        if (outdated) _notice = kept;
+      });
+      // The editor covers this screen and the tab closes after it: say it again when it closes.
+      if (outdated) _keptNotice = kept;
+    }
+    if (current.isEmpty) return _launchEdit();
+    final chosen = current.first;
+    await _runRecovery(() => _continueRecovery(chosen));
+    if (chosen.stage != OfficeEditRecoveryStage.started &&
+        mounted &&
+        _canEdit &&
+        _pendingNative == null) {
+      await _launchEdit();
+    }
+  }
+
+  /// The document's editor is open behind the app's tabs: bring it back. When this app run did
+  /// not open it (the app restarted), it continues from its recovery record instead.
+  Future<void> _showOpenEditor(OfficeOpenEdit open) async {
+    final edits = widget.openEdits!;
+    final returnTo = _editReturn;
+    if (returnTo != null) await edits.put(open.withReturn(returnTo));
+    if (!mounted) return;
+    setState(() => _showingOpenEditor = true);
+    try {
+      if (open.kind == OfficeEditorKind.hwp) {
+        await _hwpEditor.show(sessionId: open.sessionId);
+      } else {
+        await _engine.show(sessionId: open.sessionId);
+      }
+    } on PlatformException catch (error) {
+      if (error.code != 'office_editor_not_open' &&
+          error.code != 'hwp_editor_not_open') {
+        rethrow;
+      }
+      // The editor just closed and the call that opened it in this app run is handling its
+      // result: its outcome comes to this screen, nothing opens again.
+      if (edits.waitsFor(open.noteId)) return;
+      await edits.remove(open.noteId);
+      if (!mounted) return;
+      setState(() => _showingOpenEditor = false);
+      final entry = _recoveries
+          .where((entry) => entry.sessionId == open.sessionId)
+          .singleOrNull;
+      if (entry != null && entry.canResume) {
+        await _runRecovery(() => _continueRecovery(entry));
+      } else if (_canEdit) {
+        await _editOrResume();
+      }
+    }
+  }
+
+  Future<void> _requestCloseOpenEditor(OfficeOpenEdit open) async {
+    try {
+      if (open.kind == OfficeEditorKind.hwp) {
+        await _hwpEditor.requestClose(sessionId: open.sessionId);
+      } else {
+        await _engine.requestClose(sessionId: open.sessionId);
+      }
+      if (mounted) setState(() => _showingOpenEditor = true);
+    } on PlatformException catch (error) {
+      if (error.code != 'office_editor_not_open' &&
+          error.code != 'hwp_editor_not_open') {
+        rethrow;
+      }
+      // Not open in this app run: open it again so it can ask before closing.
+      await _showOpenEditor(open);
+    }
+  }
+
+  void _onOpenEditsChanged() {
+    final edits = widget.openEdits;
+    if (edits == null || !mounted) return;
+    if (edits.forNote(widget.note.id) != null) {
+      setState(() {});
+      return;
+    }
+    final outcome = edits.takeOutcome(widget.note.id);
+    final showing = _showingOpenEditor;
+    setState(() => _showingOpenEditor = false);
+    if (outcome != null && showing) unawaited(_run(() => _finishElsewhere(outcome)));
+  }
+
+  /// The editor this screen brought back closed after the screen that opened it was gone: a save
+  /// becomes a version here, then the tab hears how it ended.
+  Future<void> _finishElsewhere(OfficeEditorOutcome outcome) async {
+    var result = outcome;
+    if (outcome == OfficeEditorOutcome.saved) {
+      final entries = await _recovery.list(widget.note);
+      if (!mounted) return;
+      setState(() => _recoveries = entries);
+      final saved =
+          entries
+              .where(
+                (entry) =>
+                    entry.canResume &&
+                    (entry.stage == OfficeEditRecoveryStage.nativeSaved ||
+                        entry.stage == OfficeEditRecoveryStage.prepared),
+              )
+              .toList()
+            ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+      if (saved.isNotEmpty) {
+        try {
+          await _runRecovery(() => _continueRecovery(saved.first));
+        } catch (_) {
+          result = OfficeEditorOutcome.failed;
+          rethrow;
+        } finally {
+          if (mounted) widget.onEditorFinished?.call(result);
+        }
+        return;
+      }
+    }
+    if (mounted) widget.onEditorFinished?.call(result);
+  }
+
+  /// While an editor is in front of the app (or on its way), the tab never shows the Office
+  /// screen's tools: only this. "저장하는 중…" while its save becomes a version.
+  Widget? _editorPlaceholder() {
+    final edits = widget.openEdits;
+    if (!_androidEditor || edits == null) return null;
+    final open = edits.forNote(widget.note.id);
+    final driving =
+        _nativeOperation != null ||
+        _recoveryOperation != null ||
+        _showingOpenEditor;
+    // The editor closed and its save is becoming a version (here, or by the call that opened it).
+    if ((open != null && edits.closing(widget.note.id)) ||
+        (_pendingNative != null && _commitOperation != null && driving)) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 12),
+            Text('저장하는 중…'),
+          ],
+        ),
+      );
+    }
+    if (open == null || !driving) return null;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('편집기에서 열려 있습니다'),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                FilledButton(
+                  onPressed: () => unawaited(_run(() => _showOpenEditor(open))),
+                  child: const Text('편집기로 돌아가기'),
+                ),
+                OutlinedButton(
+                  onPressed: () =>
+                      unawaited(_run(() => _requestCloseOpenEditor(open))),
+                  child: const Text('닫기'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _editorOpenBanner() {
+    final open = widget.openEdits!.forNote(widget.note.id)!;
+    return Material(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            const Expanded(child: Text('편집기에서 열려 있습니다')),
+            TextButton(
+              onPressed: () => unawaited(_run(() => _showOpenEditor(open))),
+              child: const Text('편집기로 돌아가기'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _runRecovery(Future<void> Function() action) {
@@ -4370,6 +4770,26 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
           .convert(restored.session.originalBytes)
           .toString();
       if (_useHwpEditor) {
+        // The editor saved and finished while no call waited for it (the app restarted): its
+        // result.json beside the copy says so. Publish that save instead of reopening the old copy.
+        final late = await _hwpEditor.savedResult(
+          sourcePath: restored.entry.workingPath,
+          sessionId: entry.sessionId,
+        );
+        if (!_current(generation)) return;
+        if (late != null) {
+          await _acceptNativeResult(
+            recovery: recovery,
+            documents: documents,
+            note: note,
+            sessionId: entry.sessionId,
+            generation: generation,
+            workingPath: restored.entry.workingPath,
+            result: late,
+            continuePreserved: true,
+          );
+          return;
+        }
         // The rhwp-studio screen keeps no session of its own: reopen it on the same working copy.
         final working = File(restored.entry.workingPath);
         if (FileSystemEntity.typeSync(working.path, followLinks: false) !=
@@ -4380,20 +4800,26 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
             '기존 원본 작업 파일을 확인하지 못했습니다. 보관한 파일과 원본은 유지됩니다.',
           );
         if (!_current(generation)) return;
-        final result = await _hwpEditor.edit(
-          sourcePath: working.path,
-          sessionId: entry.sessionId,
-          fileName: restored.session.originalFileName,
-        );
-        await _acceptNativeResult(
-          recovery: recovery,
-          documents: documents,
-          note: note,
-          sessionId: entry.sessionId,
-          generation: generation,
-          workingPath: restored.entry.workingPath,
-          result: result,
-          continuePreserved: true,
+        await _withOpenEdit(
+          entry.sessionId,
+          working.path,
+          inputHash,
+          open: () => _hwpEditor.edit(
+            sourcePath: working.path,
+            sessionId: entry.sessionId,
+            fileName: restored.session.originalFileName,
+            resume: true,
+          ),
+          accept: (result) => _acceptNativeResult(
+            recovery: recovery,
+            documents: documents,
+            note: note,
+            sessionId: entry.sessionId,
+            generation: generation,
+            workingPath: restored.entry.workingPath,
+            result: result,
+            continuePreserved: true,
+          ),
         );
         return;
       }
@@ -4418,17 +4844,23 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       if (native.sessionId != entry.sessionId ||
           native.inputSourceSha256 != inputHash)
         throw const FormatException('이 문서에 연결된 원본 편집 작업이 아닙니다.');
-      final AndroidOfficeEditResult result;
       if (native.status == AndroidOfficeRecoveryStatus.saved) {
-        result = native.savedResult!;
-      } else if (native.status == AndroidOfficeRecoveryStatus.working) {
-        if (!_current(generation)) return;
-        result = await engine.resumeSession(
+        // Saved before the app lost track of it: publish it, no editor needed.
+        await _acceptNativeResult(
+          recovery: recovery,
+          documents: documents,
+          note: note,
           sessionId: entry.sessionId,
-          inputSourceSha256: inputHash,
+          generation: generation,
+          workingPath: restored.entry.workingPath,
+          result: native.savedResult!,
+          continuePreserved: true,
         );
-      } else {
-        if (!_current(generation)) return;
+        return;
+      }
+      if (!_current(generation)) return;
+      File? reopen;
+      if (native.status != AndroidOfficeRecoveryStatus.working) {
         final working = File(restored.entry.workingPath);
         if (FileSystemEntity.typeSync(working.path, followLinks: false) !=
                 FileSystemEntityType.file ||
@@ -4438,20 +4870,34 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
             '기존 원본 작업 파일을 확인하지 못했습니다. 보관한 파일과 원본은 유지됩니다.',
           );
         if (!_current(generation)) return;
-        result = await engine.edit(
-          sourcePath: working.path,
-          sessionId: entry.sessionId,
-        );
+        reopen = working;
       }
-      await _acceptNativeResult(
-        recovery: recovery,
-        documents: documents,
-        note: note,
-        sessionId: entry.sessionId,
-        generation: generation,
-        workingPath: restored.entry.workingPath,
-        result: result,
-        continuePreserved: true,
+      final fresh = reopen;
+      await _withOpenEdit(
+        entry.sessionId,
+        restored.entry.workingPath,
+        inputHash,
+        // A working session's editor may still be open behind the app; the engine reuses it.
+        open: () => fresh == null
+            ? engine.resumeSession(
+                sessionId: entry.sessionId,
+                inputSourceSha256: inputHash,
+              )
+            : engine.edit(sourcePath: fresh.path, sessionId: entry.sessionId),
+        accept: (result) => _acceptNativeResult(
+          recovery: recovery,
+          documents: documents,
+          note: note,
+          sessionId: entry.sessionId,
+          generation: generation,
+          workingPath: restored.entry.workingPath,
+          result: result,
+          continuePreserved: true,
+          discardEngine: () => engine.discard(
+            sessionId: entry.sessionId,
+            inputSourceSha256: inputHash,
+          ),
+        ),
       );
     } catch (_) {
       if (_current(generation) && _pendingNative == null) {
@@ -6045,7 +6491,8 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
                       _busy ||
                           !_liveNote ||
                           !entry.canResume ||
-                          _pendingNative != null
+                          _pendingNative != null ||
+                          _editorOpenElsewhere
                       ? null
                       : () => unawaited(
                           _run(
@@ -6192,18 +6639,10 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     await _rememberView();
   }
 
-  /// An edit from before that was neither saved nor put away: the cards above
-  /// the 원본 편집 button (kept work under 보관한 편집 작업 does not count).
-  bool get _hasUnfinishedEdit => _recoveries.any(
-    (entry) =>
-        entry.stage != OfficeEditRecoveryStage.completed &&
-        entry.stage != OfficeEditRecoveryStage.unchanged &&
-        entry.stage != OfficeEditRecoveryStage.preserved,
-  );
-
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) => _editorPlaceholder() ?? Column(
     children: [
+      if (_editorOpenElsewhere) _editorOpenBanner(),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: LayoutBuilder(
@@ -6409,6 +6848,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     _generation++;
     _refreshTimer?.cancel();
     unawaited(_changes?.cancel());
+    _listenedEdits?.removeListener(_onOpenEditsChanged);
     super.dispose();
   }
 }

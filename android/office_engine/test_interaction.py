@@ -79,6 +79,7 @@ public class InteractionHarness {
     if (documentLoaded) pivClosing=true;
     else finishing=true;
   }
+  void onEmbeddedLeave() {events.add("leave-to-tabs");}
   __BACK_METHODS__
   __IMAGE_HELPER__
 
@@ -100,8 +101,9 @@ public class InteractionHarness {
       h.events.clear(); back(h,subclass); expect(h,"mobile: slideshowback");
       h.mSlideShowActive=false; h.events.clear(); back(h,subclass); expect(h,"mobile: mobilewizardback");
       h.mMobileWizardVisible=false; h.events.clear(); back(h,subclass); expect(h,"mobile: readonlymode");
-      h.mIsEditModeActive=false; h.events.clear(); back(h,subclass); expect(h,"safe-save-close");
-      back(h,subclass); expect(h,"safe-save-close");
+      // At the top level back leaves the open document for the app's tabs; it does not close it.
+      h.mIsEditModeActive=false; h.events.clear(); back(h,subclass); expect(h,"leave-to-tabs");
+      back(h,subclass); expect(h,"leave-to-tabs","leave-to-tabs");
       InteractionHarness loading=new InteractionHarness(); loading.documentLoaded=false;
       back(loading,subclass); back(loading,subclass); expect(loading,"safe-empty-close");
       for (String state:List.of("destroyed","platform-destroyed","finishing","closing","closed")) {
@@ -130,7 +132,7 @@ public class InteractionHarness {
     expect(cells);
     cells.presentationCells.pending=false;
     cells.childBack();
-    expect(cells,"safe-save-close");
+    expect(cells,"leave-to-tabs");
     System.out.println("generated back interaction scenarios passed");
   }
   static void imageScenarios() {
@@ -249,6 +251,30 @@ class InteractionTests(unittest.TestCase):
 
     def test_generated_image_result_handles_null_late_and_reentrant_callbacks(self):
         self.run_harness("image")
+
+    def test_top_level_back_leaves_and_close_asks_before_saving(self):
+        # The parent keeps closing as its default; the editor leaves for the app's tabs instead.
+        default = method(self.generated, "protected void onEmbeddedLeave()")
+        self.assertIn("finishWithProgress();", default)
+        back = method(self.generated, "protected void handleEmbeddedBack()")
+        self.assertTrue(back.rstrip().rstrip("}").rstrip().endswith("onEmbeddedLeave();"), back)
+        leave = method(self.child, "protected void onEmbeddedLeave()")
+        self.assertIn("FLAG_ACTIVITY_REORDER_TO_FRONT", leave)
+        self.assertIn('"piv.editorLeft"', leave)
+        # Every engine frame reaches the change tracker first; closing decides before any save.
+        message = method(self.child, "protected boolean onEmbeddedNativeMessage(byte[] message)")
+        self.assertLess(message.index("changes.onEngineMessage(message);"), message.index("if (previewOnly)"))
+        close = method(self.child, "protected boolean beforeEmbeddedDocumentClose()")
+        self.assertIn("EditorChangeTracker.closeStep(", close)
+        self.assertLess(close.index("EditorChangeTracker.closeStep("), close.index("saveOriginal("))
+        self.assertIn('"piv.closeReason"', close)
+        # Without any ModifiedStatus frame the close asks; a close while opening keeps earlier work.
+        self.assertIn("changes.heard()", close)
+        loading = close[close.index("if (!ready || directory == null)"):close.index('File source = new File(')]
+        self.assertIn("EditorChangeTracker.loadingCloseReason(", loading)
+        self.assertNotIn('.putExtra("piv.closeReason", "unchanged")', loading)
+        intent = method(self.child, "protected void onNewIntent(Intent intent)")
+        self.assertIn('"piv.requestClose"', intent)
 
     def test_parent_and_subclass_callbacks_share_safe_back_hook(self):
         parent = method(self.generated, "public void handleOnBackPressed()")

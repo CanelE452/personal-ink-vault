@@ -15,6 +15,7 @@ import 'package:saber/data/vault/obsidian_vault_import.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/pages/workspace/knowledge_panel.dart';
 import 'package:saber/pages/workspace/markdown_editor.dart';
+import 'package:saber/pages/workspace/workspace_controller.dart';
 
 void main() {
   late Directory temp;
@@ -61,6 +62,42 @@ void main() {
         readLimits: (documents: 2, bytes: 8),
       );
       expect(index.documents.keys.toSet(), {a.id, b.id});
+    },
+  );
+
+  test(
+    'a write landing while the link index is read is not reported as an unreadable workspace',
+    () async {
+      for (var i = 0; i < 16; i++) {
+        await workspace.createMarkdown(
+          'Note $i',
+          Uint8List.fromList(utf8.encode('body $i [[Note ${i + 1}]]')),
+        );
+      }
+      final controller = WorkspaceController(repository, native: native);
+      addTearDown(controller.dispose);
+      await controller.refresh();
+      expect(controller.error, isNull);
+      // Writes keep committing while refreshes rebuild the index, as when Office 'PDF로 바꾸기'
+      // saves its new PDF note in several commits.
+      var writing = true;
+      final writes = () async {
+        for (var k = 0; k < 24; k++) {
+          await workspace.createMarkdown(
+            'Late $k',
+            Uint8List.fromList(utf8.encode('late $k')),
+          );
+        }
+        writing = false;
+      }();
+      while (writing) {
+        await controller.refresh();
+      }
+      await writes;
+      await controller.refresh();
+      expect(controller.error, isNull);
+      expect(controller.knowledgeCurrent, isTrue);
+      expect(controller.knowledge!.documents, hasLength(40));
     },
   );
 

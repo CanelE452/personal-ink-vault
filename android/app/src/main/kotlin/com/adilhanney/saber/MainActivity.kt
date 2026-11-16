@@ -9,6 +9,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.github.canele452.personalinkvault.office.EditorEvents
 import io.github.canele452.personalinkvault.office.HwpEditorBridge
 import io.github.canele452.personalinkvault.office.OfficeEngineBridge
 import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
@@ -16,6 +17,7 @@ import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
 class MainActivity: FlutterActivity() {
     private var officeBridge: OfficeEngineBridge? = null
     private var hwpEditorBridge: HwpEditorBridge? = null
+    private var editorEvents: EditorEvents? = null
     private var cameraBridge: CameraBridge? = null
     private var documentChannel: MethodChannel? = null
     private var starNoteSourceBridge: DocumentSourceBridge? = null
@@ -45,6 +47,21 @@ class MainActivity: FlutterActivity() {
         officeBridge = bridge
         val hwpEditor = HwpEditorBridge(this)
         hwpEditorBridge = hwpEditor
+        // Editors stay open behind the app; what they report without a waiting Dart call arrives here.
+        val editorEventsChannel = MethodChannel(messenger, "personal_ink_vault/office_editor_events")
+        val events = object : EditorEvents {
+            override fun left(sessionId: String) {
+                runOnUiThread { editorEventsChannel.invokeMethod("editorLeft", mapOf("sessionId" to sessionId)) }
+            }
+            override fun finished(sessionId: String, status: String) {
+                runOnUiThread {
+                    editorEventsChannel.invokeMethod("editorFinished", mapOf("sessionId" to sessionId, "status" to status))
+                }
+            }
+        }
+        editorEvents = events
+        bridge.setEditorEvents(events)
+        hwpEditor.setEditorEvents(events)
         val camera = CameraBridge(this)
         cameraBridge = camera
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "personal_ink_vault/camera")
@@ -63,11 +80,33 @@ class MainActivity: FlutterActivity() {
                 when (call.method) {
                     "capabilities" -> result.success(bridge.capabilities())
                     "hwpEdit" -> hwpEditor.edit(call.argument<String>("sourcePath"), call.argument<String>("sessionId"),
-                        call.argument<String>("fileName"),
+                        call.argument<String>("fileName"), call.argument<Boolean>("resume") == true,
                         object : HwpEditorBridge.Completion {
                             override fun success(value: Map<String, Any>) { result.success(value) }
                             override fun error(code: String, message: String) { result.error(code, message, null) }
                         })
+                    "hwpShow", "hwpRequestClose" -> {
+                        val completion = object : HwpEditorBridge.Completion {
+                            override fun success(value: Map<String, Any>) { result.success(null) }
+                            override fun error(code: String, message: String) { result.error(code, message, null) }
+                        }
+                        if (call.method == "hwpShow") hwpEditor.show(call.argument<String>("sessionId"), completion)
+                        else hwpEditor.requestClose(call.argument<String>("sessionId"), completion)
+                    }
+                    "officeShow", "officeRequestClose", "officeDiscard" -> {
+                        val completion = object : OfficeEngineBridge.Completion {
+                            override fun success(value: Map<String, Any>) { result.success(null) }
+                            override fun error(code: String, message: String) { result.error(code, message, null) }
+                        }
+                        val sessionId = call.argument<String>("sessionId")
+                        when (call.method) {
+                            "officeShow" -> bridge.show(sessionId, completion)
+                            "officeRequestClose" -> bridge.requestClose(sessionId, completion)
+                            else -> bridge.discardSession(sessionId, call.argument<String>("inputSourceSha256"), completion)
+                        }
+                    }
+                    // Back at the library's first screen while an editor is open behind it: keep both.
+                    "moveTaskToBack" -> result.success(moveTaskToBack(true))
                     "edit" -> bridge.edit(call.argument<String>("sourcePath"), call.argument<String>("sessionId"),
                         object : OfficeEngineBridge.Completion {
                             override fun success(value: Map<String, Any>) { result.success(value) }
@@ -219,6 +258,13 @@ class MainActivity: FlutterActivity() {
     }
 
     override fun onNewIntent(intent: Intent) {
+        val leftSession = intent.getStringExtra("piv.editorLeft")
+        if (leftSession != null) {
+            // An editor sent the user back to the app's tabs; it stays open below this screen.
+            super.onNewIntent(Intent())
+            editorEvents?.left(leftSession)
+            return
+        }
         if (!DocumentImportBridge.handles(intent)) {
             super.onNewIntent(intent)
             return

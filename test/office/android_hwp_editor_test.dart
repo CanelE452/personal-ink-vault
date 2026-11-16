@@ -179,4 +179,72 @@ void main() {
       ),
     );
   });
+
+  test('show and close requests reach the open HWP editor by its session', () async {
+    final calls = <MethodCall>[];
+    editor((call) async {
+      calls.add(call);
+      return null;
+    });
+    final hwp = AndroidHwpEditor(pdfEngine: pdfEngine([]));
+    await hwp.show(sessionId: 'session-1');
+    await hwp.requestClose(sessionId: 'session-1');
+    expect(calls.map((call) => call.method), ['hwpShow', 'hwpRequestClose']);
+    expect(calls.map((call) => call.arguments), [
+      {'sessionId': 'session-1'},
+      {'sessionId': 'session-1'},
+    ]);
+  });
+
+  test('a resumed edit asks to reuse its editor and a discarded close says so', () async {
+    final calls = <MethodCall>[];
+    editor((call) async {
+      calls.add(call);
+      return {
+        'status': 'cancelled',
+        'sessionId': 'session-1',
+        'inputSourceSha256': inputHash,
+        'closeReason': 'discarded',
+      };
+    });
+    final result = await AndroidHwpEditor(pdfEngine: pdfEngine([])).edit(
+      sourcePath: working.path,
+      sessionId: 'session-1',
+      fileName: '보고서.hwp',
+      resume: true,
+    );
+    expect((calls.single.arguments as Map)['resume'], isTrue);
+    expect(result.status, OfficeOriginalEditStatus.cancelled);
+    expect(result.closeReason, 'discarded');
+  });
+
+  test('a save no call waited for is read from result.json beside the working copy', () async {
+    final hwp = AndroidHwpEditor(pdfEngine: pdfEngine([]));
+    expect(
+      await hwp.savedResult(sourcePath: working.path, sessionId: 'session-1'),
+      isNull,
+    );
+    final edited = File(p.join(working.parent.path, 'edited.hwp'))
+      ..writeAsBytesSync(utf8.encode('saved while the app was away'));
+    File(p.join(working.parent.path, 'result.json')).writeAsStringSync(
+      jsonEncode({'sessionId': 'session-1', 'sourceSha256': hash(edited)}),
+    );
+    final saved = await hwp.savedResult(
+      sourcePath: working.path,
+      sessionId: 'session-1',
+    );
+    expect(saved!.status, OfficeOriginalEditStatus.saved);
+    expect(saved.sourceSha256, hash(edited));
+    expect(saved.inputSourceSha256, inputHash);
+    expect(File(saved.pdfPath!).existsSync(), isTrue);
+    await expectLater(
+      hwp.savedResult(sourcePath: working.path, sessionId: 'other-session'),
+      throwsFormatException,
+    );
+    edited.writeAsBytesSync(utf8.encode('changed after the save'));
+    await expectLater(
+      hwp.savedResult(sourcePath: working.path, sessionId: 'session-1'),
+      throwsFormatException,
+    );
+  });
 }

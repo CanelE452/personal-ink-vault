@@ -31,6 +31,7 @@ class OfficeEditRecoveryEntry {
     required this.sourcePath,
     required this.pdfPath,
     required this.canResume,
+    required this.updatedAt,
   });
 
   final String sessionId;
@@ -44,6 +45,9 @@ class OfficeEditRecoveryEntry {
   final String? sourcePath;
   final String? pdfPath;
   final bool canResume;
+
+  /// When the receipt was last written (each stage change rewrites it).
+  final DateTime updatedAt;
 }
 
 class OfficeRecoveredEdit {
@@ -344,6 +348,23 @@ class OfficeEditRecoveryStore {
         }
         return true;
       });
+
+  /// 저장 안 함, or an editor that closed with nothing changed: the session's receipt, its files
+  /// and its working folder (with anything the editor kept beside the copy) go. A completed
+  /// session is left as it is.
+  Future<void> discard(VaultNote note, String sessionId) => _queue.run(() async {
+    final (data, _) = await _load(note, sessionId);
+    if (data['stage'] == OfficeEditRecoveryStage.completed.name) return;
+    final working = File(data['workingPath'] as String);
+    await _receipt(note, sessionId).delete();
+    for (final leftover in [Directory(_folder(note, sessionId)), working.parent]) {
+      try {
+        await leftover.delete(recursive: true);
+      } on FileSystemException {
+        // Only takes space: without its receipt the session is gone.
+      }
+    }
+  });
 
   Future<bool> completeIfIdentical(VaultNote note, String sessionId) =>
       _queue.run(() async {
@@ -856,6 +877,7 @@ class OfficeEditRecoveryStore {
           : _source(note, sessionId, session).path,
       pdfPath: data['native'] == null ? null : _pdf(note, sessionId).path,
       canResume: canResume,
+      updatedAt: _receipt(note, sessionId).lastModifiedSync(),
     );
   }
 

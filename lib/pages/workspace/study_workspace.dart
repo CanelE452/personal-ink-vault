@@ -31,6 +31,8 @@ import 'package:saber/data/mcp/vault_mcp_render.dart';
 import 'package:saber/data/mcp/vault_mcp_service.dart';
 import 'package:saber/data/office/android_office_engine.dart';
 import 'package:saber/data/office/office_document_store.dart';
+import 'package:saber/data/office/office_editor_events.dart';
+import 'package:saber/data/office/office_open_edits.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/office/pdf_note_original.dart';
@@ -241,6 +243,12 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   ({NoteSession session, OfficePageLinkRequest request})? _officePageLink;
   // What the library asked the Office document it opened to do first.
   ({NoteSession session, OfficeOpenRequest request})? _officeOpenRequest;
+  StreamSubscription<String>? _editorLeft;
+  StreamSubscription<({String sessionId, String status})>? _editorFinishedEvents;
+  // Where each document's editor returns the user once it closes.
+  final _editorReturns = <String, OfficeEditorReturn>{};
+  // 닫고 열기 waits here for how the editor it asked to close ended (null: left for the tabs).
+  final _closeWaits = <String, Completer<OfficeEditorOutcome?>>{};
   NoteSession? _rememberedPageSession;
   ({NoteRepository repository, NoteSession? outgoing})? _documentTabChange;
   var _markdownAnchorRequest = 0;
@@ -283,6 +291,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       unawaited(windowManager.setPreventClose(true));
     }
     StudyWorkspace.pendingDocumentImport.addListener(_sharedDocument);
+    _editorLeft = OfficeEditorEvents.instance.editorLeft.listen(_onEditorLeft);
+    _editorFinishedEvents = OfficeEditorEvents.instance.editorFinished.listen(
+      _onLateEditorResult,
+    );
     unawaited(_init());
   }
 
@@ -1317,6 +1329,200 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     );
   }
 
+  /// The open editor that must close before [note] can do [action]: one editor of each kind,
+  /// and Word·PPT previews and PDFs need the Office engine its open editor holds.
+  Future<OfficeOpenEdit?> _blockingEditor(
+    WorkspaceController c,
+    VaultNote note,
+    OfficeOpenAction action,
+  ) async {
+    final edits = c.officeOpenEdits;
+    if (edits.entries.isEmpty) return null;
+    final kind = await _editorKind(c, note);
+    final open = edits.forKind(kind);
+    if (open == null) return null;
+    if (action == OfficeOpenAction.edit) return open.noteId == note.id ? null : open;
+    if (action == OfficeOpenAction.close) return null;
+    return kind == OfficeEditorKind.office ? open : null;
+  }
+
+  Future<OfficeEditorKind> _editorKind(WorkspaceController c, VaultNote note) async {
+    final edition = await OfficeDocumentStore(c.repository).readLatest(note);
+    final extension = p.extension(edition.originalFileName).toLowerCase();
+    return extension == '.hwp' || extension == '.hwpx'
+        ? OfficeEditorKind.hwp
+        : OfficeEditorKind.office;
+  }
+
+  /// '제목' 문서를 먼저 닫아야 합니다: [닫고 열기] asks [blocking]'s editor to close (it asks
+  /// the user when something changed), then runs [then] once it has closed. Leaving that
+  /// editor for the tabs instead cancels.
+  Future<void> _askToCloseFirst(
+    WorkspaceController c,
+    OfficeOpenEdit blocking,
+    Future<void> Function() then,
+  ) async {
+    final close = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text("'${blocking.title}' 문서를 먼저 닫아야 합니다."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('닫고 열기'),
+          ),
+        ],
+      ),
+    );
+    if (close != true || !mounted || !identical(c, controller)) return;
+    // The editor's outcome, not the open-edit list: the list empties before its save is a version.
+    final finished = Completer<OfficeEditorOutcome?>();
+    _closeWaits[blocking.noteId] = finished;
+    final left = OfficeEditorEvents.instance.editorLeft.listen((sessionId) {
+      if (sessionId == blocking.sessionId && !finished.isCompleted) {
+        finished.complete(null);
+      }
+    });
+    final OfficeEditorOutcome? outcome;
+    try {
+      if (!await _requestEditorClose(c, blocking.noteId)) return;
+      outcome = await finished.future;
+    } finally {
+      if (identical(_closeWaits[blocking.noteId], finished)) {
+        _closeWaits.remove(blocking.noteId);
+      }
+      await left.cancel();
+    }
+    if (outcome != null) _editorReturns.remove(blocking.noteId);
+    if (outcome == null ||
+        outcome == OfficeEditorOutcome.failed ||
+        !mounted ||
+        !identical(c, controller)) {
+      return;
+    }
+    // Its save is a version now: its tab closes, then the other document opens.
+    if (c.navigation.tabs.any((tab) => tab.noteId == blocking.noteId)) {
+      await _changeDocumentTab(c, () => c.closeDocumentTab(blocking.noteId));
+    }
+    await then();
+  }
+
+  /// Brings the document's tab forward and asks its open editor to close; the tab closes when
+  /// the editor reports back. False when the document could not be brought forward.
+  Future<bool> _requestEditorClose(WorkspaceController c, String noteId) async {
+    if (c.activeSession?.note.id != noteId) {
+      if (c.navigation.tabs.any((tab) => tab.noteId == noteId)) {
+        await _changeDocumentTab(c, () => c.activateDocumentTab(noteId));
+      } else {
+        final note = (await c.store.list())
+            .where((note) => note.id == noteId)
+            .firstOrNull;
+        if (note == null || !mounted) return false;
+        await c.openNote(note);
+      }
+    }
+    final session = c.activeSession;
+    if (!mounted || session == null || session.note.id != noteId) return false;
+    setState(() {
+      _officeOpenRequest = (
+        session: session,
+        request: OfficeOpenRequest(OfficeOpenAction.close),
+      );
+    });
+    return true;
+  }
+
+  /// A tab tap on an Office·한글 document: its editor opens or comes back. [from] is where it
+  /// returns; null keeps the place it already had.
+  Future<void> _requestOfficeEdit(
+    WorkspaceController c,
+    NoteSession session,
+    OfficeEditorReturn? from,
+  ) async {
+    final blocking = await _blockingEditor(c, session.note, OfficeOpenAction.edit);
+    if (!mounted || !identical(c.activeSession, session)) return;
+    if (blocking != null) {
+      return _askToCloseFirst(
+        c,
+        blocking,
+        () => _open(session.note, officeAction: OfficeOpenAction.edit),
+      );
+    }
+    if (from != null) _editorReturns[session.note.id] = from;
+    setState(() {
+      _officeOpenRequest = (
+        session: session,
+        request: OfficeOpenRequest(OfficeOpenAction.edit, returnTo: from),
+      );
+    });
+  }
+
+  /// The screen an editor returns the user to: its document tab, or the library at its folder.
+  Future<void> _goTo(WorkspaceController c, OfficeEditorReturn to) async {
+    final noteId = to.noteId;
+    if (noteId != null && c.navigation.tabs.any((tab) => tab.noteId == noteId)) {
+      if (c.activeSession?.note.id != noteId) {
+        await _changeDocumentTab(c, () => c.activateDocumentTab(noteId));
+      }
+      return;
+    }
+    final session = c.activeSession;
+    if (session != null) {
+      await _save();
+      if (!mounted || !identical(c.activeSession, session)) return;
+      await c.closeNote(session: session);
+    }
+    if (c.currentFolderId != to.folderId) await c.openFolder(to.folderId);
+  }
+
+  /// An editor closed: saved, 저장 안 함 or nothing changed closes its tab and returns to where
+  /// it was opened from. An error keeps the tab with its message and kept work.
+  Future<void> _onEditorFinished(
+    WorkspaceController c,
+    NoteSession session,
+    OfficeEditorOutcome outcome,
+  ) async {
+    final noteId = session.note.id;
+    final returnTo =
+        _editorReturns.remove(noteId) ??
+        OfficeEditorReturn(folderId: c.currentFolderId);
+    if (outcome == OfficeEditorOutcome.failed ||
+        !mounted ||
+        !identical(c, controller)) {
+      return;
+    }
+    if (c.navigation.tabs.any((tab) => tab.noteId == noteId)) {
+      await _changeDocumentTab(c, () => c.closeDocumentTab(noteId));
+    }
+    await _goTo(c, returnTo);
+  }
+
+  /// The user went back to the tabs from an editor: it stays open behind them.
+  void _onEditorLeft(String sessionId) {
+    final c = controller;
+    if (c == null || !mounted) return;
+    final open = c.officeOpenEdits.entries
+        .where((edit) => edit.sessionId == sessionId)
+        .firstOrNull;
+    if (open == null || c.activeSession?.note.id != open.noteId) return;
+    unawaited(_run(() => _goTo(c, open.returnTo)));
+  }
+
+  /// An editor finished while no call waited for it (after an app restart): its result is in the
+  /// recovery records, and the document's screen publishes it when it opens.
+  void _onLateEditorResult(({String sessionId, String status}) event) {
+    final c = controller;
+    if (c == null) return;
+    final open = c.officeOpenEdits.entries
+        .where((edit) => edit.sessionId == event.sessionId)
+        .firstOrNull;
+    if (open != null) unawaited(c.officeOpenEdits.remove(open.noteId));
+  }
+
   Future<void> _back() async {
     if (_scaffold.currentState?.isDrawerOpen ?? false) {
       _scaffold.currentState?.closeDrawer();
@@ -1334,6 +1540,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
             .where((f) => f.id == c.currentFolderId)
             .firstOrNull;
         await _run(() => c.openFolder(folder?.parentId));
+      } else if (c != null && c.officeOpenEdits.entries.isNotEmpty) {
+        // The library's first screen with an editor open behind it: the app goes to the back
+        // and keeps both, instead of ending (the editor's result needs this screen).
+        await _run(OfficeEditorEvents.instance.moveAppToBack);
       }
       return;
     }
@@ -1357,6 +1567,23 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   }) async {
     final c = controller!;
     final repository = c.repository;
+    // Leaving or closing this document's editor returns to the screen the tap came from.
+    final returnTo = OfficeEditorReturn(
+      noteId: c.activeSession?.note.id,
+      folderId: c.currentFolderId,
+    );
+    if (officeAction != null &&
+        note.documentKind == VaultDocumentKind.office) {
+      final blocking = await _blockingEditor(c, note, officeAction);
+      if (!mounted || !identical(c, controller)) return;
+      if (blocking != null) {
+        return _askToCloseFirst(
+          c,
+          blocking,
+          () => _open(note, bodyMatch: bodyMatch, officeAction: officeAction),
+        );
+      }
+    }
     await _save();
     if (!mounted ||
         !identical(c, controller) ||
@@ -1376,10 +1603,13 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         session != null &&
         session.note.id == note.id &&
         session.note.documentKind == VaultDocumentKind.office) {
+      if (officeAction == OfficeOpenAction.edit) {
+        _editorReturns[note.id] = returnTo;
+      }
       setState(() {
         _officeOpenRequest = (
           session: session,
-          request: OfficeOpenRequest(officeAction),
+          request: OfficeOpenRequest(officeAction, returnTo: returnTo),
         );
       });
     }
@@ -1718,12 +1948,33 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           c.externalBusy ||
           !identical(controller, c) ||
           !identical(c.repository, repository) ||
-          c.activeSession?.note.id == id ||
           !c.navigation.tabs.any((tab) => tab.noteId == id)) {
         return;
       }
+      final active = c.activeSession;
+      if (active?.note.id == id) {
+        // The open document's editor is behind the app: bring it back.
+        if (active != null && c.officeOpenEdits.forNote(id) != null) {
+          unawaited(_run(() => _requestOfficeEdit(c, active, null)));
+        }
+        return;
+      }
+      final from = OfficeEditorReturn(
+        noteId: active?.note.id,
+        folderId: c.currentFolderId,
+      );
       unawaited(
-        _run(() => _changeDocumentTab(c, () => c.activateDocumentTab(id))),
+        _run(() async {
+          await _changeDocumentTab(c, () => c.activateDocumentTab(id));
+          final session = c.activeSession;
+          // An Office·한글 tab opens its editor unless it was left on its Markdown memo.
+          if (session != null &&
+              session.note.id == id &&
+              session.note.documentKind == VaultDocumentKind.office &&
+              !c.navigation.current.markdown) {
+            await _requestOfficeEdit(c, session, from);
+          }
+        }),
       );
     }
 
@@ -1773,6 +2024,20 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (c.officeOpenEdits.forNote(tab.noteId) != null)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 10),
+                                child: Tooltip(
+                                  message: '편집 중',
+                                  child: Icon(
+                                    Icons.edit,
+                                    key: ValueKey(
+                                      'document-tab-editing-${tab.noteId}',
+                                    ),
+                                    size: 14,
+                                  ),
+                                ),
+                              ),
                             InkWell(
                               key: ValueKey('document-tab-${tab.noteId}'),
                               onTap: enabled ? () => select(tab.noteId) : null,
@@ -1800,10 +2065,15 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                               onPressed: !enabled
                                   ? null
                                   : () => _run(
-                                      () => _changeDocumentTab(
-                                        c,
-                                        () => c.closeDocumentTab(tab.noteId),
-                                      ),
+                                      // A document whose editor is open asks that editor first.
+                                      () =>
+                                          c.officeOpenEdits.forNote(tab.noteId) !=
+                                              null
+                                          ? _requestEditorClose(c, tab.noteId)
+                                          : _changeDocumentTab(
+                                              c,
+                                              () => c.closeDocumentTab(tab.noteId),
+                                            ),
                                     ),
                             ),
                           ],
@@ -2453,6 +2723,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         return _open(note, officeAction: OfficeOpenAction.preview);
       case LibraryNoteAction.pdf:
         return _open(note, officeAction: OfficeOpenAction.pdf);
+      case LibraryNoteAction.tools:
+        return _open(note);
     }
     final change = operation;
     if (change == null) {
@@ -5230,6 +5502,16 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                   _officeOpenRequest = null;
                 }
               },
+              openEdits: c.officeOpenEdits,
+              onEditorFinished: (outcome) {
+                // 닫고 열기 asked this editor to close: it closes the tab and goes on itself.
+                final waiting = _closeWaits.remove(session.note.id);
+                if (waiting != null) {
+                  if (!waiting.isCompleted) waiting.complete(outcome);
+                  return;
+                }
+                unawaited(_run(() => _onEditorFinished(c, session, outcome)));
+              },
               onDirtyChanged: (value) => c.setInkDirty(value, session: session),
               onBusyChanged: (value) => c.setInkBusy(value, session: session),
               onBack: () => unawaited(_back()),
@@ -5485,7 +5767,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           session == null &&
           c.currentFolderId == null &&
           !busy &&
-          !c.dirty,
+          !c.dirty &&
+          c.officeOpenEdits.entries.isEmpty,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) unawaited(_back());
       },
@@ -5762,6 +6045,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isWindows) windowManager.removeListener(this);
     StudyWorkspace.pendingDocumentImport.removeListener(_sharedDocument);
+    unawaited(_editorLeft?.cancel());
+    unawaited(_editorFinishedEvents?.cancel());
     final workspace = controller;
     workspace?.removeListener(_changed);
     _mcp?.dispose();

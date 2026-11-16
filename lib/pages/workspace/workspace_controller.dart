@@ -13,6 +13,7 @@ import 'package:saber/data/drive/drive_connection.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/native/ink_vault_native.dart';
+import 'package:saber/data/office/office_open_edits.dart';
 import 'package:saber/data/office/pdf_note_original.dart';
 import 'package:saber/data/vault/block_page_document.dart';
 import 'package:saber/data/vault/block_page_history.dart';
@@ -27,6 +28,7 @@ import 'package:saber/data/vault/database_media_snapshot.dart';
 import 'package:saber/data/vault/database_media_worker.dart';
 import 'package:saber/data/vault/dataview_result.dart';
 import 'package:saber/data/vault/infinite_document.dart';
+import 'package:saber/data/vault/knowledge_catalog.dart';
 import 'package:saber/data/vault/knowledge_index.dart';
 import 'package:saber/data/vault/library_store.dart';
 import 'package:saber/data/vault/linked_database_session.dart';
@@ -761,8 +763,32 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
+  OfficeOpenEdits? _officeOpenEdits;
+  NoteRepository? _officeEditsRepository;
+
+  /// This vault's Office·한글 documents whose editors are open behind the app's tabs.
+  OfficeOpenEdits get officeOpenEdits {
+    final current = _officeOpenEdits;
+    if (current != null && identical(_officeEditsRepository, repository)) {
+      return current;
+    }
+    current?.removeListener(_officeEditsChanged);
+    final edits = OfficeOpenEdits(
+      File('${repository.root.path}/.workspace/office-open-edits.json'),
+    )..addListener(_officeEditsChanged);
+    _officeOpenEdits = edits;
+    _officeEditsRepository = repository;
+    return edits;
+  }
+
+  void _officeEditsChanged() {
+    if (!_disposed) notifyListeners();
+  }
+
   Future<void> _restoreNavigation() async {
     final repo = repository, session = activeSession;
+    // Editors left open when the app last ran still show as open and still ask before closing.
+    await officeOpenEdits.load();
     try {
       final restored = await WorkspaceNavigation.load(_navigationFile);
       final available = await WorkspaceStore(
@@ -1015,7 +1041,14 @@ class WorkspaceController extends ChangeNotifier {
         final signature =
             '${repo.vaultId}/${(await repo.revisions()).map((r) => r.revisionId).join('/')}';
         if (_knowledgeSignature != signature) {
-          final index = await KnowledgeIndex.build(repo, engine);
+          final KnowledgeIndex index;
+          try {
+            index = await KnowledgeIndex.build(repo, engine);
+          } on KnowledgeCatalogChanged {
+            // A write committed while the index was read. Its change event has queued another
+            // refresh, which reads the settled workspace, so this one stops without an error.
+            return;
+          }
           if (!_current(repo, session)) return;
           knowledge = index;
           _knowledgeSignature = signature;
@@ -2626,6 +2659,7 @@ class WorkspaceController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _officeOpenEdits?.removeListener(_officeEditsChanged);
     _automations?.dispose();
     _markdownTimer?.cancel();
     final pendingSave = saveMarkdown();

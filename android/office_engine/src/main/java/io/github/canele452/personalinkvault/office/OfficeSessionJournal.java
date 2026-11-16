@@ -314,6 +314,37 @@ public final class OfficeSessionJournal {
         }
     }
 
+    /**
+     * 저장 안 함, or a close with nothing changed: removes the unsaved private session. A session that holds a
+     * save, or one a live editor still holds, is never removed. An unknown session is already gone.
+     */
+    public void discard(String sessionId, String inputSourceSha256) throws IOException {
+        validateRequest(sessionId, inputSourceSha256);
+        synchronized (EDITOR_LOCK) {
+            if (sessionId.equals(liveSessionId) && liveEditor.get() != null) {
+                throw new IOException("A live editor holds this Office session");
+            }
+        }
+        synchronized (LOCK) {
+            Session session = bound(sessionId, inputSourceSha256);
+            if (session == null) return;
+            if (Files.exists(session.savedMarker().toPath(), LinkOption.NOFOLLOW_LINKS)
+                    || Files.exists(session.sourceReadyMarker().toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("A saved Office session is never discarded");
+            }
+            deleteTree(session.directory);
+        }
+    }
+
+    private static void deleteTree(File file) throws IOException {
+        if (!Files.isSymbolicLink(file.toPath()) && file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children == null) throw new IOException("Unreadable Office session folder");
+            for (File child : children) deleteTree(child);
+        }
+        Files.deleteIfExists(file.toPath());
+    }
+
     /** Checkpoint the serialized edit before releasing the native document. */
     public Map<String, Object> recordSourceReady(String sessionId, String inputSourceSha256) throws IOException {
         synchronized (LOCK) {

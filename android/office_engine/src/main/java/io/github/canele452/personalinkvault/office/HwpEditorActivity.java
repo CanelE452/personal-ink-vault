@@ -54,10 +54,17 @@ public final class HwpEditorActivity extends Activity {
     static final String RESULT_SOURCE_SHA256 = "piv.sourceSha256";
     static final String RESULT_ERROR_CODE = "piv.errorCode";
     static final String RESULT_ERROR_MESSAGE = "piv.errorMessage";
+    /** "unchanged" or "discarded" on a RESULT_CANCELED close. */
+    static final String RESULT_CLOSE_REASON = "piv.closeReason";
+    /** On an intent that brings this editor back: run the close question. */
+    static final String EXTRA_REQUEST_CLOSE = "piv.requestClose";
+    /** On the app's launch intent when the editor sends the user back to the app's tabs. */
+    static final String EXTRA_EDITOR_LEFT = "piv.editorLeft";
     private static final String TAG = "PIVHwpEditor";
     private static final String HOST = "appassets.androidplatform.net";
     private static final String ASSETS = "hwp-studio";
     private static final String START = "https://" + HOST + "/__piv/host.html";
+    private static final long MAX_DOCUMENT_BYTES = 128L * 1024 * 1024;
 
     private WebView web;
     private Button save;
@@ -66,9 +73,13 @@ public final class HwpEditorActivity extends Activity {
     private String sessionId;
     private String format;
     private String name;
+    /** What /__piv/document serves: the unsaved checkpoint if one survived, otherwise the working copy. */
+    private File document;
+    private File checkpoint;
+    private boolean resumedWithChanges;
     private boolean opened;
     private boolean saving;
-    private boolean closing;
+    private volatile boolean closing;
     private Object backCallback;
 
     @Override
@@ -97,10 +108,18 @@ public final class HwpEditorActivity extends Activity {
             fail("hwp_editor_invalid", "편집할 HWP 작업 파일을 확인하지 못했습니다. 원본은 보관됩니다.");
             return;
         }
+        checkpoint = new File(working.getParentFile(), "checkpoint." + format);
+        document = working;
+        if (checkpoint.isFile() && checkpoint.length() > 0 && checkpoint.length() <= MAX_DOCUMENT_BYTES
+                && signatureMatches(readHead(checkpoint), format)) {
+            // Unsaved work kept when the editor last went to the background: it reopens as changed.
+            document = checkpoint;
+            resumedWithChanges = true;
+        }
         setContentView(layout());
         configure();
         if (Build.VERSION.SDK_INT >= 33) {
-            android.window.OnBackInvokedCallback callback = this::requestClose;
+            android.window.OnBackInvokedCallback callback = this::leave;
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
             backCallback = callback;
@@ -111,7 +130,39 @@ public final class HwpEditorActivity extends Activity {
     @SuppressWarnings("deprecation")
     @Override
     public void onBackPressed() {
-        requestClose();
+        leave();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        String requested = intent.getStringExtra(EXTRA_SESSION);
+        if (requested != null && !requested.equals(sessionId)) {
+            Log.w(TAG, "ignored an intent for another session");
+            return;
+        }
+        if (intent.getBooleanExtra(EXTRA_REQUEST_CLOSE, false)) requestClose();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Keeps unsaved work beside the working copy (not a version) while the editor is behind the app.
+        if (opened && !saving && !closing && web != null) web.evaluateJavascript("window.pivCheckpoint()", null);
+    }
+
+    /** Back to the app's tabs; this editor stays open below it. */
+    private void leave() {
+        if (closing) return;
+        Intent app = getPackageManager().getLaunchIntentForPackage(getPackageName());
+        if (app == null) return;
+        app.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        app.putExtra(EXTRA_EDITOR_LEFT, sessionId);
+        try {
+            startActivity(app);
+        } catch (RuntimeException error) {
+            Log.w(TAG, "could not bring the app back", error);
+        }
     }
 
     @Override
@@ -137,6 +188,9 @@ public final class HwpEditorActivity extends Activity {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         int pad = dp(6);
         bar.setPadding(pad, pad, pad, pad);
+        Button tabs = new Button(this);
+        tabs.setText("← 탭");
+        tabs.setOnClickListener(v -> leave());
         Button close = new Button(this);
         close.setText("닫기");
         close.setOnClickListener(v -> requestClose());
@@ -150,6 +204,7 @@ public final class HwpEditorActivity extends Activity {
         save.setText("저장하고 닫기");
         save.setEnabled(false);
         save.setOnClickListener(v -> requestSave());
+        bar.addView(tabs);
         bar.addView(close);
         bar.addView(title, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         bar.addView(save);
@@ -229,7 +284,7 @@ public final class HwpEditorActivity extends Activity {
         try {
             if ("/__piv/document".equals(path)) {
                 return new WebResourceResponse("application/octet-stream", null, 200, "OK",
-                        Collections.singletonMap("Cache-Control", "no-store"), new FileInputStream(working));
+                        Collections.singletonMap("Cache-Control", "no-store"), new FileInputStream(document));
             }
             InputStream data = getAssets().open(ASSETS + path);
             String mime = mime(path);
@@ -276,22 +331,38 @@ public final class HwpEditorActivity extends Activity {
     private void requestClose() {
         if (closing) return;
         if (!opened || web == null) {
-            cancel();
+            if (resumedWithChanges) {
+                // Unsaved work is still loading; closing now would drop it without asking.
+                Toast.makeText(this, "문서를 여는 중입니다.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            cancel("unchanged");
             return;
         }
         web.evaluateJavascript("window.pivDirty()", null);
     }
 
     private void onDirty(boolean dirty) {
-        if (!dirty) {
-            cancel();
+        if (closing) return;
+        if (!dirty && !resumedWithChanges) {
+            cancel("unchanged");
             return;
         }
         new AlertDialog.Builder(this)
-                .setMessage("고친 내용을 저장하지 않고 닫을까요?")
-                .setPositiveButton("저장하지 않고 닫기", (dialog, which) -> cancel())
-                .setNegativeButton("계속 편집", null)
+                .setMessage("바뀐 내용을 저장하지 않았습니다.")
+                .setPositiveButton("저장", (dialog, which) -> requestSave())
+                .setNeutralButton("저장 안 함", (dialog, which) -> discard())
+                .setNegativeButton("취소", null)
                 .show();
+    }
+
+    /** 저장 안 함: the unsaved work goes with the session. */
+    private void discard() {
+        closing = true;
+        if (checkpoint != null && checkpoint.exists() && !checkpoint.delete()) {
+            Log.w(TAG, "checkpoint not deleted");
+        }
+        cancel("discarded");
     }
 
     private void onState(String state, String detail) {
@@ -336,11 +407,66 @@ public final class HwpEditorActivity extends Activity {
             return;
         }
         closing = true;
+        String sourceSha256 = HwpEditorBridge.sha256(data);
+        writeResultMarker(sourceSha256);
+        if (checkpoint != null && checkpoint.exists() && !checkpoint.delete()) {
+            Log.w(TAG, "checkpoint not deleted");
+        }
         Intent result = new Intent()
                 .putExtra(EXTRA_SESSION, sessionId)
-                .putExtra(RESULT_SOURCE_SHA256, HwpEditorBridge.sha256(data));
+                .putExtra(RESULT_SOURCE_SHA256, sourceSha256);
         setResult(RESULT_OK, result);
         finish();
+    }
+
+    /** result.json beside edited.&lt;ext&gt;, so the app can still take the save if no Dart call waits for it. */
+    private void writeResultMarker(String sourceSha256) {
+        File marker = new File(output.getParentFile(), "result.json");
+        File staging = new File(output.getParentFile(), "result.json.tmp");
+        try (FileOutputStream stream = new FileOutputStream(staging)) {
+            stream.write(new JSONObject().put("sessionId", sessionId).put("sourceSha256", sourceSha256)
+                    .toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            stream.getFD().sync();
+        } catch (IOException | JSONException error) {
+            staging.delete();
+            Log.w(TAG, "result marker not written");
+            return;
+        }
+        if (!staging.renameTo(marker)) {
+            staging.delete();
+            Log.w(TAG, "result marker not renamed");
+        }
+    }
+
+    /** Called on the WebView bridge thread when the editor goes to the background with unsaved work. */
+    private void writeCheckpoint(byte[] data) {
+        if (closing || checkpoint == null || data == null || data.length > MAX_DOCUMENT_BYTES
+                || !signatureMatches(data, format)) return;
+        File staging = new File(checkpoint.getParentFile(), checkpoint.getName() + ".tmp");
+        try (FileOutputStream stream = new FileOutputStream(staging)) {
+            stream.write(data);
+            stream.getFD().sync();
+        } catch (IOException error) {
+            staging.delete();
+            Log.w(TAG, "checkpoint not written");
+            return;
+        }
+        if (closing || !staging.renameTo(checkpoint)) staging.delete();
+    }
+
+    private static byte[] readHead(File file) {
+        byte[] head = new byte[8];
+        try (InputStream stream = new FileInputStream(file)) {
+            int read = 0;
+            while (read < head.length) {
+                int count = stream.read(head, read, head.length - read);
+                if (count < 0) return null;
+                read += count;
+            }
+            return head;
+        } catch (IOException error) {
+            return null;
+        }
     }
 
     static boolean signatureMatches(byte[] data, String format) {
@@ -353,9 +479,9 @@ public final class HwpEditorActivity extends Activity {
         return data[0] == 'P' && data[1] == 'K' && data[2] == 3 && data[3] == 4;
     }
 
-    private void cancel() {
+    private void cancel(String reason) {
         closing = true;
-        setResult(RESULT_CANCELED, new Intent().putExtra(EXTRA_SESSION, sessionId));
+        setResult(RESULT_CANCELED, new Intent().putExtra(EXTRA_SESSION, sessionId).putExtra(RESULT_CLOSE_REASON, reason));
         finish();
     }
 
@@ -408,6 +534,15 @@ public final class HwpEditorActivity extends Activity {
             }
             byte[] bytes = data;
             runOnUiThread(() -> onSaved(bytes));
+        }
+
+        @JavascriptInterface
+        public void checkpoint(String encoded) {
+            try {
+                writeCheckpoint(Base64.decode(encoded == null ? "" : encoded, Base64.DEFAULT));
+            } catch (IllegalArgumentException invalid) {
+                Log.w(TAG, "checkpoint bytes not decoded");
+            }
         }
     }
 }

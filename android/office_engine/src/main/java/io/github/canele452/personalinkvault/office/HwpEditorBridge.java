@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -35,12 +36,22 @@ public final class HwpEditorBridge {
     private String pendingSession;
     private String pendingInputSha256;
     private File pendingOutput;
+    private volatile EditorEvents editorEvents;
 
     public HwpEditorBridge(Activity activity) {
         this.activity = activity;
     }
 
+    public void setEditorEvents(EditorEvents events) {
+        editorEvents = events;
+    }
+
     public void edit(String sourcePath, String sessionId, String displayName, Completion completion) {
+        edit(sourcePath, sessionId, displayName, false, completion);
+    }
+
+    /** [resume]: the session already existed, so its editor may still be open behind the app; reuse it. */
+    public void edit(String sourcePath, String sessionId, String displayName, boolean resume, Completion completion) {
         if (pending != null) {
             completion.error("hwp_editor_busy", "HWP 편집 화면이 이미 열려 있습니다.");
             return;
@@ -80,6 +91,7 @@ public final class HwpEditorBridge {
                 .putExtra(HwpEditorActivity.EXTRA_SESSION, sessionId)
                 .putExtra(HwpEditorActivity.EXTRA_FORMAT, format)
                 .putExtra(HwpEditorActivity.EXTRA_NAME, title(displayName, format));
+        if (resume) intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         pending = completion;
         pendingSession = sessionId;
         pendingInputSha256 = inputSha256;
@@ -92,6 +104,33 @@ public final class HwpEditorBridge {
         }
     }
 
+    /** Brings the editor this bridge opened back in front of the app's tabs. */
+    public void show(String sessionId, Completion completion) {
+        bringBack(sessionId, false, completion);
+    }
+
+    /** Brings the open editor back and asks it to close (it asks the user when something changed). */
+    public void requestClose(String sessionId, Completion completion) {
+        bringBack(sessionId, true, completion);
+    }
+
+    private void bringBack(String sessionId, boolean close, Completion completion) {
+        if (pending == null || sessionId == null || !sessionId.equals(pendingSession)) {
+            completion.error("hwp_editor_not_open", "열린 HWP 편집 화면이 없습니다.");
+            return;
+        }
+        try {
+            Intent intent = new Intent(activity, HwpEditorActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    .putExtra(HwpEditorActivity.EXTRA_SESSION, sessionId);
+            if (close) intent.putExtra(HwpEditorActivity.EXTRA_REQUEST_CLOSE, true);
+            activity.startActivity(intent);
+            completion.success(Collections.emptyMap());
+        } catch (RuntimeException error) {
+            completion.error("hwp_editor_unavailable", "HWP 편집 화면을 다시 열지 못했습니다.");
+        }
+    }
+
     public boolean handleActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode != REQUEST_EDIT) return false;
         Completion completion = pending;
@@ -99,7 +138,16 @@ public final class HwpEditorBridge {
         String input = pendingInputSha256;
         File output = pendingOutput;
         clear();
-        if (completion == null) return true;
+        if (completion == null) {
+            // No Dart call waits (the app restarted while the editor stayed open): announce it instead.
+            EditorEvents events = editorEvents;
+            String returned = data == null ? null : data.getStringExtra(HwpEditorActivity.EXTRA_SESSION);
+            if (events != null && returned != null) {
+                events.finished(returned, resultCode == Activity.RESULT_OK ? "saved"
+                        : resultCode == Activity.RESULT_CANCELED ? "cancelled" : "failed");
+            }
+            return true;
+        }
         String returned = data == null ? null : data.getStringExtra(HwpEditorActivity.EXTRA_SESSION);
         if (resultCode == Activity.RESULT_OK) {
             String reported = data == null ? null : data.getStringExtra(HwpEditorActivity.RESULT_SOURCE_SHA256);
@@ -114,7 +162,10 @@ public final class HwpEditorBridge {
                 completion.error("invalid_hwp_result", "편집한 HWP 파일을 확인하지 못했습니다. 원본은 보관됩니다.");
             }
         } else if (resultCode == Activity.RESULT_CANCELED) {
-            completion.success(base(session, input, "cancelled"));
+            Map<String, Object> value = base(session, input, "cancelled");
+            String reason = data == null ? null : data.getStringExtra(HwpEditorActivity.RESULT_CLOSE_REASON);
+            if ("unchanged".equals(reason) || "discarded".equals(reason)) value.put("closeReason", reason);
+            completion.success(value);
         } else {
             String code = data == null ? null : data.getStringExtra(HwpEditorActivity.RESULT_ERROR_CODE);
             String message = data == null ? null : data.getStringExtra(HwpEditorActivity.RESULT_ERROR_MESSAGE);

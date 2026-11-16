@@ -60,6 +60,7 @@ public final class OfficeEngineBridge {
     private String reopenSourceSha256;
     private String editLaunchId;
     private String reopenLaunchId;
+    private volatile EditorEvents editorEvents;
 
     public interface Completion {
         void success(Map<String, Object> result);
@@ -142,6 +143,63 @@ public final class OfficeEngineBridge {
 
     public void resume(String sessionId, String inputSourceSha256, Completion completion) {
         recovery(sessionId, inputSourceSha256, true, completion);
+    }
+
+    public void setEditorEvents(EditorEvents events) {
+        editorEvents = events;
+    }
+
+    /** Brings the editor this bridge opened back in front of the app's tabs; the document stays as it was. */
+    public void show(String sessionId, Completion completion) {
+        bringBack(sessionId, false, completion);
+    }
+
+    /** Brings the open editor back and asks it to close (it asks the user when something changed). */
+    public void requestClose(String sessionId, Completion completion) {
+        bringBack(sessionId, true, completion);
+    }
+
+    private void bringBack(String sessionId, boolean close, Completion completion) {
+        if (disposed || pending == null || pendingPreview || reopenAttempt != null || sessionId == null
+                || !sessionId.equals(pendingSessionId)) {
+            completion.error("office_editor_not_open", "열린 문서 편집기가 없습니다.");
+            return;
+        }
+        try {
+            Intent intent = new Intent(activity, OfficeEditorActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    .putExtra("piv.sessionId", sessionId);
+            if (close) intent.putExtra("piv.requestClose", true);
+            activity.startActivity(intent);
+            completion.success(Collections.emptyMap());
+        } catch (RuntimeException error) {
+            completion.error("office_editor_unavailable", "문서 편집기를 다시 열지 못했습니다.");
+        }
+    }
+
+    /** 저장 안 함, or closed with nothing changed: the private session goes (never a saved or live one). */
+    public void discardSession(String sessionId, String inputSourceSha256, Completion completion) {
+        if (files.isShutdown()) {
+            completion.error("office_interrupted", "문서 작업 화면이 종료되었습니다.");
+            return;
+        }
+        files.execute(() -> {
+            try {
+                journal().discard(sessionId, inputSourceSha256);
+                activity.runOnUiThread(() -> completion.success(Collections.emptyMap()));
+            } catch (IOException error) {
+                activity.runOnUiThread(() -> completion.error("office_discard_refused", "보관된 문서 작업을 지우지 못했습니다."));
+            }
+        });
+    }
+
+    /** An editor result that no Dart call waits for (the app restarted while the editor stayed open). */
+    private void announceLateResult(int resultCode, Intent data) {
+        EditorEvents events = editorEvents;
+        String session = data == null ? null : data.getStringExtra("sessionId");
+        if (events == null || session == null) return;
+        String status = data.hasExtra("errorCode") ? "failed" : resultCode == Activity.RESULT_OK ? "saved" : "cancelled";
+        events.finished(session, status);
     }
 
     public void validateLegacySource(String sourcePath, String format, String sourceSha256, Completion completion) {
@@ -281,7 +339,9 @@ public final class OfficeEngineBridge {
                             return;
                         }
                         File working = new File((String) result.get("workingPath"));
-                        launch(working, working.getParentFile(), extension(working.getName()), sessionId, inputSourceSha256, false);
+                        // The session already existed: its editor may still be open behind the app.
+                        launch(working, working.getParentFile(), extension(working.getName()), sessionId, inputSourceSha256,
+                                false, false, true);
                     } else {
                         fail("office_session_missing", "기기에 보관된 문서 작업을 찾을 수 없습니다.");
                     }
@@ -403,6 +463,12 @@ public final class OfficeEngineBridge {
 
     private void launch(File working, File directory, String extension, String sessionId, String inputHash,
             boolean previewOnly, boolean reopenedSource) {
+        launch(working, directory, extension, sessionId, inputHash, previewOnly, reopenedSource, false);
+    }
+
+    /** [reorder]: reuse the session's editor if it is still open in this task instead of stacking a second one. */
+    private void launch(File working, File directory, String extension, String sessionId, String inputHash,
+            boolean previewOnly, boolean reopenedSource, boolean reorder) {
         if (disposed || pending == null || activity.isFinishing() || activity.isDestroyed()) {
             if (previewOnly) discardPreview(sessionId, () -> fail("office_interrupted", "문서 미리보기 화면이 종료되었습니다."));
             return;
@@ -430,6 +496,7 @@ public final class OfficeEngineBridge {
                     .putExtra("piv.reopenedSource", reopenedSource)
                     .putExtra("piv.format", extension)
                     .putExtra("piv.launchId", launchId);
+            if (reorder) intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
             activity.startActivityForResult(intent, reopenedSource ? REQUEST_REOPEN : REQUEST_EDIT);
             if (reopenedSource) reopenLaunchId = launchId;
             else editLaunchId = launchId;
@@ -459,6 +526,8 @@ public final class OfficeEngineBridge {
                     && pendingInputSourceSha256.equals(data.getStringExtra("inputSourceSha256"))) {
                 OfficeSessionJournal.releaseEditor(launchOwner);
                 startSourceReopen(data);
+            } else if (pending == null) {
+                announceLateResult(resultCode, data);
             }
             return true;
         }
@@ -480,7 +549,10 @@ public final class OfficeEngineBridge {
         String expectedInputHash = pendingInputSourceSha256;
         String closedPreviewSession = launchedPreviewSessionId;
         launchedPreviewSessionId = null;
-        if (completion == null && closedPreviewSession == null) return true;
+        if (completion == null && closedPreviewSession == null) {
+            announceLateResult(resultCode, data);
+            return true;
+        }
         if (closedPreviewSession != null) previewOnly = true;
         if (previewOnly) previewResultPending = true;
         pending = null;
@@ -516,6 +588,8 @@ public final class OfficeEngineBridge {
             if (!previewOnly) {
                 result.put("sessionId", expectedSession);
                 result.put("inputSourceSha256", expectedInputHash);
+                String reason = data == null ? null : data.getStringExtra("piv.closeReason");
+                if ("unchanged".equals(reason) || "discarded".equals(reason)) result.put("closeReason", reason);
             }
         } else if (!previewOnly) {
             files.execute(() -> {

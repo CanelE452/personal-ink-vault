@@ -13,6 +13,7 @@ class OfficeOriginalEditResult {
     this.pdfSha256,
     this.pdfPageCount,
     this.inputSourceSha256,
+    this.closeReason,
   });
 
   final OfficeOriginalEditStatus status;
@@ -24,6 +25,9 @@ class OfficeOriginalEditResult {
   final String? pdfSha256;
   final int? pdfPageCount;
   final String? inputSourceSha256;
+
+  /// On a cancelled close: 'unchanged' (nothing changed since it opened) or 'discarded' (저장 안 함).
+  final String? closeReason;
 }
 
 class OfficeConversionResult {

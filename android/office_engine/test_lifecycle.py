@@ -371,6 +371,9 @@ class PreviewEditor extends PreviewParent {
     void installButton() {}
   }
   PresentationCells presentationCells;
+  static class Changes { void onEngineMessage(byte[] message) {} }
+  final Changes changes = new Changes();
+  void installEditorButtons() {}
   final String sessionId = "preview";
   boolean previewOnly=true, previewRequested, previewCancelled, previewLoadFailed, ready;
   boolean finishing, previewResultSet;

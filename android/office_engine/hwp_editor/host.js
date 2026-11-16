@@ -62,6 +62,20 @@ window.pivSavedOk = async function () {
   }
 };
 
+// Called when the Activity goes to the background: unsaved work goes to checkpoint.<ext> beside the working
+// copy (not a version), so a reopened editor starts from it.
+window.pivCheckpoint = async function () {
+  try {
+    if (!editor) return;
+    const state = await editor.getDocumentState();
+    if (!state.dirty) return;
+    const bytes = info.format === 'hwpx' ? await editor.exportHwpx() : await editor.exportHwp();
+    if (bytes && bytes.length > 0) host.checkpoint(base64(bytes));
+  } catch (error) {
+    report('checkpointFailed', message(error));
+  }
+};
+
 // Called before closing without saving.
 window.pivDirty = async function () {
   try {

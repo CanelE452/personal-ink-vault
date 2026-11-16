@@ -3,6 +3,12 @@ import 'package:saber/data/vault/library_store.dart';
 import 'package:saber/data/vault/obsidian_vault_source.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 
+/// Revisions were committed while [KnowledgeCatalog.capture] read the workspace. Every commit
+/// announces itself on [NoteRepository.changes], so a reader started after it sees a settled workspace.
+final class KnowledgeCatalogChanged extends StateError {
+  new() : super('The workspace changed while collecting link targets');
+}
+
 /// Lookup candidates refer to real metadata branches, never the joined label.
 class KnowledgeCatalog {
   new _(
@@ -169,7 +175,7 @@ class KnowledgeCatalog {
     final ids = revisions.map((r) => r.revisionId).toSet();
     if (current.length != ids.length ||
         current.any((r) => !ids.contains(r.revisionId))) {
-      throw StateError('The workspace changed while collecting link targets');
+      throw KnowledgeCatalogChanged();
     }
     return KnowledgeCatalog._(
       revisions,

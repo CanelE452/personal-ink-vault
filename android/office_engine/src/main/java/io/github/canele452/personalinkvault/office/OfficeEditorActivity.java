@@ -60,6 +60,10 @@ public class OfficeEditorActivity extends LOActivity {
     private FrameLayout previewOverlay;
     private View engineContent;
     private boolean previewQuestionShown;
+    private final EditorChangeTracker changes = new EditorChangeTracker();
+    /** null until the close question is answered, then "save" or "discard". */
+    private volatile String closeDecision;
+    private View editorButtons;
 
     static { System.loadLibrary("piv_office_bridge"); }
 
@@ -219,8 +223,30 @@ public class OfficeEditorActivity extends LOActivity {
             previewCancelled = true;
             OfficePreviewOutputs.deleteResultRecord(directory);
             finish();
-        } else if (presentationCells == null || !presentationCells.handleBack()) {
+            return;
+        }
+        String requested = intent.getStringExtra("piv.sessionId");
+        if (requested != null && !requested.equals(sessionId)) {
+            OfficeEngineProcess.log("ignored an intent for another session=" + requested);
+            return;
+        }
+        // Brought back from the app's tabs: the document stays open unless the tab asked to close it.
+        if (intent.getBooleanExtra("piv.requestClose", false)
+                && (presentationCells == null || !presentationCells.handleBack())) {
             finishWithProgress();
+        }
+    }
+
+    @Override
+    protected void onEmbeddedLeave() {
+        Intent app = getPackageManager().getLaunchIntentForPackage(getPackageName());
+        if (app == null) return;
+        app.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        app.putExtra("piv.editorLeft", sessionId);
+        try {
+            startActivity(app);
+        } catch (RuntimeException error) {
+            OfficeEngineProcess.log("could not bring the app back session=" + sessionId);
         }
     }
 
@@ -231,6 +257,7 @@ public class OfficeEditorActivity extends LOActivity {
 
     @Override
     protected boolean onEmbeddedNativeMessage(byte[] message) {
+        changes.onEngineMessage(message);
         if (previewOnly) {
             // A dialog the engine opens while preparing the PDF (for example a repair or update question) waits
             // for the user, so it is shown instead of the progress screen until it closes.
@@ -433,10 +460,56 @@ public class OfficeEditorActivity extends LOActivity {
     public void postMobileMessage(String message) {
         if (!previewOnly && (message.equals("hideProgressbar") || message.startsWith("hideProgressbar "))) ready = true;
         super.postMobileMessage(message);
+        if (!previewOnly && ready) runOnUiThread(this::installEditorButtons);
         if (!previewOnly && ready && presentationCells != null) {
             runOnUiThread(() -> {
                 if (isCellEditorReady() && presentationCells != null) presentationCells.installButton();
             });
+        }
+    }
+
+    /** "← 탭" keeps the document open behind the app; "닫기" runs the close question. */
+    private void installEditorButtons() {
+        if (editorButtons != null || previewOnly || isFinishing() || isDestroyed()) return;
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        Button tabs = new Button(this);
+        tabs.setText("← 탭");
+        tabs.setOnClickListener(view -> onEmbeddedLeave());
+        Button close = new Button(this);
+        close.setText("닫기");
+        close.setOnClickListener(view -> finishWithProgress());
+        buttons.addView(tabs);
+        buttons.addView(close);
+        FrameLayout.LayoutParams layout = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START);
+        layout.leftMargin = dp(12);
+        layout.bottomMargin = dp(12);
+        addContentView(buttons, layout);
+        editorButtons = buttons;
+    }
+
+    /** Asked only when something changed since the editor opened. */
+    private void askBeforeClosing() {
+        if (isFinishing() || isDestroyed()) return;
+        new android.app.AlertDialog.Builder(this)
+                .setMessage("바뀐 내용을 저장하지 않았습니다.")
+                .setPositiveButton("저장", (dialog, which) -> closeWith("save"))
+                .setNeutralButton("저장 안 함", (dialog, which) -> closeWith("discard"))
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    private void closeWith(String decision) {
+        closeDecision = decision;
+        finishWithProgress();
+    }
+
+    private static String sha256OrNull(File file) {
+        try {
+            return sha256(file);
+        } catch (Exception unreadable) {
+            return null;
         }
     }
 
@@ -445,8 +518,13 @@ public class OfficeEditorActivity extends LOActivity {
         if (isEmbeddedDocumentBusy()) return false;
         if (previewOnly) return finishPreview();
         if (!ready || directory == null) {
-            // Carries data: a result without data means the engine process died first.
-            setResult(Activity.RESULT_CANCELED, new Intent().putExtra("sessionId", sessionId));
+            // Carries data: a result without data means the engine process died first. Closed before the
+            // document finished opening: a reopened copy that holds earlier work has no reason, so it is kept.
+            Intent closed = new Intent().putExtra("sessionId", sessionId);
+            String reason = EditorChangeTracker.loadingCloseReason(
+                    working == null ? null : sha256OrNull(working), inputSourceSha256);
+            if (reason != null) closed.putExtra("piv.closeReason", reason);
+            setResult(Activity.RESULT_CANCELED, closed);
             return true;
         }
         File source = new File(directory, "edited." + format);
@@ -457,6 +535,19 @@ public class OfficeEditorActivity extends LOActivity {
                 return true;
             }
             if (!"working".equals(previous.get("status"))) throw new IOException("Missing private working session");
+            // The background save clears the engine's modified flag, so the working copy is compared too.
+            String step = EditorChangeTracker.closeStep(closeDecision, changes.modified(), changes.heard(),
+                    sha256OrNull(working), inputSourceSha256);
+            if ("ask".equals(step)) {
+                runOnUiThread(this::askBeforeClosing);
+                return false;
+            }
+            if (!"save".equals(step)) {
+                Intent closed = new Intent().putExtra("sessionId", sessionId)
+                        .putExtra("piv.closeReason", "discard".equals(step) ? "discarded" : "unchanged");
+                runOnUiThread(() -> setResult(Activity.RESULT_CANCELED, closed));
+                return true;
+            }
             if (!saveOriginal(source.toURI().toString(), format)) {
                 throw new IOException("문서 원본을 저장하지 못했습니다.");
             }
@@ -465,8 +556,10 @@ public class OfficeEditorActivity extends LOActivity {
             return true;
         } catch (Exception error) {
             if (finishOnFormatMismatch(error)) return true;
+            // The next close asks again instead of retrying the failed choice silently.
+            closeDecision = null;
             runOnUiThread(() -> Toast.makeText(this,
-                    "저장을 마치지 못했습니다. 다시 뒤로가기를 눌러주세요. 작업 복사본은 보관됩니다.", Toast.LENGTH_LONG).show());
+                    "저장을 마치지 못했습니다. 다시 닫기를 눌러주세요. 작업 복사본은 보관됩니다.", Toast.LENGTH_LONG).show());
             return false;
         }
     }

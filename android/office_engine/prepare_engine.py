@@ -255,6 +255,12 @@ def patch_activity(text):
             callFakeWebsocketOnMessage("mobile: readonlymode");
             return;
         }
+        onEmbeddedLeave();
+    }
+
+    // Personal Ink Vault: what back does once nothing inside the editor is left to close. The editor returns
+    // to the app's tabs and stays open; other screens close as before.
+    protected void onEmbeddedLeave() {
         finishWithProgress();
     }
 

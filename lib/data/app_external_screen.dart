@@ -18,4 +18,17 @@ abstract final class AppExternalScreen {
       _open.value--;
     }
   }
+
+  static final Set<String> _editorsInFront = {};
+
+  /// An Office·한글 editor stays open behind the app's tabs, so it counts only while it is in
+  /// front: from opening or bringing it back until the user leaves it or it closes. Repeated
+  /// calls for one session count once.
+  static void editorInFront(String sessionId) {
+    if (_editorsInFront.add(sessionId)) _open.value++;
+  }
+
+  static void editorBehind(String sessionId) {
+    if (_editorsInFront.remove(sessionId)) _open.value--;
+  }
 }

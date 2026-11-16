@@ -23,6 +23,7 @@ import java.util.*;import java.io.IOException;import org.json.*;import java.nio.
 class Intent {
   final Map<String,String> extras = new HashMap<>();
   Intent putExtra(String key, String value) { extras.put(key, value); return this; }
+  String getStringExtra(String key) { return extras.get(key); }
   boolean getBooleanExtra(String key, boolean fallback) {
     return extras.containsKey(key) ? Boolean.parseBoolean(extras.get(key)) : fallback;
   }
@@ -62,6 +63,7 @@ class OfficePreviewOutputs {
 public final class CellActivityHarness extends Parent {
   __FORMAT_MISMATCH__
   OfficePresentationCells presentationCells;
+  final EditorChangeTracker changes = new EditorChangeTracker();
   java.io.File directory;
   boolean engineAttached = true;
   boolean previewOnly, previewCancelled, previewRequested, previewLoadFailed, previewResultSet;
@@ -116,10 +118,16 @@ public final class CellActivityHarness extends Parent {
   static void replacement() {
     events.clear(); CellActivityHarness h = new CellActivityHarness();
     h.presentationCells = new OfficePresentationCells(); h.presentationCells.consumed = true;
+    // An intent that only brings the editor back from the app's tabs leaves the document open.
     h.onNewIntent(new Intent());
-    require(events.equals(List.of("cell-back")), "pending replacement waits for owned edit instead of opening an unbound Activity");
-    events.clear(); h.presentationCells.consumed = false; h.onNewIntent(new Intent());
-    require(events.equals(List.of("cell-back","safe-save-close")), "idle replacement saves its current private session");
+    require(events.isEmpty(), "bringing the editor back never closes it");
+    h.onNewIntent(new Intent().putExtra("piv.sessionId", "another-session").putExtra("piv.requestClose", "true"));
+    require(events.isEmpty(), "a request for another session is ignored");
+    Intent close = new Intent().putExtra("piv.requestClose", "true");
+    h.onNewIntent(close);
+    require(events.equals(List.of("cell-back")), "a close request waits for the owned cell edit first");
+    events.clear(); h.presentationCells.consumed = false; h.onNewIntent(close);
+    require(events.equals(List.of("cell-back","safe-save-close")), "an idle close request runs the close question");
     events.clear(); h.previewOnly = true; h.onNewIntent(new Intent());
     require(h.previewCancelled && events.equals(List.of("finish-preview")), "preview replacement finishes without waiting for its native close");
   }
@@ -222,6 +230,7 @@ class CellActivityTests(unittest.TestCase):
             result = subprocess.run([javac, '-encoding', 'UTF-8', '-cp', str(JSON_JAR), '-d', folder, str(source), str(HEALTH),
                                     str(SOURCE.with_name('OfficeLegacyContainer.java')),
                                     str(MODULE / 'src/main/java/io/github/canele452/personalinkvault/office/OfficeTextStylePlan.java'),
+                                    str(MODULE / 'src/main/java/io/github/canele452/personalinkvault/office/EditorChangeTracker.java'),
                                     str(MODULE / 'src/main/java/io/github/canele452/personalinkvault/office/OfficeCellReply.java'),
                                     str(MODULE / 'src/main/java/io/github/canele452/personalinkvault/office/OfficeScriptSession.java')],
                                     capture_output=True, text=True, timeout=30)

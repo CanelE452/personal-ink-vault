@@ -155,6 +155,36 @@ void main() {
     expect(working.parent.existsSync(), isFalse);
   });
 
+  test('discarding removes an unfinished edit with everything beside its working copy', () async {
+    await start();
+    // Unsaved work the HWP editor kept beside the working copy goes too.
+    await File('${working.parent.path}/checkpoint.docx').writeAsBytes([1, 2, 3], flush: true);
+    await recovery.discard(note, sessionId);
+    expect(await recovery.list(note), isEmpty);
+    expect(receipt().existsSync(), isFalse);
+    expect(working.parent.existsSync(), isFalse);
+    // 저장 안 함 also drops a saved result that was put away.
+    sessionId = newId();
+    working = FileManager.getFile(
+      '/.working/office/${note.id}/${session.sourceRevision.revisionId}/$sessionId/original.docx',
+    );
+    await working.parent.create(recursive: true);
+    await working.writeAsBytes(session.originalBytes, flush: true);
+    await start();
+    await recovery.recordNativeSaved(note, sessionId, await nativeResult());
+    await recovery.preserve(note, sessionId);
+    await recovery.discard(note, sessionId);
+    expect(await recovery.list(note), isEmpty);
+    expect(working.parent.existsSync(), isFalse);
+  });
+
+  test('each listed edit says when it was last written', () async {
+    final before = DateTime.now().subtract(const Duration(seconds: 2));
+    await start();
+    final entry = (await recovery.list(note)).single;
+    expect(entry.updatedAt.isAfter(before), isTrue);
+  });
+
   test('an edit with anything to resume stays as it was', () async {
     await start();
     // Something written beside the working copy (an editor's saved file).

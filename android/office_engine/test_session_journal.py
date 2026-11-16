@@ -1111,7 +1111,32 @@ public class RecoveryHarness {
     else if (args[0].equals("modern-preview-promotion")) previewPromotionScenarios(root,List.of("docx","pptx","odt","odp"));
     else if (args[0].equals("historical-recovery")) historicalRecoveryScenarios(root);
     else if (args[0].equals("legacy-conversion")) legacyConversionScenarios(root);
+    else if (args[0].equals("discard")) discardScenarios(root);
     else bridgeScenarios(root);
+  }
+
+  // 저장 안 함 / nothing changed: the private session goes, but never one that holds a save or a live editor.
+  static void discardScenarios(File root) throws Exception {
+    Fixture working = fixture(root, "discard-working");
+    rejects(() -> working.journal.discard(ID, "0".repeat(64)), "a discard bound to another original is refused");
+    require(working.directory.isDirectory(), "a refused discard keeps the session");
+    working.journal.discard(ID, working.inputHash);
+    require(!working.directory.exists(), "an unsaved working session folder goes away");
+    require("missing".equals(working.reopened().recover(ID, working.inputHash).get("status")),
+        "a discarded session is not recovered after a restart");
+    working.journal.discard(ID, working.inputHash);
+    Fixture saved = fixture(root, "discard-saved");
+    saved.saved();
+    rejects(() -> saved.journal.discard(ID, saved.inputHash), "a saved session is never discarded");
+    require(saved.directory.isDirectory(), "the saved session stays");
+    Fixture live = fixture(root, "discard-live");
+    Object owner = new Object();
+    require(OfficeSessionJournal.reserveEditor(ID, owner), "the fixture holds the live editor");
+    try {
+      rejects(() -> live.journal.discard(ID, live.inputHash), "a session a live editor holds is not discarded");
+      require(live.directory.isDirectory(), "the live session stays");
+    } finally { OfficeSessionJournal.releaseEditor(owner); }
+    System.out.println("native discard scenarios passed");
   }
 }
 '''
@@ -1125,7 +1150,8 @@ public class Activity {
   public static final int RESULT_OK=-1, RESULT_CANCELED=0;
   final File files;
   public volatile int launches;
-  public volatile Intent lastIntent;
+  public volatile Intent lastIntent, lastStarted;
+  public volatile int lastRequest, starts;
   public Activity(File files) { this.files=files; }
   public File getFilesDir() { return files; }
   public File getCacheDir() { return new File(files,"cache"); }
@@ -1134,13 +1160,19 @@ public class Activity {
   public boolean isDestroyed() { return false; }
   public ClassLoader getClassLoader() { return getClass().getClassLoader(); }
   public void runOnUiThread(Runnable action) { action.run(); }
-  public void startActivityForResult(Intent intent,int request) { lastIntent=intent; launches++; }
+  public void startActivityForResult(Intent intent,int request) { lastIntent=intent; lastRequest=request; launches++; }
+  public void startActivity(Intent intent) { lastStarted=intent; starts++; }
 }''',
     "android/content/Intent.java": r'''package android.content;
 import java.util.*;
 public class Intent {
   public static final String ACTION_VIEW="view", ACTION_EDIT="edit";
+  public static final int FLAG_ACTIVITY_REORDER_TO_FRONT=0x00020000;
   final Map<String,Object> values=new HashMap<>();
+  int flags;
+  public Intent addFlags(int value) { flags|=value; return this; }
+  public Intent setFlags(int value) { flags=value; return this; }
+  public int getFlags() { return flags; }
   public Intent() {}
   public Intent(android.app.Activity ignored,Class<?> target) {}
   public Intent setAction(String action) { return this; }
@@ -1227,7 +1259,7 @@ class SessionJournalTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content, encoding="utf-8")
                 stub_files.append(str(path))
-            command = [javac, "-encoding", "UTF-8", "-d", folder, str(harness), str(journal), str(classifier), str(JAVA / "OfficeEngineBridge.java"), str(JAVA / "OfficeEngineHealth.java"), str(JAVA / "OfficePreviewOutputs.java"), str(JAVA / "OfficeNativeObservation.java"), *stub_files]
+            command = [javac, "-encoding", "UTF-8", "-d", folder, str(harness), str(journal), str(classifier), str(JAVA / "OfficeEngineBridge.java"), str(JAVA / "EditorEvents.java"), str(JAVA / "OfficeEngineHealth.java"), str(JAVA / "OfficePreviewOutputs.java"), str(JAVA / "OfficeNativeObservation.java"), *stub_files]
             compiled = subprocess.run(command, capture_output=True, text=True, timeout=30)
             self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
             for phase in (phases or (["seed", "recover", "journal"] if mode == "journal" else [mode])):
@@ -1245,6 +1277,9 @@ class SessionJournalTests(unittest.TestCase):
 
     def test_actual_bridge_recover_resume_cancel_and_live_busy_contract(self):
         self.run_harness("bridge")
+
+    def test_discard_removes_only_an_unsaved_session_no_editor_holds(self):
+        self.run_harness("discard")
 
     def test_legacy_family_mismatch_is_blocked_before_launch_or_publication(self):
         self.run_harness("legacy-format")

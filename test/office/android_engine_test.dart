@@ -61,4 +61,38 @@ void main() {
       );
     }
   });
+  test('an open Office editor is shown, asked to close and its session discarded through the engine channel', () async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return null;
+    });
+    await engine.show(sessionId: 's1');
+    await engine.requestClose(sessionId: 's1');
+    await engine.discard(sessionId: 's1', inputSourceSha256: 'a' * 64);
+    expect(calls.map((call) => call.method), [
+      'officeShow',
+      'officeRequestClose',
+      'officeDiscard',
+    ]);
+    expect(calls[0].arguments, {'sessionId': 's1'});
+    expect(calls[1].arguments, {'sessionId': 's1'});
+    expect(calls[2].arguments, {'sessionId': 's1', 'inputSourceSha256': 'a' * 64});
+  });
+  test('a cancelled Office edit carries its close reason', () async {
+    messenger.setMockMethodCallHandler(
+      channel,
+      (call) async => {
+        'status': 'cancelled',
+        'engineVersion': '26.04.6.0-962',
+        'closeReason': 'unchanged',
+      },
+    );
+    final result = await engine.edit(
+      sourcePath: '/private/source.docx',
+      sessionId: 'e1',
+    );
+    expect(result.status, AndroidOfficeEditStatus.cancelled);
+    expect(result.closeReason, 'unchanged');
+  });
 }

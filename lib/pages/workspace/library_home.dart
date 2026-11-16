@@ -28,7 +28,7 @@ enum LibraryCreateAction {
 }
 
 /// [preview] and [pdf] are for Office·한글 documents only.
-enum LibraryNoteAction { rename, move, trash, restore, preview, pdf }
+enum LibraryNoteAction { rename, move, trash, restore, preview, pdf, tools }
 
 enum LibraryFolderAction { rename, move, trash, restore }
 
@@ -711,6 +711,12 @@ class _LibraryHomeState extends State<LibraryHome>
             key: ValueKey('library-note-pdf'),
             value: LibraryNoteAction.pdf,
             child: Text('PDF로 바꾸기'),
+          ),
+          // The Office screen itself: versions, PDF handwriting, detailed tools, kept edits.
+          const PopupMenuItem(
+            key: ValueKey('library-note-tools'),
+            value: LibraryNoteAction.tools,
+            child: Text('기록·도구'),
           ),
         ],
         const PopupMenuItem(

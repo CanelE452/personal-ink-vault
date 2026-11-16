@@ -791,12 +791,16 @@ class AndroidOfficeEngine {
     required String inputSourceSha256,
   }) async {
     _validateRecoveryRequest(sessionId, inputSourceSha256);
-    final response = await AppExternalScreen.run(
-      () => _channel.invokeMapMethod<String, dynamic>('resume', {
+    final Map<String, dynamic>? response;
+    AppExternalScreen.editorInFront(sessionId);
+    try {
+      response = await _channel.invokeMapMethod<String, dynamic>('resume', {
         'sessionId': sessionId,
         'inputSourceSha256': inputSourceSha256,
-      }),
-    );
+      });
+    } finally {
+      AppExternalScreen.editorBehind(sessionId);
+    }
     if (response?['status'] == 'cancelled') {
       _requireRecoveryBinding(response, sessionId, inputSourceSha256);
       return AndroidOfficeEditResult(
@@ -804,11 +808,44 @@ class AndroidOfficeEngine {
         sessionId: sessionId,
         inputSourceSha256: inputSourceSha256,
         engineVersion: response!['engineVersion'] as String,
+        closeReason: _closeReason(response),
       );
     }
     final recovered = _decodeRecovery(response, sessionId, inputSourceSha256);
     if (recovered.savedResult == null) throw _invalidRecovery();
     return recovered.savedResult!;
+  }
+
+  /// Brings this app's open Office editor back in front of the app's tabs.
+  Future<void> show({required String sessionId}) =>
+      _bringBack('officeShow', sessionId);
+
+  /// Brings the open editor back and asks it to close; it asks the user when something changed.
+  Future<void> requestClose({required String sessionId}) =>
+      _bringBack('officeRequestClose', sessionId);
+
+  Future<void> _bringBack(String method, String sessionId) async {
+    try {
+      AppExternalScreen.editorInFront(sessionId);
+      await _channel.invokeMethod<void>(method, {'sessionId': sessionId});
+    } on PlatformException {
+      AppExternalScreen.editorBehind(sessionId);
+      rethrow;
+    }
+  }
+
+  /// 저장 안 함, or closed with nothing changed: the engine's private copy of the session goes.
+  Future<void> discard({
+    required String sessionId,
+    required String inputSourceSha256,
+  }) => _channel.invokeMethod<void>('officeDiscard', {
+    'sessionId': sessionId,
+    'inputSourceSha256': inputSourceSha256,
+  });
+
+  static String? _closeReason(Map<String, dynamic>? response) {
+    final reason = response?['closeReason'];
+    return reason == 'unchanged' || reason == 'discarded' ? reason as String : null;
   }
 
   void _validateRecoveryRequest(String sessionId, String inputSourceSha256) {
@@ -1109,17 +1146,23 @@ class AndroidOfficeEngine {
     if (sourcePath.isEmpty || sessionId.trim().isEmpty) {
       throw ArgumentError('sourcePath and sessionId must not be empty.');
     }
-    final response = await AppExternalScreen.run(
-      () => _channel.invokeMapMethod<String, dynamic>('edit', {
+    final Map<String, dynamic>? response;
+    // The editor stays open behind the app's tabs; it counts as over the app only while in front.
+    AppExternalScreen.editorInFront(sessionId);
+    try {
+      response = await _channel.invokeMapMethod<String, dynamic>('edit', {
         'sourcePath': sourcePath,
         'sessionId': sessionId,
-      }),
-    );
+      });
+    } finally {
+      AppExternalScreen.editorBehind(sessionId);
+    }
     final version = response?['engineVersion'] as String? ?? '';
     if (response?['status'] == 'cancelled') {
       return AndroidOfficeEditResult(
         status: AndroidOfficeEditStatus.cancelled,
         engineVersion: version,
+        closeReason: _closeReason(response),
       );
     }
     final edited = response?['sourcePath'];
