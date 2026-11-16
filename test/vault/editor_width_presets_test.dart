@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/toolbar/ink_width_presets.dart';
-import 'package:saber/components/toolbar/size_picker.dart';
+import 'package:saber/components/toolbar/tool_panels.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
@@ -16,7 +16,7 @@ import 'package:saber/pages/editor/editor.dart';
 import '../utils/test_mock_channel_handlers.dart';
 
 const _group = ValueKey('toolbar-quick-ink-widths');
-const _slider = ValueKey('pen-size-slider');
+const _slider = ValueKey('tool-panel-size');
 Finder _preset(int index) => find.byKey(ValueKey('ink-width-preset-$index'));
 
 Future<void> _dragToMiddle(WidgetTester tester) async {
@@ -127,6 +127,9 @@ void main() {
           pen.onDragUpdate(const Offset(50, 45), null);
         }
 
+        // The toolbar is one scrolling line; bring the width dots into view.
+        await tester.ensureVisible(_preset(2));
+        await tester.pump();
         await tester.tap(_preset(0));
         await tester.pump();
         beginStroke();
@@ -177,7 +180,7 @@ void main() {
       editorWidth: 320,
     );
     expect(find.byKey(_group), findsNothing);
-    await tester.tap(find.byTooltip(t.editor.pens.ballpointPen));
+    await tester.tap(find.byTooltip('펜'));
     await tester.pumpAndSettle();
     final slider = find.byKey(_slider);
     expect(slider, findsOneWidget);
@@ -191,7 +194,7 @@ void main() {
     tester,
   ) async {
     await mount(tester, platform: TargetPlatform.windows, editorWidth: 900);
-    await tester.tap(find.byTooltip(t.editor.pens.ballpointPen));
+    await tester.tap(find.byTooltip('펜'));
     await tester.pumpAndSettle();
     await _dragToMiddle(tester);
     expect(
@@ -202,8 +205,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<InkWidthPresets>(find.byKey(_group)).selectedWidth, 8);
     expect(
-      find.descendant(of: find.byType(SizePicker), matching: find.text('8')),
-      findsOneWidget,
+      tester
+          .widget<Text>(find.byKey(const ValueKey('tool-panel-size-value')))
+          .data,
+      millimetres(8),
     );
   });
 }

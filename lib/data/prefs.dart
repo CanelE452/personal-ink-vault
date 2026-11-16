@@ -12,6 +12,7 @@ import 'package:saber/data/codecs/base64_codec.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/quota.dart';
 import 'package:saber/data/sentry/sentry_consent.dart';
+import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:sbn/canvas_background_pattern.dart';
@@ -126,6 +127,102 @@ class Stows {
     'editorToolbarAlignment',
     AxisDirection.down,
     codec: const EnumCodec(AxisDirection.values),
+    volatile: !_isOnMainIsolate,
+  );
+  /// Where the pen toolbar sits in the workspace notes (PDF, page and
+  /// infinite notes). It is separate from [editorToolbarAlignment], whose
+  /// Saber default is the bottom, so updating keeps the toolbar on top.
+  final workspaceToolbarAlignment = PlainStow(
+    'workspaceToolbarAlignment',
+    AxisDirection.up,
+    codec: const EnumCodec(AxisDirection.values),
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// The user's order and visibility of the PDF/page pen toolbar items
+  /// (`ToolbarLayout.encode`); empty means the default layout.
+  final pageToolbarLayout = PlainStow(
+    'pageToolbarLayout',
+    <String>[],
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// The same for the infinite note toolbar.
+  final infiniteToolbarLayout = PlainStow(
+    'infiniteToolbarLayout',
+    <String>[],
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Whether the library's side panel is open (tablets and wider windows).
+  /// Null until the user opens or closes it; until then it is open only on
+  /// wide screens, where the old fixed rail was.
+  final libraryPanelOpen = PlainStow<bool?>(
+    'libraryPanelOpen',
+    null,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// The tool panels (tap the chosen tool again). The eraser and lasso read
+  /// these while they act, so a change applies to the tool in hand.
+  final eraserSize = PlainStow<double>(
+    'eraserSize',
+    10,
+    volatile: !_isOnMainIsolate,
+  );
+  final eraseHighlighterOnly = PlainStow(
+    'eraseHighlighterOnly',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
+  final highlighterStraightLine = PlainStow(
+    'highlighterStraightLine',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// With [highlighterStraightLine], keep the line horizontal or vertical.
+  final highlighterAxisLock = PlainStow(
+    'highlighterAxisLock',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Whether the eraser rubs out the strokes it touches or the strokes
+  /// inside a loop drawn around them (the eraser panel's cards).
+  final eraserMode = PlainStow(
+    'eraserMode',
+    EraserMode.stroke,
+    codec: const EnumCodec(EraserMode.values),
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// The pen button's kind: the fountain pen, ballpoint, pencil or shape pen
+  /// chosen last, so the button keeps the pencil while another tool is used.
+  final lastPenFamily = PlainStow(
+    'lastPenFamily',
+    ToolId.fountainPen,
+    codec: ToolId.codec,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Pens kept with the pen panel's "펜박스에 추가", one JSON object each
+  /// (see PenBoxEntry in tools/pen_box.dart).
+  final penBox = PlainStow('penBox', <String>[], volatile: !_isOnMainIsolate);
+  final selectRectangle = PlainStow(
+    'selectRectangle',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
+  final selectInk = PlainStow('selectInk', true, volatile: !_isOnMainIsolate);
+  final selectHighlighter = PlainStow(
+    'selectHighlighter',
+    true,
+    volatile: !_isOnMainIsolate,
+  );
+  final selectImages = PlainStow(
+    'selectImages',
+    true,
     volatile: !_isOnMainIsolate,
   );
   final editorToolbarShowInFullscreen = PlainStow(

@@ -30,6 +30,7 @@ class InnerCanvas extends StatefulWidget {
     this.setAsBackground,
     this.onRenderObjectChange,
     required this.currentToolIsSelect,
+    this.selectionErases = false,
     required this.currentScale,
   });
 
@@ -47,6 +48,9 @@ class InnerCanvas extends StatefulWidget {
   final ValueChanged<RenderObject>? onRenderObjectChange;
 
   final bool currentToolIsSelect;
+
+  /// The selection is the eraser's loop: draw it in the error colour.
+  final bool selectionErases;
 
   final double currentScale;
 
@@ -133,7 +137,9 @@ class _InnerCanvasState extends State<InnerCanvas> {
           laserStrokes: page.laserStrokes,
           currentStroke: widget.currentStroke,
           currentSelection: widget.currentSelection,
-          primaryColor: colorScheme.primary,
+          primaryColor: widget.selectionErases
+              ? colorScheme.error
+              : colorScheme.primary,
           page: page,
           showPageIndicator: widget.showPageIndicator,
           pageIndex: widget.pageIndex,

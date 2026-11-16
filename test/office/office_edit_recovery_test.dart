@@ -147,6 +147,38 @@ void main() {
     },
   );
 
+  test('an edit closed without changes is removed with its working copy', () async {
+    await start();
+    expect(await recovery.discardUnchanged(note, sessionId), isTrue);
+    expect(await recovery.list(note), isEmpty);
+    expect(receipt().existsSync(), isFalse);
+    expect(working.parent.existsSync(), isFalse);
+  });
+
+  test('an edit with anything to resume stays as it was', () async {
+    await start();
+    // Something written beside the working copy (an editor's saved file).
+    final beside = File('${working.parent.path}/edited.docx');
+    await beside.writeAsBytes([1, 2, 3], flush: true);
+    expect(await recovery.discardUnchanged(note, sessionId), isFalse);
+    await beside.delete();
+    // The working copy itself changed (an editor that writes into it).
+    await working.writeAsBytes([...session.originalBytes, 0], flush: true);
+    expect(await recovery.discardUnchanged(note, sessionId), isFalse);
+    expect(
+      (await recovery.list(note)).single.stage,
+      OfficeEditRecoveryStage.started,
+    );
+    expect(working.existsSync(), isTrue);
+    // Neither is a session with a saved result, nor kept work.
+    await working.writeAsBytes(session.originalBytes, flush: true);
+    await recovery.recordNativeSaved(note, sessionId, await nativeResult());
+    expect(await recovery.discardUnchanged(note, sessionId), isFalse);
+    await recovery.preserve(note, sessionId);
+    expect(await recovery.discardUnchanged(note, sessionId), isFalse);
+    expect(await recovery.list(note), hasLength(1));
+  });
+
   test('starting the same captured session is idempotent and never resets progress', () async {
     await start();
     await recovery.recordNativeSaved(note, sessionId, await nativeResult());

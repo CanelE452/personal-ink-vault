@@ -8,6 +8,7 @@ class InkWidthPresets extends StatelessWidget {
     required this.selectedWidth,
     required this.onSelected,
     required this.widthLabel,
+    this.axis = Axis.horizontal,
   }) : assert(widths.length == 3);
 
   final List<double> widths;
@@ -15,11 +16,15 @@ class InkWidthPresets extends StatelessWidget {
   final ValueChanged<double>? onSelected;
   final String widthLabel;
 
+  /// The axis of the toolbar the dots sit in.
+  final Axis axis;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final select = onSelected;
-    return Row(
+    return Flex(
+      direction: axis,
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var index = 0; index < widths.length; index++)

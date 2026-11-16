@@ -331,6 +331,10 @@ void main() {
           return bookmark;
         });
         await tester.pump();
+        // The open note keeps the bookmarks in its note bar's "더 많은 작업" menu.
+        await tester.tap(find.byKey(const ValueKey('workspace-more-actions')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
         await tester.tap(find.byKey(const ValueKey('workspace-bookmarks')));
         final bookmarkRow = find.byKey(
           ValueKey(

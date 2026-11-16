@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
+import 'package:pdfrx/pdfrx.dart' show PdfDocument;
 import 'package:saber/data/vault/workspace_store.dart';
 
 class OfficeEdition {
@@ -453,6 +454,44 @@ class OfficeDocumentStore {
     VaultNote note,
     OfficeEdition source,
   ) => _readPdfVariants(note, source.revision, legacy: source);
+
+  /// Keeps [pdfBytes], converted from the original of [note]'s edition [revisionId] (the latest when null), as
+  /// that edition's PDF version when it has none yet. The library then shows its first page as the note's cover,
+  /// and previews and PDF copies reuse it without the engine. An edition that already carries a PDF or a PDF
+  /// version is left as it is, so a note never gets a second version this way. Returns whether one was added.
+  /// Throws when [pdfBytes] cannot be opened or has another page count: a broken conversion kept here would be
+  /// reused instead of converting again.
+  Future<bool> keepFirstPdf(
+    VaultNote note, {
+    required Uint8List pdfBytes,
+    required int pageCount,
+    String? revisionId,
+  }) async {
+    final edition = await readLatest(note, revisionId: revisionId);
+    if (edition.pdfBytes != null ||
+        (await readPdfVariants(note, edition)).isNotEmpty) {
+      return false;
+    }
+    final document = await PdfDocument.openData(
+      pdfBytes,
+      useProgressiveLoading: false,
+    );
+    try {
+      if (document.pages.length != pageCount) {
+        throw const FormatException(
+          'The converted Office PDF has another page count',
+        );
+      }
+    } finally {
+      await document.dispose();
+    }
+    final session = await beginEdit(
+      note,
+      revisionId: edition.revision.revisionId,
+    );
+    await commitDerivedPdf(session, pdfBytes: pdfBytes, pageCount: pageCount);
+    return true;
+  }
 
   /// Finds derived previews without loading the original or PDF blob bytes.
   Future<List<OfficePdfVariant>> readDerivedPdfVariants(

@@ -91,6 +91,7 @@ Future<void> _mount(
   _CountingPreview preview, {
   VoidCallback? onBack,
   NoteRepository? repository,
+  OfficeOpenRequest? openRequest,
 }) => tester.pumpWidget(
   TranslationProvider(
     child: MaterialApp(
@@ -105,6 +106,7 @@ Future<void> _mount(
               note: fixture.note,
               engine: edit,
               previewEngine: preview,
+              openRequest: openRequest,
               onBusyChanged: (busy) => fixture.busy = busy,
               onBack: onBack ?? () {},
             ),
@@ -277,6 +279,35 @@ void main() {
       skip: !officePreviewPdfiumAvailable,
     );
   }
+
+  testWidgets(
+    'the library menu preview loads the original preview without a tap',
+    (tester) => _withFixture(tester, (fixture) async {
+      final before = await officePreviewRead(tester, fixture.revisionCount);
+      final edit = _CountingEdit();
+      final preview = _CountingPreview(
+        (path, id) => fixture.previewResult(path, id, PdfColors.red),
+      );
+      await _mount(
+        tester,
+        fixture,
+        edit,
+        preview,
+        openRequest: OfficeOpenRequest(OfficeOpenAction.preview),
+      );
+      await officePreviewUntil(
+        tester,
+        () => preview.result != null,
+        'The preview request must start the private PDF conversion by itself',
+      );
+      await _shown(tester, preview.result!.pdfSha256);
+      expect(preview.calls, 1);
+      expect(edit.calls, 0);
+      expect(await officePreviewRead(tester, fixture.revisionCount), before);
+      expect(tester.takeException(), isNull);
+    }),
+    skip: !officePreviewPdfiumAvailable,
+  );
 
   testWidgets(
     'an imported original creates an explicit private preview without publishing PDF or ink',
@@ -830,9 +861,11 @@ void main() {
           of: editor,
           matching: find.byType(Toolbar),
         );
+        // A drawing tool itself must be reachable; the toolbar's centre can fall between buttons.
+        final pen = find.descendant(of: toolbar, matching: find.byTooltip('펜'));
         await officePreviewUntil(
           tester,
-          () => toolbar.hitTestable().evaluate().isNotEmpty && !fixture.busy,
+          () => pen.hitTestable().evaluate().isNotEmpty && !fixture.busy,
           'The usual drawing tools must become usable without a second action.',
         );
         expect(tester.widget<Toolbar>(toolbar).readOnly, isFalse);
@@ -854,7 +887,7 @@ void main() {
         await tester.runAsync(() => tester.tap(action));
         await officePreviewUntil(
           tester,
-          () => toolbar.hitTestable().evaluate().isNotEmpty && !fixture.busy,
+          () => pen.hitTestable().evaluate().isNotEmpty && !fixture.busy,
           'Reopening the ink editor must reuse the already prepared PDF.',
         );
         expect(preview.calls, 1);

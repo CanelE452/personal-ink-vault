@@ -231,20 +231,27 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
   /// Otherwise, panning can be done in any (i.e. diagonal) direction.
   late bool axisAlignedPanLock = stows.lastAxisAlignedPanLock.value;
 
-  void zoomIn() => widget._transformationController.value =
+  void zoomIn() {
+    _markUserInput();
+    widget._transformationController.value =
       setZoom(
         scaleDelta: 0.1,
         transformation: widget._transformationController.value,
         containerBounds: containerBounds,
       ) ??
       widget._transformationController.value;
-  void zoomOut() => widget._transformationController.value =
+  }
+
+  void zoomOut() {
+    _markUserInput();
+    widget._transformationController.value =
       setZoom(
         scaleDelta: -0.1,
         transformation: widget._transformationController.value,
         containerBounds: containerBounds,
       ) ??
       widget._transformationController.value;
+  }
   @visibleForTesting
   static Matrix4? setZoom({
     required double scaleDelta,
@@ -383,6 +390,9 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
   @override
   void initState() {
     widget._transformationController.addListener(onTransformChanged);
+    stows.lastSingleFingerPanLock.addListener(_syncPanLocks);
+    stows.lastAxisAlignedPanLock.addListener(_syncPanLocks);
+    stows.lastZoomLock.addListener(_syncPanLocks);
     _assignKeybindings();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setInitialTransform();
@@ -599,6 +609,49 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     }
   }
 
+  /// When the user last touched, scrolled or zoomed the canvas. The zoom pill
+  /// shows only for scale changes they make, not for the app's own fit.
+  var _lastUserInput = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _markUserInput() => _lastUserInput = DateTime.now();
+
+  bool get _userZooming =>
+      _hasActiveContacts ||
+      DateTime.now().difference(_lastUserInput) <
+          const Duration(milliseconds: 600);
+
+  /// The pan locks and the zoom lock are also changed from the toolbar
+  /// settings (the zoom pill, the other way to unlock, hides while locked).
+  void _syncPanLocks() {
+    if (!mounted) return;
+    setState(() {
+      singleFingerPanLock = stows.lastSingleFingerPanLock.value;
+      axisAlignedPanLock = stows.lastAxisAlignedPanLock.value;
+      final locked = stows.lastZoomLock.value;
+      if (locked != (zoomLockedValue != null)) {
+        zoomLockedValue = locked
+            ? widget._transformationController.value.approxScale
+            : null;
+      }
+    });
+  }
+
+  /// Zooms around the centre of the view to [target] (1.0 fits the width).
+  void zoomTo(double target) {
+    _markUserInput();
+    final transformation = widget._transformationController.value;
+    final scale = transformation.approxScale;
+    if ((scale - target).abs() < 1e-6) return;
+
+    widget._transformationController.value =
+        setZoom(
+          scaleDelta: target - scale,
+          transformation: transformation,
+          containerBounds: containerBounds,
+        ) ??
+        transformation;
+  }
+
   /// Resets the zoom level to 1.0x
   void resetZoom() {
     final transformation = widget._transformationController.value;
@@ -628,6 +681,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
       _stylusPointer != null && _stylusPointer != event.pointer;
 
   void _listenerPointerDownEvent(PointerDownEvent event) {
+    _markUserInput();
     if (_ignorePointer(event)) return;
     if (_isStylus(event)) {
       _stylusPointer = event.pointer;
@@ -639,6 +693,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
 
   void _listenerPointerEvent(PointerEvent event) {
     if (!_pointerContacts.contains(event.pointer)) return;
+    _markUserInput();
     final isStylus = _isStylus(event);
     if (isStylus && event is PointerDownEvent) {
       _detectStylusButton(event);
@@ -696,6 +751,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
 
   void _listenerPointerUpEvent(PointerEvent event) {
     if (!_pointerContacts.remove(event.pointer)) return;
+    _markUserInput();
     if (_stylusPointer == event.pointer) _stylusPointer = null;
     widget.updatePointerData(event.kind, null);
     if (_isStylus(event) && stylusButtonWasPressed) {
@@ -757,8 +813,12 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
           onPointerUp: _listenerPointerUpEvent,
           onPointerCancel: _listenerPointerUpEvent,
           onPointerHover: _listenerPointerHoverEvent,
+          onPointerSignal: (_) => _markUserInput(),
           onPointerPanZoomStart: (_) => _panZoomActive = true,
-          onPointerPanZoomEnd: (_) => _panZoomActive = false,
+          onPointerPanZoomEnd: (_) {
+            _panZoomActive = false;
+            _markUserInput();
+          },
           child: GestureDetector(
             child: LayoutBuilder(
               builder: (BuildContext context, BoxConstraints containerBounds) {
@@ -814,17 +874,8 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
                   : null;
               stows.lastZoomLock.value = zoomLock;
             }),
-            resetZoom: zoomLockedValue != null ? null : resetZoom,
-            singleFingerPanLock: singleFingerPanLock,
-            setSingleFingerPanLock: (bool singleFingerPanLock) => setState(() {
-              this.singleFingerPanLock = singleFingerPanLock;
-              stows.lastSingleFingerPanLock.value = singleFingerPanLock;
-            }),
-            axisAlignedPanLock: axisAlignedPanLock,
-            setAxisAlignedPanLock: (bool axisAlignedPanLock) => setState(() {
-              this.axisAlignedPanLock = axisAlignedPanLock;
-              stows.lastAxisAlignedPanLock.value = axisAlignedPanLock;
-            }),
+            setScale: zoomLockedValue != null ? null : zoomTo,
+            shouldShow: () => _userZooming,
           ),
         ),
         if (selected != null)
@@ -876,6 +927,9 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
       singlePageId: selected == null ? null : widget.pages[selected].pageId,
     );
     widget._transformationController.removeListener(onTransformChanged);
+    stows.lastSingleFingerPanLock.removeListener(_syncPanLocks);
+    stows.lastAxisAlignedPanLock.removeListener(_syncPanLocks);
+    stows.lastZoomLock.removeListener(_syncPanLocks);
     widget._transformationController.dispose();
     _motionReset.dispose();
     _removeKeybindings();

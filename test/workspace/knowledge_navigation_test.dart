@@ -289,7 +289,9 @@ void main() {
         await controller.openNote(target);
       });
       await mount(tester);
-      await tap(tester, find.byTooltip('문서 연결 · 태그 · 그래프'));
+      // The open note keeps this action in its note bar's "더 많은 작업" menu.
+      await tap(tester, find.byKey(const ValueKey('workspace-more-actions')));
+      await tap(tester, find.text('문서 연결 · 태그 · 그래프'));
       expect(find.text('미연결 언급'), findsOneWidget);
       expect(find.text('이 문서를 가리키는 링크가 없습니다.'), findsOneWidget);
       expect(find.widgetWithText(TextButton, '링크로 연결'), findsNWidgets(2));

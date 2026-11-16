@@ -15,8 +15,10 @@ licenses, and source provenance go only into ignored `build/office-engine/`.
 must have the exact pinned SHA-256.
 
 The upstream `android/lib` Java/resource source is generated with the explicit
-`piv-8` embedded-close, preparation-cancellation, shared-message-thread, and
-read-only-preview changes recorded in its generated provenance. Original edits
+`piv-9` embedded-close, preparation-cancellation, shared-message-thread,
+read-only-preview, and preview-question changes recorded in its generated
+provenance. When the engine asks a question while it prepares a PDF, the
+question is shown and the operation watchdog waits for the answer. Original edits
 save a new original-format document and PDF before closing the embedded editor.
 PDF-only preview forces read-only permission, suppresses source autosave and
 editing messages, and starts export when the native engine reports a loaded

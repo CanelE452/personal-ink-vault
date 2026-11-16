@@ -308,6 +308,18 @@ def patch_activity(text):
         runOnUiThread(this::cancelEmbeddedNativeWatchdog);
     }
 
+    // Personal Ink Vault: while the engine waits for the user to answer one of its questions, the operation
+    // watchdog waits too. The answer starts a fresh operation timeout.
+    protected final void holdEmbeddedWatchdog() {
+        runOnUiThread(this::cancelEmbeddedNativeWatchdog);
+    }
+
+    protected final void resumeEmbeddedWatchdog() {
+        runOnUiThread(() -> {
+            if (!pivDestroyed && !pivNativeClosed.get()) watchEmbeddedNativeOperation();
+        });
+    }
+
     private void queueEmbeddedAutoSave() {
         if (!documentLoaded || !pivNativeOpened || isEmbeddedPreviewOnly() || isEmbeddedDocumentBusy() ||
                 pivDestroyed || isDestroyed() || pivClosing || pivNativeClosed.get() || nativeHandler == null ||
@@ -686,7 +698,7 @@ def main():
         "sourceRevision": lock["sourceRevision"],
         "sourceUrl": "https://github.com/CollaboraOnline/online.mirror/tree/" + lock["sourceRevision"],
         "apkUrl": lock["apk"]["url"], "apkSha256": lock["apk"]["sha256"],
-        "modificationVersion": "piv-8",
+        "modificationVersion": "piv-9",
         "assetPolicyVersion": ASSET_POLICY_VERSION,
         "changes": [
             "Embedded close/save hook in LOActivity",
@@ -701,6 +713,7 @@ def main():
             "Read-only export begins on native document status and unexpected closes report a failure",
             "Terminal load errors end PDF preview and result delivery waits for Activity and native close",
             "Verified PDF and explicit cancellation survive a stalled native preview close",
+            "Engine questions during a PDF preview hold the operation watchdog until the user answers",
         ],
         "licenses": ["license.html", "notice.txt", "office-engine-source-license.txt"],
     }

@@ -9,6 +9,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
@@ -19,6 +20,7 @@ import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/vault/block_page_document.dart';
 import 'package:saber/data/vault/card_canvas_document.dart';
 import 'package:saber/data/vault/infinite_document.dart';
+import 'package:saber/data/vault/pdf_import_state.dart';
 import 'package:saber/data/vault/saber_ink_adapter.dart';
 import 'package:saber/data/vault/workspace_database.dart';
 import 'package:saber/data/vault/workspace_store.dart';
@@ -31,7 +33,28 @@ class RenderedSnapshotPage {
   const new(this.png, this.pageCount, this.pageId, this.pageIndex);
 }
 
+/// Why a library cover could not be made; covers fall back to an icon silently, so the reason is only in the log.
+final _coverLog = Logger('PIVCover');
+
 class ThumbnailCache {
+  /// Each note's cover problem is logged once, not on every library rebuild.
+  final _reportedCoverIssues = <String>{};
+
+  void _reportCover(
+    VaultNote note,
+    String reason, [
+    Object? error,
+    StackTrace? stack,
+  ]) {
+    if (_reportedCoverIssues.add('${note.id} $reason')) {
+      _coverLog.warning(
+        'no cover: ${note.documentKind.name} ${note.id}: $reason',
+        error,
+        stack,
+      );
+    }
+  }
+
   static const rendererVersion = 2;
   static const _width = 240;
   static const _maxHeight = 320;
@@ -70,7 +93,8 @@ class ThumbnailCache {
               revision.officePdf?.revision ?? revision.body,
               annotation: revision.annotation,
             );
-    } catch (_) {
+    } catch (error, stack) {
+      _reportCover(note, 'cover key failed', error, stack);
       return null;
     }
   }
@@ -98,9 +122,16 @@ class ThumbnailCache {
     };
     if (entity == null) return null;
     final heads = await repository.heads(entity);
-    if (_retired || heads.length != 1) return null;
+    if (_retired) return null;
+    if (heads.length != 1) {
+      _reportCover(note, '${heads.length} heads');
+      return null;
+    }
     final revision = heads.single;
-    if (!_matchesRevision(repository, note, revision)) return null;
+    if (!_matchesRevision(repository, note, revision)) {
+      _reportCover(note, 'head does not match the note');
+      return null;
+    }
     RevisionRecord? annotation;
     OfficePdfVariant? officePdf;
     if (note.documentKind == VaultDocumentKind.office) {
@@ -298,7 +329,8 @@ class ThumbnailCache {
         annotation: revision.annotation,
         officePdf: revision.officePdf,
       );
-    } catch (_) {
+    } catch (error, stack) {
+      _reportCover(note, 'cover failed', error, stack);
       return null;
     }
   }
@@ -392,9 +424,19 @@ class ThumbnailCache {
       if (cached) return destination;
       if (_inkCover(note) || annotation != null) {
         final snapshot = annotation ?? revision;
-        if (!await _validSnapshot(repository, snapshot)) return null;
+        if (!await _validSnapshot(repository, snapshot)) {
+          _reportCover(
+            note,
+            'snapshot rejected (${snapshot.blobs.length} files, '
+            '${snapshot.blobs.values.fold<int>(0, (sum, blob) => sum + blob.length)} bytes)',
+          );
+          return null;
+        }
         core = await SaberInkAdapter.load(repository, snapshot);
-        if (core.pages.isEmpty) return null;
+        if (core.pages.isEmpty) {
+          _reportCover(note, 'no pages');
+          return null;
+        }
         final page = core.pages.first;
         final size = page.size;
         if (!size.width.isFinite ||
@@ -462,7 +504,8 @@ class ThumbnailCache {
       );
       if (!_validPngHeader(bytes) || bytes.length > _maxPngBytes) return null;
       return await _publishPng(destination, bytes);
-    } catch (_) {
+    } catch (error, stack) {
+      _reportCover(note, 'render failed', error, stack);
       return null;
     } finally {
       image?.dispose();
@@ -1077,9 +1120,12 @@ class ThumbnailCache {
       return false;
     var total = 0;
     for (final entry in revision.blobs.entries) {
-      if (!RegExp(r'^main\.sbn2(?:\.[0-9]+)?$').hasMatch(entry.key) ||
-          entry.value.length > _maxAssetBytes)
-        return false;
+      // Same files SaberInkAdapter.load accepts: every save of an imported
+      // PDF note carries the marker that names its original.
+      final known =
+          entry.key == PdfImportMarker.fileName ||
+          RegExp(r'^main\.sbn2(?:\.[0-9]+)?$').hasMatch(entry.key);
+      if (!known || entry.value.length > _maxAssetBytes) return false;
       total += entry.value.length;
       if (total > _maxSnapshotBytes) return false;
     }

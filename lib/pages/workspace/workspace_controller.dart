@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:saber/data/user_error.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/data/drive/drive_connection.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
@@ -68,7 +69,24 @@ class WorkspaceController extends ChangeNotifier {
   var markdownDirty = false;
   var inkDirty = false;
   var remoteConflict = false;
-  String? error;
+  String? _error;
+
+  /// The original failure behind [error], for "자세히". Setting [error]
+  /// directly clears it.
+  String? errorDetails;
+
+  String? get error => _error;
+  set error(String? value) {
+    _error = value;
+    errorDetails = null;
+  }
+
+  /// Shows [failure] as one sentence and keeps the original for "자세히".
+  void fail(Object failure) {
+    logUserError(failure);
+    _error = userErrorMessage(failure);
+    errorDetails = userErrorDetails(failure);
+  }
   var editorGeneration = 0;
   var _query = '';
   NoteRepository? _bookmarkQueryRepository;
@@ -956,7 +974,7 @@ class WorkspaceController extends ChangeNotifier {
   Future<void> refresh() {
     final next = _refreshTail.then((_) => _refresh());
     _refreshTail = next.catchError((Object e) {
-      error = '$e';
+      fail(e);
       if (!_disposed) notifyListeners();
     });
     return next;
@@ -2616,7 +2634,7 @@ class WorkspaceController extends ChangeNotifier {
     unawaited(
       pendingSave
           .catchError((Object e) {
-            error = '$e';
+            fail(e);
           })
           .then((_) => _operationTail)
           .then((_) => repository.close()),

@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.content.Intent
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -19,11 +21,23 @@ class MainActivity: FlutterActivity() {
     private var starNoteSourceBridge: DocumentSourceBridge? = null
     private var officeSourceBridge: DocumentSourceBridge? = null
     private var obsidianFolderBridge: ObsidianFolderBridge? = null
+    private var fullscreen = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         documentChannel = DocumentImportBridge.attach(this, flutterEngine.dartExecutor.binaryMessenger)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+        MethodChannel(messenger, "personal_ink_vault/system_bars")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setFullscreen" -> {
+                        fullscreen = call.arguments == true
+                        applySystemBars()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         starNoteSourceBridge = DocumentSourceBridge(this, messenger, DocumentSourceBridge.Kind.STARNOTE)
         officeSourceBridge = DocumentSourceBridge(this, messenger, DocumentSourceBridge.Kind.OFFICE)
         obsidianFolderBridge = ObsidianFolderBridge(this, flutterEngine.dartExecutor.binaryMessenger)
@@ -172,6 +186,31 @@ class MainActivity: FlutterActivity() {
 
         val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
         windowInsetsController.isAppearanceLightNavigationBars = true
+        applySystemBars()
+    }
+
+    // The navigation bar stays hidden from launch; a swipe from the edge shows it for a moment.
+    // The note's fullscreen button hides the status bar as well.
+    private fun applySystemBars() {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (fullscreen) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.statusBars())
+            controller.hide(WindowInsetsCompat.Type.navigationBars())
+        }
+    }
+
+    override fun onPostResume() {
+        // FlutterActivity re-applies its own system UI flags here, so hide the bars after it.
+        super.onPostResume()
+        applySystemBars()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applySystemBars()
     }
 
     override fun onResume() {

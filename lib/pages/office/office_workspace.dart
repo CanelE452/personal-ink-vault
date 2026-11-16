@@ -11,6 +11,8 @@ import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart' show PdfDocument;
+import 'package:saber/components/user_error_text.dart';
+import 'package:saber/data/user_error.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -173,6 +175,18 @@ typedef OfficePdfCopy = ({
   int? pageNumber,
 });
 
+/// What to do as soon as an Office document is open: the library card's tap
+/// edits the original, its ⋮ menu previews it or makes a PDF from it.
+enum OfficeOpenAction { edit, preview, pdf }
+
+/// One [OfficeOpenAction] request; each request is a new object, so the
+/// screen runs it once.
+class OfficeOpenRequest {
+  new(this.action);
+
+  final OfficeOpenAction action;
+}
+
 class OfficeWorkspace extends StatefulWidget {
   final NoteRepository repository;
   final VaultNote note;
@@ -183,6 +197,11 @@ class OfficeWorkspace extends StatefulWidget {
   final VoidCallback onBack;
   final OfficePageLinkRequest? pageLink;
   final ValueChanged<OfficePageLinkRequest>? onPageLinkHandled;
+
+  /// Run once when the document has loaded, with the same checks as its
+  /// button; [onOpenRequestHandled] reports it taken.
+  final OfficeOpenRequest? openRequest;
+  final ValueChanged<OfficeOpenRequest>? onOpenRequestHandled;
   final AndroidOfficeEngine? engine;
   final WindowsOfficeEngine? windowsEngine;
   final HwpStructuredOfficeEngine? hwpEngine;
@@ -226,6 +245,8 @@ class OfficeWorkspace extends StatefulWidget {
     required this.onBack,
     this.pageLink,
     this.onPageLinkHandled,
+    this.openRequest,
+    this.onOpenRequestHandled,
     this.engine,
     this.windowsEngine,
     this.hwpEngine,
@@ -382,13 +403,25 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   var _reportedDirty = false;
   var _reportedBusy = false;
   var _generation = 0;
-  String? _error;
+  String? _errorText;
+
+  /// The original failure behind [_error], for "자세히". Setting [_error]
+  /// clears it, so an earlier failure never shows under a newer message.
+  String? _errorDetails;
+
+  String? get _error => _errorText;
+  set _error(String? value) {
+    _errorText = value;
+    _errorDetails = null;
+  }
   String? _notice;
   String? _recoveryPath;
   String? _viewPageId;
   var _restoringView = false;
   OfficePageLinkRequest? _handledPageLink;
   var _pageLinkScheduled = false;
+  OfficeOpenRequest? _handledOpenRequest;
+  var _openRequestScheduled = false;
   ({OfficePageLinkRequest request, OfficeAnnotationSession annotation})?
   _pageLinkReveal;
   _OriginalPdfPage? _originalPreviewPage;
@@ -539,6 +572,9 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       }
       _schedulePageLink();
     }
+    if (!identical(oldWidget.openRequest, widget.openRequest)) {
+      _scheduleOpenRequest();
+    }
   }
 
   bool _current(int generation) => mounted && generation == _generation;
@@ -554,6 +590,61 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       widget.onBusyChanged?.call(_busy);
     }
     _schedulePageLink();
+    _scheduleOpenRequest();
+  }
+
+  void _scheduleOpenRequest() {
+    final request = widget.openRequest;
+    if (_busy ||
+        _openRequestScheduled ||
+        request == null ||
+        identical(request, _handledOpenRequest)) {
+      return;
+    }
+    _openRequestScheduled = true;
+    final binding = WidgetsBinding.instance;
+    binding.addPostFrameCallback((_) {
+      _openRequestScheduled = false;
+      if (!mounted) return;
+      final current = widget.openRequest;
+      if (_busy ||
+          current == null ||
+          identical(current, _handledOpenRequest)) {
+        return;
+      }
+      _handledOpenRequest = current;
+      widget.onOpenRequestHandled?.call(current);
+      unawaited(_runOpenRequest(current.action));
+    });
+    binding.ensureVisualUpdate();
+  }
+
+  /// The library's request, with the same checks as the matching button; a
+  /// request the document cannot take leaves this screen as it is.
+  Future<void> _runOpenRequest(OfficeOpenAction action) async {
+    if (_pendingNative != null) return;
+    switch (action) {
+      case OfficeOpenAction.edit:
+        // Only Android's HWP editor: it reports a close without changes.
+        // The Office editor saves the document again on every close, so
+        // opening it on a tap would add a version for each look; the
+        // Windows app keeps this screen and its edit tools. An unfinished
+        // earlier edit is offered on this screen first.
+        if (_canEdit && _useHwpEditor && !_hasUnfinishedEdit) {
+          await _run(_launchEdit);
+        }
+      case OfficeOpenAction.preview:
+        if (!_canPreview) return;
+        // An older note last left in its PDF handwriting shows the original.
+        if (_pdfMode) await _run(_showOriginal);
+        await _run(_startOriginalPreview);
+      case OfficeOpenAction.pdf:
+        if (_canPreview && (widget.onPdfCopy == null || _liveNote)) {
+          await _run(
+            widget.onPdfCopy == null ? _startPdfPreview : _startPdfCopy,
+          );
+        }
+    }
   }
 
   void _schedulePageLink() {
@@ -926,7 +1017,12 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         _recoveries = recoveries;
         _viewPageId = active == null ? null : view?.pageId;
         _notice = notice;
-        _error = openingError == null ? null : '문서를 열 수 없습니다: $openingError';
+        _error = openingError == null
+            ? null
+            : '문서를 열 수 없습니다: ${userErrorMessage(openingError)}';
+        _errorDetails = openingError == null
+            ? null
+            : userErrorDetails(openingError);
       });
       if (active != null && view?.pdfMode == true && selected != null) {
         try {
@@ -947,7 +1043,13 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         }
       }
     } catch (error) {
-      if (_current(generation)) setState(() => _error = '문서를 열 수 없습니다: $error');
+      logUserError(error);
+      if (_current(generation)) {
+        setState(() {
+          _error = '문서를 열 수 없습니다: ${userErrorMessage(error)}';
+          _errorDetails = userErrorDetails(error);
+        });
+      }
     } finally {
       if (_current(generation)) {
         setState(() => _loading = false);
@@ -1036,6 +1138,26 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     _viewPageId = null;
     _error = null;
     _notice = null;
+  }
+
+  /// The first PDF converted from an original without one stays with the note: the library shows its first page
+  /// as the cover, and later previews and PDF copies reuse it. Keeping it never fails the PDF the user asked for.
+  Future<void> _keepFirstPdf(
+    OfficeEdition edition,
+    Uint8List bytes,
+    int pageCount,
+  ) async {
+    try {
+      final added = await _documents.keepFirstPdf(
+        widget.note,
+        pdfBytes: bytes,
+        pageCount: pageCount,
+        revisionId: edition.revision.revisionId,
+      );
+      if (added && mounted) await _refreshPdfVariants();
+    } catch (error) {
+      debugPrint('PIVOffice: the converted PDF was not kept for the cover: $error');
+    }
   }
 
   Future<void> _refreshPdfVariants() async {
@@ -1181,7 +1303,13 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     try {
       await operation();
     } catch (error) {
-      if (_current(generation)) setState(() => _error = '$error');
+      logUserError(error);
+      if (_current(generation)) {
+        setState(() {
+          _error = userErrorMessage(error);
+          _errorDetails = userErrorDetails(error);
+        });
+      }
     }
   }
 
@@ -1557,6 +1685,10 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         result,
       );
       if (!current()) return;
+      if (widget.onPdfCopy != null) {
+        await _keepFirstPdf(selected, bytes, result.pageCount);
+        if (!current()) return;
+      }
       setState(() {
         _originalPreview = _OriginalPreviewData(
           selected.revision.revisionId,
@@ -1663,6 +1795,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
           if (result == null) return;
           bytes = result.bytes;
           pageCount = result.pageCount;
+          await _keepFirstPdf(edition, result.bytes, result.pageCount);
         }
         copy = (
           fileName:
@@ -4047,6 +4180,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         generation: generation,
         workingPath: working.path,
         result: result,
+        cancelLeavesNothing: hwp,
       );
     } catch (_) {
       if (_current(generation) && _pendingNative == null) {
@@ -4057,6 +4191,9 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     }
   }
 
+  /// [cancelLeavesNothing]: the editor writes nothing when it is closed
+  /// without saving (the HWP editor), so a cancelled session whose working
+  /// copy is still the original has nothing to resume.
   Future<void> _acceptNativeResult({
     required OfficeEditRecoveryStore recovery,
     required OfficeDocumentStore documents,
@@ -4066,18 +4203,24 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     required String workingPath,
     required AndroidOfficeEditResult result,
     bool continuePreserved = false,
+    bool cancelLeavesNothing = false,
     bool Function()? shouldPreserve,
     Future<void> Function()? onRecorded,
     VoidCallback? onPublishing,
   }) async {
     if (result.status == AndroidOfficeEditStatus.cancelled) {
-      await recovery.preserve(note, sessionId);
+      // Closed without changes: nothing to resume or announce (a tap opens
+      // the HWP editor just to look).
+      final unchanged =
+          cancelLeavesNothing && await recovery.discardUnchanged(note, sessionId);
+      if (!unchanged) await recovery.preserve(note, sessionId);
       if (!_current(generation)) return;
       final entries = await recovery.list(note);
       if (!_current(generation)) return;
       setState(() {
         _nativeDirty = false;
-        _notice = '원본 편집을 취소했습니다.';
+        _notice = unchanged ? null : '원본 편집을 취소했습니다.';
+        if (unchanged) _recoveryPath = null;
         _recoveries = entries;
       });
       _report();
@@ -6035,17 +6178,27 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
             if (values.single) {
               unawaited(_run(_startPdfPreview));
             } else {
-              unawaited(
-                _run(() async {
-                  await _saveAnnotations();
-                  if (!mounted) return;
-                  _captureViewPage();
-                  setState(() => _pdfMode = false);
-                  await _rememberView();
-                }),
-              );
+              unawaited(_run(_showOriginal));
             }
           },
+  );
+
+  /// Leaves the PDF handwriting for the original, saving the handwriting.
+  Future<void> _showOriginal() async {
+    await _saveAnnotations();
+    if (!mounted) return;
+    _captureViewPage();
+    setState(() => _pdfMode = false);
+    await _rememberView();
+  }
+
+  /// An edit from before that was neither saved nor put away: the cards above
+  /// the 원본 편집 button (kept work under 보관한 편집 작업 does not count).
+  bool get _hasUnfinishedEdit => _recoveries.any(
+    (entry) =>
+        entry.stage != OfficeEditRecoveryStage.completed &&
+        entry.stage != OfficeEditRecoveryStage.unchanged &&
+        entry.stage != OfficeEditRecoveryStage.preserved,
   );
 
   @override
@@ -6183,7 +6336,14 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
             padding: const EdgeInsets.all(12),
             child: Column(
               children: [
-                Text(_error!),
+                UserErrorText(
+                  message: _error!,
+                  details: [
+                    ?_errorDetails,
+                    if (_recoveryPath case final path?) '복구 파일 위치: $path',
+                  ].join('\n'),
+                  textAlign: TextAlign.center,
+                ),
                 if (_pendingNative != null) ...[
                   const Text('편집 파일은 기기에 남아 있습니다. 원본 저장소는 덮어쓰지 않았습니다.'),
                   Wrap(
@@ -6209,11 +6369,6 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
                     ],
                   ),
                 ],
-                if (_recoveryPath != null)
-                  SelectableText(
-                    _recoveryPath!,
-                    style: const TextStyle(fontSize: 11),
-                  ),
               ],
             ),
           ),

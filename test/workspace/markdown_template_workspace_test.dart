@@ -11,6 +11,7 @@ import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/vault/library_store.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';
+import 'package:saber/pages/workspace/markdown_editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
 import '../utils/test_mock_channel_handlers.dart';
@@ -127,7 +128,12 @@ void main() {
         );
 
         await _tap(tester, find.byTooltip('원문 편집'));
-        final field = find.byType(TextField);
+        // The Markdown source box (a wide window also shows the side bar's
+        // search box).
+        final field = find.descendant(
+          of: find.byType(MarkdownEditor),
+          matching: find.byType(TextField),
+        );
         final controller = tester.widget<TextField>(field).controller!;
         final start = _original.indexOf('기존');
         controller.selection = TextSelection(

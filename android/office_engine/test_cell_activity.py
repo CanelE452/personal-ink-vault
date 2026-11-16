@@ -78,6 +78,7 @@ public final class CellActivityHarness extends Parent {
   void setResult(int code, Intent data) { resultCode = code; result = data; }
   void finish() { finishing = true; events.add("finish-preview"); }
   void finishWithProgress() { events.add("safe-save-close"); }
+  void showPreviewQuestion(boolean shown, String detail) { events.add(shown ? "question-shown" : "question-closed"); }
   boolean sendEmbeddedScript(String id, String source) {
     sentId = id; sentScript = source; return true;
   }
@@ -199,6 +200,7 @@ class CellActivityTests(unittest.TestCase):
         signatures = ('protected void onDestroy()', 'protected void onEmbeddedActivityReleased()',
                       'protected void onNewIntent(Intent intent)',
                       'protected boolean isEmbeddedDocumentBusy()', 'protected boolean onEmbeddedNativeMessage(byte[] message)',
+                      'private static String previewQuestion(byte[] message)',
                       'private static String previewLoadFailure(byte[] message)',
                       'boolean isCellEditorReady()', 'boolean postCellScript(String requestId, String script)',
                       'void completeCellScript()', 'void closeCellEditor()',

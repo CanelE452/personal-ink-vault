@@ -296,7 +296,8 @@ void main() {
 
   for (final (platform, width, menuKey) in const [
     (TargetPlatform.android, 360.0, 'workspace-more-actions'),
-    (TargetPlatform.android, 1100.0, 'portable-export-menu'),
+    // An open note on Android keeps the vault ZIP in its note bar's menu at every width.
+    (TargetPlatform.android, 1100.0, 'workspace-more-actions'),
     (TargetPlatform.windows, 1100.0, 'portable-export-menu'),
   ]) {
     testWidgets(
@@ -404,7 +405,11 @@ void main() {
       await tester.tap(drawer);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.text('Obsidian 보관함 ZIP'));
+      // The vault tools moved from the side bar's menu into its settings.
+      await tester.tap(find.byKey(const ValueKey('library-settings')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byKey(const ValueKey('settings-obsidian')));
       await tester.pump();
       await wait(tester, () => picker.calls == 1);
       await wait(

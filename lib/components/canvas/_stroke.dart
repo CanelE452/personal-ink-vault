@@ -8,6 +8,7 @@ import 'package:one_dollar_unistroke_recognizer/one_dollar_unistroke_recognizer.
 import 'package:perfect_freehand/perfect_freehand.dart';
 import 'package:saber/components/canvas/_circle_stroke.dart';
 import 'package:saber/components/canvas/_rectangle_stroke.dart';
+import 'package:saber/components/canvas/stroke_stabiliser.dart';
 import 'package:saber/data/extensions/list_extensions.dart';
 import 'package:saber/data/extensions/point_extensions.dart';
 import 'package:sbn/has_size.dart';
@@ -172,8 +173,21 @@ class Stroke {
       options.simulatePressure = false;
     }
 
-    points.add(PointVector(point.dx, point.dy, pressure));
+    final vector = PointVector(point.dx, point.dy, pressure);
+    if (_stabiliser case final stabiliser?) {
+      stabiliser.add(vector, points);
+    } else {
+      points.add(vector);
+    }
     markPolygonNeedsUpdating();
+  }
+
+  StrokeStabiliser? _stabiliser;
+
+  /// Smooths the points added from now on along the stroke, over [sigma]
+  /// page units (see [StrokeStabiliser]). Zero adds points as they come.
+  void stabilise(double sigma) {
+    _stabiliser = sigma > 0 ? StrokeStabiliser(sigma) : null;
   }
 
   void addPoints(List<Offset> points) {
@@ -371,6 +385,33 @@ class Stroke {
     options.isComplete = true;
     options.start.taperEnabled = false;
     options.end.taperEnabled = false;
+  }
+
+  /// Keeps only the first and the latest point while the stroke is drawn,
+  /// for a tool that always draws straight lines. The points have the same
+  /// shape as [convertToLine] makes, but the stroke is not marked complete.
+  ///
+  /// With [axisLock] the line is always horizontal or vertical, whichever is
+  /// closer to the pen's direction.
+  void straightenWhileDrawing({bool axisLock = false}) {
+    if (points.length < 2) return;
+    var (firstPoint, lastPoint) = snapLine(points.first, points.last);
+    if (axisLock) {
+      final dx = (lastPoint.dx - firstPoint.dx).abs();
+      final dy = (lastPoint.dy - firstPoint.dy).abs();
+      lastPoint = dx >= dy
+          ? PointVector(lastPoint.dx, firstPoint.dy, lastPoint.pressure)
+          : PointVector(firstPoint.dx, lastPoint.dy, lastPoint.pressure);
+    }
+    points
+      ..clear()
+      ..add(firstPoint)
+      ..add(lastPoint)
+      ..add(lastPoint);
+    // Smoothing pulls an unfinished stroke's end back toward its start
+    // (perfect_freehand's streamline), so the line would trail the pen.
+    options.streamline = 0;
+    markPolygonNeedsUpdating();
   }
 
   /// Snaps a line to either horizontal or vertical

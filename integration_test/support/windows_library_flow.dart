@@ -53,14 +53,16 @@ WorkspaceController _readWorkspace(WindowsFlowHarness h) {
 }
 
 Future<void> _selectFolder(WindowsFlowHarness h, {required bool create}) async {
-  if (_home(h).currentFolderId != null) {
+  // The title's ‹ goes up one folder at a time (226 replaced the path).
+  for (var depth = 0; _home(h).currentFolderId != null && depth < 8; depth++) {
+    final folder = _home(h).currentFolderId;
     await h.tap(
-      find.byKey(const ValueKey('library-root')),
-      'open root library',
+      find.byKey(const ValueKey('library-up')),
+      'open the parent folder',
     );
     await h.waitUntil(
-      'root library visible',
-      () => _library.evaluate().isNotEmpty && _home(h).currentFolderId == null,
+      'parent folder visible',
+      () => _library.evaluate().isNotEmpty && _home(h).currentFolderId != folder,
     );
   }
 

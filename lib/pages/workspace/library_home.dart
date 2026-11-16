@@ -27,7 +27,8 @@ enum LibraryCreateAction {
   folder,
 }
 
-enum LibraryNoteAction { rename, move, trash, restore }
+/// [preview] and [pdf] are for Office·한글 documents only.
+enum LibraryNoteAction { rename, move, trash, restore, preview, pdf }
 
 enum LibraryFolderAction { rename, move, trash, restore }
 
@@ -44,8 +45,10 @@ class LibraryHome extends StatefulWidget {
   final ValueChanged<LibraryCreateAction> onCreate;
   final Map<String, ImageProvider> thumbnails;
   final ValueChanged<VaultNote>? onPreviewRequested;
+
+  /// The parent searches the documents (its box is in the side bar,
+  /// [LibrarySearchField]); the title's × clears the search through it.
   final ValueChanged<String>? onSearchChanged;
-  final ValueChanged<bool>? onSearchExpressionChanged;
   final String? searchQuery;
   final bool searchAcrossFolders;
   final bool searchExpression;
@@ -62,6 +65,10 @@ class LibraryHome extends StatefulWidget {
   final bool showTrash;
   final Set<LibraryCreateAction> availableCreateActions;
 
+  /// Left of the title in the header: the button that shows the hidden side
+  /// bar, or the drawer button on a phone (the library has no top row).
+  final Widget? leading;
+
   const new({
     super.key,
     required this.notes,
@@ -75,7 +82,6 @@ class LibraryHome extends StatefulWidget {
     this.thumbnails = const {},
     this.onPreviewRequested,
     this.onSearchChanged,
-    this.onSearchExpressionChanged,
     this.searchQuery,
     this.searchAcrossFolders = false,
     this.searchExpression = false,
@@ -90,19 +96,48 @@ class LibraryHome extends StatefulWidget {
     this.onBatchAction,
     this.showTrash = false,
     this.availableCreateActions = const {...LibraryCreateAction.values},
+    this.leading,
   });
 
   @override
   State<LibraryHome> createState() => _LibraryHomeState();
 }
 
-class _LibraryHomeState extends State<LibraryHome> {
+class _LibraryHomeState extends State<LibraryHome>
+    with SingleTickerProviderStateMixin {
   static const _teal = Color(0xff237d82);
   final _createTileMenu =
       GlobalKey<PopupMenuButtonState<LibraryCreateAction>>();
-  late final _searchText = TextEditingController(text: widget.searchQuery);
-  String get _query => _searchText.text;
+  String get _query => widget.searchQuery ?? '';
   var _filter = 'all';
+
+  /// The document kinds as swipeable tabs, like StarNote's 모두·메모·PDF.
+  static const _filterTabs = [
+    ('all', '모두'),
+    ('ink', '필기'),
+    ('pdf', 'PDF'),
+    ('markdown', 'Markdown'),
+    ('canvas', '캔버스'),
+    ('page', '페이지'),
+    ('database', '데이터베이스'),
+    ('office', 'Office·한글'),
+  ];
+  // A tab tap switches at once (taps on a sliding page would be ignored);
+  // swiping still slides.
+  late final _tabs = TabController(
+    length: _filterTabs.length,
+    vsync: this,
+    animationDuration: Duration.zero,
+  )..addListener(_tabChanged);
+
+  void _tabChanged() {
+    final next = _filterTabs[_tabs.index].$1;
+    if (next == _filter) return;
+    setState(() {
+      _filter = next;
+      _selectedNoteIds.clear();
+    });
+  }
   var _grid = true;
   var _sortByTitle = false;
   final _scheduledPreviews = <String>{};
@@ -111,13 +146,6 @@ class _LibraryHomeState extends State<LibraryHome> {
   @override
   void didUpdateWidget(covariant LibraryHome oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final query = widget.searchQuery;
-    if (query != null && query != _searchText.text) {
-      _searchText.value = TextEditingValue(
-        text: query,
-        selection: TextSelection.collapsed(offset: query.length),
-      );
-    }
     if (!widget.selecting ||
         !oldWidget.selecting ||
         oldWidget.currentFolderId != widget.currentFolderId ||
@@ -133,7 +161,7 @@ class _LibraryHomeState extends State<LibraryHome> {
 
   @override
   void dispose() {
-    _searchText.dispose();
+    _tabs.dispose();
     super.dispose();
   }
 
@@ -151,7 +179,7 @@ class _LibraryHomeState extends State<LibraryHome> {
     return path;
   }
 
-  bool _matchesKind(VaultDocumentKind kind) => switch (_filter) {
+  bool _matchesKind(VaultDocumentKind kind, String filter) => switch (filter) {
     'ink' =>
       kind == VaultDocumentKind.handwriting ||
           kind == VaultDocumentKind.infinite ||
@@ -165,7 +193,9 @@ class _LibraryHomeState extends State<LibraryHome> {
     _ => true,
   };
 
-  List<VaultNote> get _notes {
+  List<VaultNote> get _notes => _notesFor(_filter);
+
+  List<VaultNote> _notesFor(String filter) {
     if (!widget.showTrash && widget.searchPending) return [];
     final query = _query.trim().toLowerCase();
     final notes = widget.notes.where((note) {
@@ -175,7 +205,7 @@ class _LibraryHomeState extends State<LibraryHome> {
                     note.folderId == widget.currentFolderId) &&
                 (!note.trashed || note.deletionConflict);
       return inLocation &&
-          _matchesKind(note.documentKind) &&
+          _matchesKind(note.documentKind, filter) &&
           (widget.onSearchChanged != null ||
               query.isEmpty ||
               note.title.toLowerCase().contains(query));
@@ -332,99 +362,65 @@ class _LibraryHomeState extends State<LibraryHome> {
     ),
   );
 
-  Widget _createButton() => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-    decoration: BoxDecoration(
-      color: _teal,
-      borderRadius: BorderRadius.circular(9),
-    ),
-    child: const Row(
+  Widget _createButton() => const Padding(
+    padding: EdgeInsets.all(8),
+    child: Icon(Icons.add, size: 24, color: _teal),
+  );
+
+  /// The header's title, as StarNote's: where the documents below are from.
+  /// In a folder its ‹ goes up a folder; while searching, × clears it.
+  Widget _title(bool compact) {
+    final style = TextStyle(
+      color: Theme.of(context).colorScheme.onSurface,
+      fontSize: compact ? 18 : 21,
+      fontWeight: FontWeight.w700,
+    );
+    Widget title(String text) => Flexible(
+      child: Text(
+        text,
+        key: const ValueKey('library-title'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      ),
+    );
+    final query = _query.trim();
+    if (query.isNotEmpty) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          title(
+            widget.showTrash ? "휴지통 '$query' 검색 결과" : "'$query' 검색 결과",
+          ),
+          if (widget.onSearchChanged case final search?)
+            IconButton(
+              key: const ValueKey('library-search-clear'),
+              tooltip: '검색 지우기',
+              icon: const Icon(Icons.close),
+              onPressed: widget.selectionBusy ? null : () => search(''),
+            ),
+        ],
+      );
+    }
+    final path = widget.showTrash ? const <VaultFolder>[] : _path;
+    return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.add, size: 20, color: Colors.white),
-        SizedBox(width: 6),
-        Text(
-          '생성',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        ),
-      ],
-    ),
-  );
-
-  Widget _breadcrumbs() => SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: Row(
-      children: [
-        TextButton(
-          key: const ValueKey('library-root'),
-          onPressed: () => widget.onOpenFolder(null),
-          child: Text(
-            widget.showTrash ? '휴지통' : '내 문서',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface,
-              fontSize: 21,
-              fontWeight: FontWeight.w700,
+        if (path.isNotEmpty)
+          IconButton(
+            key: const ValueKey('library-up'),
+            tooltip: '위 폴더로',
+            icon: const Icon(Icons.chevron_left),
+            onPressed: () => widget.onOpenFolder(
+              path.length > 1 ? path[path.length - 2].id : null,
             ),
           ),
-        ),
-        if (!widget.showTrash)
-          for (final folder in _path) ...[
-            const Icon(Icons.chevron_right, size: 19),
-            TextButton(
-              onPressed: () => widget.onOpenFolder(folder.id),
-              child: Text(
-                folder.title,
-                style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-      ],
-    ),
-  );
-
-  Widget _search() => TextField(
-    key: const ValueKey('library-search'),
-    controller: _searchText,
-    autocorrect: !widget.searchExpression,
-    smartDashesType: widget.searchExpression ? SmartDashesType.disabled : null,
-    smartQuotesType: widget.searchExpression ? SmartQuotesType.disabled : null,
-    onChanged: (value) {
-      setState(_selectedNoteIds.clear);
-      widget.onSearchChanged?.call(value);
-    },
-    enabled: !widget.selectionBusy,
-    decoration: InputDecoration(
-      hintText: '문서 검색',
-      prefixIcon: const Icon(Icons.search, size: 23),
-      isDense: true,
-      filled: true,
-      fillColor: Theme.of(context).colorScheme.surfaceContainerLow,
-      border: OutlineInputBorder(
-        borderSide: BorderSide.none,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-    ),
-  );
-
-  Widget _searchControls() {
-    if (widget.showTrash || widget.onSearchExpressionChanged == null) {
-      return _search();
-    }
-    return Row(
-      children: [
-        Expanded(child: _search()),
-        const SizedBox(width: 8),
-        FilterChip(
-          key: const ValueKey('library-search-expression'),
-          label: const Text('검색식'),
-          selected: widget.searchExpression,
-          onSelected: widget.selectionBusy
-              ? null
-              : widget.onSearchExpressionChanged,
+        title(
+          widget.showTrash
+              ? '휴지통'
+              : path.isEmpty
+              ? '내 문서'
+              : path.last.title,
         ),
       ],
     );
@@ -434,7 +430,7 @@ class _LibraryHomeState extends State<LibraryHome> {
     mainAxisSize: MainAxisSize.min,
     children: [
       PopupMenuButton<bool>(
-        tooltip: '정렬',
+        tooltip: _sortByTitle ? '정렬: 이름순' : '정렬: 기본 순서',
         onSelected: (value) => setState(() => _sortByTitle = value),
         itemBuilder: (_) => [
           CheckedPopupMenuItem(
@@ -448,16 +444,9 @@ class _LibraryHomeState extends State<LibraryHome> {
             child: const Text('이름순'),
           ),
         ],
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.sort, size: 22),
-              const SizedBox(width: 6),
-              Text(_sortByTitle ? '이름순' : '기본 순서'),
-            ],
-          ),
+        child: const Padding(
+          padding: EdgeInsets.all(8),
+          child: Icon(Icons.sort, size: 22),
         ),
       ),
       if (widget.onSelectionChanged != null)
@@ -544,50 +533,22 @@ class _LibraryHomeState extends State<LibraryHome> {
     );
   }
 
-  Widget _filters() => SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: Row(
-      children: [
-        for (final item in const [
-          ('all', '모두'),
-          ('ink', '필기'),
-          ('pdf', 'PDF'),
-          ('markdown', 'Markdown'),
-          ('canvas', '캔버스'),
-          ('page', '페이지'),
-          ('database', '데이터베이스'),
-          ('office', 'Office·한글'),
-        ])
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              key: ValueKey('library-filter-${item.$1}'),
-              label: Text(item.$2),
-              selected: _filter == item.$1,
-              showCheckmark: false,
-              onSelected: widget.selectionBusy
-                  ? null
-                  : (_) {
-                      if (_filter == item.$1) return;
-                      setState(() {
-                        _filter = item.$1;
-                        _selectedNoteIds.clear();
-                      });
-                    },
-              selectedColor: _teal.withValues(alpha: .12),
-              side: _filter == item.$1
-                  ? const BorderSide(color: _teal)
-                  : BorderSide(
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
-              labelStyle: TextStyle(
-                color: _filter == item.$1 ? _teal : null,
-                fontWeight: _filter == item.$1
-                    ? FontWeight.w600
-                    : FontWeight.normal,
-              ),
-            ),
-          ),
+  Widget _filters() => IgnorePointer(
+    ignoring: widget.selectionBusy,
+    child: TabBar(
+      key: const ValueKey('library-filter-tabs'),
+      controller: _tabs,
+      isScrollable: true,
+      tabAlignment: TabAlignment.start,
+      labelColor: _teal,
+      unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+      indicatorColor: _teal,
+      dividerColor: Colors.transparent,
+      labelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: const TextStyle(fontSize: 15),
+      tabs: [
+        for (final (id, label) in _filterTabs)
+          Tab(key: ValueKey('library-filter-$id'), text: label, height: 40),
       ],
     ),
   );
@@ -623,37 +584,112 @@ class _LibraryHomeState extends State<LibraryHome> {
                 ],
               ),
             ),
-            if (widget.onFolderAction != null)
-              PopupMenuButton<LibraryFolderAction>(
-                tooltip: '폴더 메뉴',
-                onSelected: (action) => widget.onFolderAction!(folder, action),
-                itemBuilder: (_) => [
-                  if (folder.trashed)
-                    const PopupMenuItem(
-                      value: LibraryFolderAction.restore,
-                      child: Text('복원'),
-                    )
-                  else ...[
-                    const PopupMenuItem(
-                      value: LibraryFolderAction.rename,
-                      child: Text('이름 변경'),
-                    ),
-                    const PopupMenuItem(
-                      value: LibraryFolderAction.move,
-                      child: Text('이동'),
-                    ),
-                    const PopupMenuItem(
-                      value: LibraryFolderAction.trash,
-                      child: Text('휴지통으로 이동'),
-                    ),
-                  ],
-                ],
-              ),
+            if (widget.onFolderAction != null) _folderMenu(folder),
           ],
         ),
       ),
     ),
   );
+
+  Widget _folderMenu(VaultFolder folder) => PopupMenuButton<LibraryFolderAction>(
+    tooltip: '폴더 메뉴',
+    onSelected: (action) => widget.onFolderAction!(folder, action),
+    itemBuilder: (_) => [
+      if (folder.trashed)
+        const PopupMenuItem(
+          value: LibraryFolderAction.restore,
+          child: Text('복원'),
+        )
+      else ...[
+        const PopupMenuItem(
+          value: LibraryFolderAction.rename,
+          child: Text('이름 변경'),
+        ),
+        const PopupMenuItem(value: LibraryFolderAction.move, child: Text('이동')),
+        const PopupMenuItem(
+          value: LibraryFolderAction.trash,
+          child: Text('휴지통으로 이동'),
+        ),
+      ],
+    ],
+  );
+
+  /// Documents per folder, counting the folders inside it, for the covers.
+  Map<String, int> _folderCounts() {
+    final parents = {
+      for (final folder in widget.folders) folder.id: folder.parentId,
+    };
+    final counts = <String, int>{};
+    for (final note in widget.notes) {
+      if (note.trashed) continue;
+      var id = note.folderId;
+      final seen = <String>{};
+      while (id != null && seen.add(id)) {
+        counts[id] = (counts[id] ?? 0) + 1;
+        id = parents[id];
+      }
+    }
+    return counts;
+  }
+
+  /// A folder as a cover the size of a document card, like StarNote.
+  Widget _folderCover(VaultFolder folder, int count) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      key: ValueKey('library-folder-${folder.id}'),
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => widget.onOpenFolder(folder.id),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: CustomPaint(
+                painter: const _FolderShape(
+                  fill: Color(0xffe9f2f1),
+                  border: Color(0xffcadcda),
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.folder_outlined,
+                    size: 46,
+                    color: _teal.withValues(alpha: .65),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    folder.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (widget.onFolderAction != null) _folderMenu(folder),
+              ],
+            ),
+            Text(
+              '$count개 문서',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (folder.deletionConflict) _conflict(),
+          ],
+        ),
+      ),
+    ),
+  );
+
 
   Widget _noteMenu(VaultNote note) => PopupMenuButton<LibraryNoteAction>(
     key: ValueKey('library-note-menu-${note.revision.revisionId}'),
@@ -663,6 +699,20 @@ class _LibraryHomeState extends State<LibraryHome> {
       if (note.trashed)
         const PopupMenuItem(value: LibraryNoteAction.restore, child: Text('복원'))
       else ...[
+        // A tap edits an Office·한글 original; the menu keeps its preview and
+        // the PDF made from it for handwriting.
+        if (note.documentKind == VaultDocumentKind.office) ...[
+          const PopupMenuItem(
+            key: ValueKey('library-note-preview'),
+            value: LibraryNoteAction.preview,
+            child: Text('미리보기'),
+          ),
+          const PopupMenuItem(
+            key: ValueKey('library-note-pdf'),
+            value: LibraryNoteAction.pdf,
+            child: Text('PDF로 바꾸기'),
+          ),
+        ],
         const PopupMenuItem(
           value: LibraryNoteAction.rename,
           child: Text('이름 변경'),
@@ -800,7 +850,7 @@ class _LibraryHomeState extends State<LibraryHome> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 14,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -880,27 +930,23 @@ class _LibraryHomeState extends State<LibraryHome> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(child: _breadcrumbs()),
-                if (canCreate) ...[
-                  const SizedBox(width: 10),
-                  _createMenu(tile: false),
-                ],
-              ],
-            ),
-            const SizedBox(height: 14),
-            if (compact) ...[
-              _searchControls(),
-              Align(alignment: Alignment.centerRight, child: _sortAndLayout()),
-            ] else
-              Row(
-                children: [
-                  Expanded(child: _searchControls()),
-                  const SizedBox(width: 16),
-                  _sortAndLayout(),
-                ],
+            // The title in the middle, as an AppBar centres it: the bar or
+            // drawer button on its left, the view and create on its right.
+            SizedBox(
+              height: 56,
+              child: NavigationToolbar(
+                leading: widget.leading,
+                middle: _title(compact),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _sortAndLayout(),
+                    if (canCreate) _createMenu(tile: false),
+                  ],
+                ),
+                middleSpacing: 8,
               ),
+            ),
             if (!widget.showTrash && widget.searchExpression) ...[
               const SizedBox(height: 6),
               Text(
@@ -921,89 +967,28 @@ class _LibraryHomeState extends State<LibraryHome> {
                   ),
                 ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
             _filters(),
             if (widget.selecting) _selectionActions(selectable),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
             Expanded(
-              child: CustomScrollView(
-                key: PageStorageKey(
-                  'library-${widget.showTrash ? 'trash' : widget.currentFolderId ?? 'root'}-$_grid',
-                ),
-                slivers: [
-                  if (folders.isNotEmpty) ...[
-                    SliverGrid(
-                      delegate: SliverChildBuilderDelegate(
-                        (_, index) => _folderCard(folders[index]),
-                        childCount: folders.length,
-                      ),
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 300,
-                            mainAxisExtent: 80,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 12,
-                          ),
+              child: TabBarView(
+                controller: _tabs,
+                physics: widget.selectionBusy
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
+                children: [
+                  for (final (filter, _) in _filterTabs)
+                    _content(
+                      filter,
+                      notes: filter == _filter ? notes : _notesFor(filter),
+                      folders: filter == 'all' ? folders : const [],
+                      selectable: filter == _filter
+                          ? selectable
+                          : const <String, VaultNote>{},
+                      // The 생성 card holds a GlobalKey, so only the current tab shows it.
+                      canCreate: canCreate && filter == _filter,
                     ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                  ],
-                  if (_grid)
-                    SliverGrid(
-                      key: const ValueKey('library-grid'),
-                      delegate: SliverChildBuilderDelegate((_, index) {
-                        if (canCreate && index == 0) {
-                          return Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: _createMenu(tile: true),
-                          );
-                        }
-                        final note = notes[index - (canCreate ? 1 : 0)];
-                        return _noteCard(note, selectable.containsKey(note.id));
-                      }, childCount: notes.length + (canCreate ? 1 : 0)),
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 245,
-                            mainAxisExtent: 290,
-                            crossAxisSpacing: 24,
-                            mainAxisSpacing: 24,
-                          ),
-                    )
-                  else
-                    SliverList(
-                      key: const ValueKey('library-list'),
-                      delegate: SliverChildBuilderDelegate((_, index) {
-                        if (canCreate && index == 0) {
-                          return SizedBox(
-                            height: 76,
-                            child: _createMenu(tile: true),
-                          );
-                        }
-                        final note = notes[index - (canCreate ? 1 : 0)];
-                        return _noteRow(note, selectable.containsKey(note.id));
-                      }, childCount: notes.length + (canCreate ? 1 : 0)),
-                    ),
-                  if (notes.isEmpty &&
-                      (widget.showTrash || widget.searchError == null))
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 30),
-                        child: Text(
-                          !widget.showTrash && widget.searchPending
-                              ? '검색 중…'
-                              : _query.isNotEmpty || _filter != 'all'
-                              ? '조건에 맞는 문서가 없습니다.'
-                              : widget.showTrash
-                              ? '휴지통이 비어 있습니다.'
-                              : '생성을 눌러 이 폴더에 문서를 추가하세요.',
-                          style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 28)),
                 ],
               ),
             ),
@@ -1012,6 +997,137 @@ class _LibraryHomeState extends State<LibraryHome> {
       );
     },
   );
+
+  Widget _content(
+    String filter, {
+    required List<VaultNote> notes,
+    required List<VaultFolder> folders,
+    required Map<String, VaultNote> selectable,
+    required bool canCreate,
+  }) {
+    final counts = folders.isEmpty ? const <String, int>{} : _folderCounts();
+    final leading = canCreate ? 1 : 0;
+    return CustomScrollView(
+      key: PageStorageKey(
+        'library-${widget.showTrash ? 'trash' : widget.currentFolderId ?? 'root'}-$_grid-$filter',
+      ),
+      slivers: [
+        if (_grid)
+          SliverGrid(
+            key: const ValueKey('library-grid'),
+            delegate: SliverChildBuilderDelegate((_, index) {
+              if (index < leading) {
+                return Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: _createMenu(tile: true),
+                );
+              }
+              final position = index - leading;
+              if (position < folders.length) {
+                final folder = folders[position];
+                return _folderCover(folder, counts[folder.id] ?? 0);
+              }
+              final note = notes[position - folders.length];
+              return _noteCard(note, selectable.containsKey(note.id));
+            }, childCount: leading + folders.length + notes.length),
+            // Four columns and four rows on a tablet held upright (824 dp wide), six across when it lies flat.
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 200,
+              mainAxisExtent: 262,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+            ),
+          )
+        else ...[
+          if (folders.isNotEmpty) ...[
+            SliverGrid(
+              delegate: SliverChildBuilderDelegate(
+                (_, index) => _folderCard(folders[index]),
+                childCount: folders.length,
+              ),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 300,
+                mainAxisExtent: 80,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 12,
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          ],
+          SliverList(
+            key: const ValueKey('library-list'),
+            delegate: SliverChildBuilderDelegate((_, index) {
+              if (index < leading) {
+                return SizedBox(height: 76, child: _createMenu(tile: true));
+              }
+              final note = notes[index - leading];
+              return _noteRow(note, selectable.containsKey(note.id));
+            }, childCount: notes.length + leading),
+          ),
+        ],
+        if (notes.isEmpty && (widget.showTrash || widget.searchError == null))
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 30),
+              child: Text(
+                !widget.showTrash && widget.searchPending
+                    ? '검색 중…'
+                    : _query.isNotEmpty || filter != 'all'
+                    ? '조건에 맞는 문서가 없습니다.'
+                    : widget.showTrash
+                    ? '휴지통이 비어 있습니다.'
+                    : '생성을 눌러 이 폴더에 문서를 추가하세요.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 28)),
+      ],
+    );
+  }
+}
+
+/// A folder outline with a tab, behind the folder covers.
+class _FolderShape extends CustomPainter {
+  const _FolderShape({required this.fill, required this.border});
+
+  final Color fill;
+  final Color border;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const tabHeight = 14.0;
+    final tab = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width * .4, tabHeight * 2),
+      const Radius.circular(10),
+    );
+    final body = RRect.fromRectAndCorners(
+      Rect.fromLTWH(0, tabHeight, size.width, size.height - tabHeight),
+      topRight: const Radius.circular(14),
+      bottomLeft: const Radius.circular(14),
+      bottomRight: const Radius.circular(14),
+    );
+    final outline = Path.combine(
+      PathOperation.union,
+      Path()..addRRect(tab),
+      Path()..addRRect(body),
+    );
+    canvas
+      ..drawPath(outline, Paint()..color = fill)
+      ..drawPath(
+        outline,
+        Paint()
+          ..color = border
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
+      );
+  }
+
+  @override
+  bool shouldRepaint(_FolderShape oldDelegate) =>
+      fill != oldDelegate.fill || border != oldDelegate.border;
 }
 
 String _createLabel(LibraryCreateAction action) => switch (action) {
@@ -1108,4 +1224,94 @@ class _CreateBorder extends CustomPainter {
 
   @override
   bool shouldRepaint(_CreateBorder oldDelegate) => oldDelegate.color != color;
+}
+
+/// The library's search box in the side bar: typing narrows the documents
+/// beside it, as the box over the documents used to.
+class LibrarySearchField extends StatefulWidget {
+  const new({
+    super.key,
+    required this.query,
+    required this.onChanged,
+    this.expression = false,
+    this.onExpressionChanged,
+    this.enabled = true,
+    this.onSubmitted,
+  });
+
+  final String query;
+  final ValueChanged<String> onChanged;
+
+  /// Whether the query is a search expression (file:, tag:, OR ...).
+  final bool expression;
+
+  /// Turns search expressions on or off; null hides the switch (the trash).
+  final ValueChanged<bool>? onExpressionChanged;
+  final bool enabled;
+  final VoidCallback? onSubmitted;
+
+  @override
+  State<LibrarySearchField> createState() => _LibrarySearchFieldState();
+}
+
+class _LibrarySearchFieldState extends State<LibrarySearchField> {
+  late final _text = TextEditingController(text: widget.query);
+
+  @override
+  void didUpdateWidget(covariant LibrarySearchField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A search set elsewhere (a bookmark, the title's ×) shows here too.
+    final query = widget.query;
+    if (query != _text.text) {
+      _text.value = TextEditingValue(
+        text: query,
+        selection: TextSelection.collapsed(offset: query.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expression = widget.onExpressionChanged;
+    return TextField(
+      key: const ValueKey('library-search'),
+      controller: _text,
+      enabled: widget.enabled,
+      autocorrect: !widget.expression,
+      smartDashesType: widget.expression ? SmartDashesType.disabled : null,
+      smartQuotesType: widget.expression ? SmartQuotesType.disabled : null,
+      textInputAction: TextInputAction.search,
+      onChanged: widget.onChanged,
+      onSubmitted: (_) => widget.onSubmitted?.call(),
+      decoration: InputDecoration(
+        hintText: '검색',
+        prefixIcon: const Icon(Icons.search, size: 22),
+        suffixIcon: expression == null
+            ? null
+            : IconButton(
+                key: const ValueKey('library-search-expression'),
+                tooltip: widget.expression ? '검색식 끄기' : '검색식 켜기',
+                isSelected: widget.expression,
+                icon: const Icon(Icons.manage_search),
+                onPressed: widget.enabled
+                    ? () => expression(!widget.expression)
+                    : null,
+              ),
+        isDense: true,
+        filled: true,
+        fillColor: Theme.of(context).colorScheme.surfaceContainerLow,
+        border: OutlineInputBorder(
+          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      ),
+    );
+  }
 }

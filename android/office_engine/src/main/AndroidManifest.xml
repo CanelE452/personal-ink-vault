@@ -8,6 +8,13 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:windowSoftInputMode="adjustResize" />
         <activity
+            android:name="io.github.canele452.personalinkvault.office.OfficePreviewActivity"
+            android:process=":office"
+            android:exported="false"
+            android:theme="@style/Theme.MaterialComponents.DayNight.Dialog"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
             android:name="io.github.canele452.personalinkvault.office.HwpEditorActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Material.Light.NoActionBar"

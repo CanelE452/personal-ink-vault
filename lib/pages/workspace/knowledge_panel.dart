@@ -21,6 +21,10 @@ class KnowledgePanel extends StatefulWidget {
   final bool canLinkMentions;
   final String? linkDisabledReason;
 
+  /// The tab it opens on: 0 backlinks, 1 tags, 2 graph (the library side
+  /// bar opens each one directly).
+  final int initialTab;
+
   const new({
     super.key,
     required this.index,
@@ -31,6 +35,7 @@ class KnowledgePanel extends StatefulWidget {
     this.mentionsCurrent = true,
     this.canLinkMentions = false,
     this.linkDisabledReason,
+    this.initialTab = 0,
   });
 
   @override
@@ -50,6 +55,7 @@ class _KnowledgePanelState extends State<KnowledgePanel> {
   @override
   Widget build(BuildContext context) => DefaultTabController(
     length: 3,
+    initialIndex: widget.initialTab.clamp(0, 2),
     child: Column(
       children: [
         const TabBar(

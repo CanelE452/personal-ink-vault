@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:sbn/tool_id.dart';
 
@@ -49,6 +50,9 @@ class Select extends Tool {
     }).key;
   }
 
+  /// Where the drag started; the rectangle lasso spans from here.
+  var _start = Offset.zero;
+
   void onDragStart(Offset position, int pageIndex) {
     doneSelecting = false;
     selectResult = SelectResult(
@@ -57,22 +61,30 @@ class Select extends Tool {
       images: [],
       path: Path(),
     );
+    _start = position;
     selectResult.path.moveTo(position.dx, position.dy);
     onDragUpdate(position);
   }
 
   void onDragUpdate(Offset position) {
-    selectResult.path.lineTo(position.dx, position.dy);
+    if (stows.selectRectangle.value) {
+      selectResult.path = Path()..addRect(Rect.fromPoints(_start, position));
+    } else {
+      selectResult.path.lineTo(position.dx, position.dy);
+    }
   }
 
   /// Adds the indices of any [strokes] that are inside the selection area
-  /// to [selectResult.indices].
+  /// to [selectResult.indices]. The lasso panel decides which kinds count.
   void onDragEnd(List<Stroke> strokes, List<EditorImage> images) {
     selectResult.path.close();
     doneSelecting = true;
+    final ink = stows.selectInk.value;
+    final highlighter = stows.selectHighlighter.value;
 
     for (int i = 0; i < strokes.length; i++) {
       final stroke = strokes[i];
+      if (!(stroke.toolId == ToolId.highlighter ? highlighter : ink)) continue;
       final percentInside = polygonPercentInside(
         selectResult.path,
         stroke.lowQualityPolygon,
@@ -82,6 +94,7 @@ class Select extends Tool {
       }
     }
 
+    if (!stows.selectImages.value) return;
     for (int i = 0; i < images.length; i++) {
       final image = images[i];
       final percentInside = rectPercentInside(selectResult.path, image.dstRect);

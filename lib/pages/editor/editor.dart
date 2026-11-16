@@ -30,6 +30,10 @@ import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/components/toolbar/editor_bottom_sheet.dart';
 import 'package:saber/components/toolbar/editor_page_manager.dart';
 import 'package:saber/components/toolbar/toolbar.dart';
+import 'package:saber/components/toolbar/toolbar_dock.dart';
+import 'package:saber/components/toolbar/toolbar_layout.dart';
+import 'package:saber/components/toolbar/toolbar_settings_sheet.dart';
+import 'package:saber/components/toolbar/toolbar_button.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
@@ -49,6 +53,7 @@ import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/home/whiteboard.dart';
+import 'package:sbn/canvas_background_pattern.dart';
 import 'package:sbn/change.dart';
 
 typedef _PhotoInfo = ({Uint8List bytes, String extension});
@@ -69,6 +74,7 @@ class Editor extends StatefulWidget {
     this.onBack,
     this.showDocumentHeader = true,
     this.workspaceReadOnly = false,
+    this.pageActionsInToolbar = false,
   }) : initialPath = path != null
            ? Future.value(path)
            : FileManager.newFilePath('/'),
@@ -89,6 +95,10 @@ class Editor extends StatefulWidget {
   final VoidCallback? onBack;
   final bool showDocumentHeader;
   final bool workspaceReadOnly;
+
+  /// Puts the page actions (page mode, insert page, pages, menu) at the end of the pen toolbar instead of their
+  /// own bar above it, so a host can keep its note screen to one row of tools. Read-only notes keep the bar.
+  final bool pageActionsInToolbar;
 
   /// The file extension used by the app.
   /// Files with this extension are
@@ -132,7 +142,9 @@ class EditorState extends State<Editor> {
 
   late bool needsNaming = widget.needsNaming && stows.editorPromptRename.value;
 
-  late Tool _currentTool = () {
+  // A pen kind restored here also becomes the pen button's kind, so the
+  // button and the pen in hand agree from the start.
+  late Tool _currentTool = _rememberPenFamily(() {
     switch (stows.lastTool.value) {
       case .fountainPen:
         if (Pen.currentPen.toolId != stows.lastTool.value) {
@@ -162,12 +174,20 @@ class EditorState extends State<Editor> {
       case .laserPointer:
         return LaserPointer.currentLaserPointer;
     }
-  }();
+  }());
   Tool get currentTool => _currentTool;
   set currentTool(Tool tool) {
     _currentTool = tool;
     if (tool is! Eraser) _lastNonEraserTool = tool;
     stows.lastTool.value = tool.toolId;
+    _rememberPenFamily(tool);
+  }
+
+  /// Every way a pen kind gets in hand (the toolbar, leaving the text box,
+  /// the stylus button giving the pen back) keeps the pen button in step.
+  static Tool _rememberPenFamily(Tool tool) {
+    if (Pen.isPenFamily(tool)) stows.lastPenFamily.value = tool.toolId;
+    return tool;
   }
 
   ValueNotifier<SavingState> savingState = ValueNotifier(SavingState.saved);
@@ -204,7 +224,7 @@ class EditorState extends State<Editor> {
   ValueNotifier<QuillStruct?> quillFocus = ValueNotifier(null);
 
   /// The last non-Eraser [currentTool] value.
-  late Tool _lastNonEraserTool = Pen.currentPen;
+  late Tool _lastNonEraserTool = Pen.currentPenFamily;
 
   /// If the stylus button is pressed, or was pressed, during the current draw gesture.
   ///
@@ -593,6 +613,9 @@ class EditorState extends State<Editor> {
 
   var isHovering = true;
   int? dragPageIndex;
+
+  /// Whether the last pen or eraser gesture added a history item.
+  var _lastDrawRecorded = false;
   PointerDeviceKind? currentPointerKind;
   double? currentPressure;
   bool isDrawGesture(ScaleStartDetails details) {
@@ -615,9 +638,13 @@ class EditorState extends State<Editor> {
       return false;
     } else if (details.pointerCount >= 2) {
       // is a zoom gesture, remove accidental stroke
+      // Only the first finger's own change: a stroke or erase that changed
+      // nothing left no history, and the item before it is the user's.
       if (lastSeenPointerCount == 1 &&
+          _lastDrawRecorded &&
           stows.editorFingerDrawing.value &&
           (currentTool is Pen || currentTool is Eraser)) {
+        _lastDrawRecorded = false;
         final item = history.removeAccidentalStroke();
         if (item != null) undo(item);
       }
@@ -660,15 +687,25 @@ class EditorState extends State<Editor> {
         page,
         dragPageIndex!,
         currentPressure,
+        // The page's zoom and fit on screen, so the stabiliser smooths the
+        // same on screen however far the page is zoomed.
+        screenScale: page.renderBox!.getTransformTo(null).getMaxScaleOnAxis(),
       );
     } else if (currentTool is Eraser) {
-      for (final stroke in (currentTool as Eraser).checkForOverlappingStrokes(
-        position,
-        page.strokes,
-      )) {
-        page.strokes.remove(stroke);
+      final eraser = currentTool as Eraser;
+      if (stows.eraserMode.value == EraserMode.lasso) {
+        // Nothing is erased until the loop is closed (onDrawEnd).
+        eraser.startLasso(position, dragPageIndex!);
+      } else {
+        // Empty pages are tidied in onDrawEnd: removing the page under the
+        // eraser here would leave the drag on a page that is gone.
+        for (final stroke in eraser.checkForOverlappingStrokes(
+          position,
+          page.strokes,
+        )) {
+          page.strokes.remove(stroke);
+        }
       }
-      removeExcessPages();
     } else if (currentTool is Select) {
       final select = currentTool as Select;
       if (select.doneSelecting &&
@@ -703,14 +740,19 @@ class EditorState extends State<Editor> {
       (currentTool as Pen).onDragUpdate(position, currentPressure);
       page.redrawStrokes();
     } else if (currentTool is Eraser) {
-      for (final stroke in (currentTool as Eraser).checkForOverlappingStrokes(
-        position,
-        page.strokes,
-      )) {
-        page.strokes.remove(stroke);
+      final eraser = currentTool as Eraser;
+      if (eraser.lassoPath != null) {
+        eraser.extendLasso(position);
+        page.redrawStrokes();
+      } else {
+        for (final stroke in eraser.checkForOverlappingStrokes(
+          position,
+          page.strokes,
+        )) {
+          page.strokes.remove(stroke);
+        }
+        page.redrawStrokes();
       }
-      page.redrawStrokes();
-      removeExcessPages();
     } else if (currentTool is Select) {
       final select = currentTool as Select;
       if (select.doneSelecting) {
@@ -736,6 +778,7 @@ class EditorState extends State<Editor> {
   void onDrawEnd(ScaleEndDetails details) {
     final page = coreInfo.pages[dragPageIndex!];
     bool shouldSave = true;
+    _lastDrawRecorded = false;
     setState(() {
       if (currentTool is Pen) {
         final newStroke = (currentTool as Pen).onDragEnd();
@@ -758,8 +801,26 @@ class EditorState extends State<Editor> {
             images: [],
           ),
         );
+        _lastDrawRecorded = true;
       } else if (currentTool is Eraser) {
-        final erased = (currentTool as Eraser).onDragEnd();
+        final eraser = currentTool as Eraser;
+        if (eraser.lassoPath != null) {
+          if (details.pointerCount > 0) {
+            // Another finger landed (a pinch), so the gesture ended with the
+            // loop unfinished: drop it rather than erase half a loop.
+            eraser.cancelLasso();
+          } else {
+            // The pen was lifted: erase what the loop holds, in one undo step.
+            final inside = eraser.finishLasso(page.strokes);
+            for (final stroke in inside) {
+              page.strokes.remove(stroke);
+            }
+            if (inside.isNotEmpty) page.redrawStrokes();
+          }
+        }
+        final erased = eraser.onDragEnd();
+        // Only once the eraser is lifted, never under it.
+        if (erased.isNotEmpty) removeExcessPages();
         if (stylusButtonWasPressed || stows.disableEraserAfterUse.value) {
           // restore previous tool
           stylusButtonWasPressed = false;
@@ -774,6 +835,7 @@ class EditorState extends State<Editor> {
             images: [],
           ),
         );
+        _lastDrawRecorded = true;
       } else if (currentTool is Select) {
         if (moveOffset == .zero) return;
         final select = currentTool as Select;
@@ -1454,23 +1516,40 @@ class EditorState extends State<Editor> {
     );
   }
 
-  Future exportAsPdf(BuildContext context) async {
-    final pdf = await EditorExporter.generatePdf(coreInfo, context);
+  /// The note as the export dialog draws it: without the paper's lines, grid
+  /// or dots when [background] is off. PDF pages and pictures stay.
+  EditorCoreInfo _exportInfo(bool background) => background
+      ? coreInfo
+      : coreInfo.copyWith(backgroundPattern: CanvasBackgroundPattern.none);
+
+  Future<void> exportAsPdf(
+    BuildContext context, {
+    String? name,
+    bool background = true,
+  }) async {
+    final pdf = await EditorExporter.generatePdf(
+      _exportInfo(background),
+      context,
+    );
     final bytes = await pdf.save();
     if (!context.mounted) return;
     await FileManager.exportFile(
-      '${coreInfo.fileName}.pdf',
+      '${name ?? coreInfo.fileName}.pdf',
       bytes,
       context: context,
     );
   }
 
   /// Exports the current note as an SBA (Saber Archive) file.
-  Future exportAsSba(BuildContext context) async {
+  Future<void> exportAsSba(
+    BuildContext context, {
+    String? name,
+    bool background = true,
+  }) async {
     final sba = await coreInfo.saveToSba(currentPageIndex: currentPageIndex);
     if (!context.mounted) return;
     await FileManager.exportFile(
-      '${coreInfo.fileName}.sba',
+      '${name ?? coreInfo.fileName}.sba',
       Uint8List.fromList(sba),
       context: context,
     );
@@ -1482,7 +1561,11 @@ class EditorState extends State<Editor> {
   /// which guarantees the correct background color and omits UI elements
   /// like selection bounds or the text cursor. It computes a dynamic [pixelRatio]
   /// to ensure high quality while averting Out-Of-Memory exceptions on large canvases.
-  Future exportAsPng(BuildContext context) async {
+  Future<void> exportAsPng(
+    BuildContext context, {
+    String? name,
+    bool background = true,
+  }) async {
     final page = coreInfo.pages[currentPageIndex];
 
     const maxRasterizableSize = 3000.0;
@@ -1491,7 +1574,7 @@ class EditorState extends State<Editor> {
 
     try {
       final image = await EditorExporter.screenshotPage(
-        coreInfo: coreInfo,
+        coreInfo: _exportInfo(background),
         pageIndex: currentPageIndex,
         rasterizeAllStrokes: true,
         pixelRatio: targetPixelRatio,
@@ -1501,7 +1584,7 @@ class EditorState extends State<Editor> {
 
       if (!context.mounted) return;
       await FileManager.exportFile(
-        '${coreInfo.fileName}_page_${currentPageIndex + 1}.png',
+        '${name ?? coreInfo.fileName}_page_${currentPageIndex + 1}.png',
         pngBytes!.buffer.asUint8List(),
         isImage: true,
         context: context,
@@ -1513,11 +1596,15 @@ class EditorState extends State<Editor> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.of(context);
     final platform = Theme.of(context).platform;
-    final toolbarAlignment = widget.onSaveSnapshot == null
-        ? stows.editorToolbarAlignment.value
-        : AxisDirection.up;
+    // Workspace notes keep their own toolbar position (top by default);
+    // Saber's preference only moves the standalone editor's toolbar.
+    final alignmentStow = widget.onSaveSnapshot == null
+        ? stows.editorToolbarAlignment
+        : stows.workspaceToolbarAlignment;
+    final toolbarAlignment = alignmentStow.value;
+    void setToolbarAlignment(AxisDirection alignment) =>
+        setState(() => alignmentStow.value = alignment);
     final isToolbarVertical =
         toolbarAlignment == AxisDirection.left ||
         toolbarAlignment == AxisDirection.right;
@@ -1528,6 +1615,8 @@ class EditorState extends State<Editor> {
         !_loadingSnapshot &&
         !_initialImportPending &&
         coreInfo.pages.isNotEmpty;
+    final pageActionsInToolbar =
+        widget.pageActionsInToolbar && !coreInfo.readOnly;
 
     final Widget canvas = CanvasGestureDetector(
       key: _canvasGestureDetectorKey,
@@ -1683,12 +1772,13 @@ class EditorState extends State<Editor> {
             setState(() {
               updateColorBar(color);
 
+              // setColor also keeps the colour for the next pen of that kind.
               if (currentTool is Highlighter) {
-                (currentTool as Highlighter).color = color.withAlpha(
-                  Highlighter.alpha,
+                (currentTool as Highlighter).setColor(
+                  color.withAlpha(Highlighter.alpha),
                 );
               } else if (currentTool is Pen) {
-                (currentTool as Pen).color = color;
+                (currentTool as Pen).setColor(color);
               } else if (currentTool is Select) {
                 // Changes color of selected strokes
                 final select = currentTool as Select;
@@ -1722,7 +1812,8 @@ class EditorState extends State<Editor> {
           textEditing: currentTool == Tool.textEditing,
           toggleTextEditing: () => setState(() {
             if (currentTool == Tool.textEditing) {
-              currentTool = Pen.currentPen;
+              // Back to the pen button's pen, the pencil if it was chosen.
+              currentTool = Pen.currentPenFamily;
               for (final page in coreInfo.pages) {
                 // unselect text, but maintain cursor position
                 page.quill.controller.moveCursorToPosition(
@@ -1749,38 +1840,55 @@ class EditorState extends State<Editor> {
           exportAsSba: exportAsSba,
           exportAsPdf: exportAsPdf,
           exportAsPng: exportAsPng,
+          exportTitle: widget.customTitle ?? coreInfo.fileName,
+          leading: [
+            ToolbarDockHandle(
+              axis: isToolbarVertical ? Axis.vertical : Axis.horizontal,
+            ),
+          ],
+          hostItems: pageActionsInToolbar
+              ? {
+                  for (final (id, button) in _pageActions(
+                    showPageMode: showPageMode,
+                    showPageActions: showPageActions,
+                    toolbar: true,
+                  ))
+                    id: button,
+                }
+              : const {},
+          trailing: [
+            ToolbarIconButton(
+              key: const ValueKey('toolbar-settings'),
+              tooltip: '툴바 설정',
+              onPressed: () => unawaited(
+                showToolbarSettings(
+                  context,
+                  alignment: toolbarAlignment,
+                  onAlignmentChanged: setToolbarAlignment,
+                  editorOptions: true,
+                  items: pageToolbarItems,
+                  layout: stows.pageToolbarLayout,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: const Icon(Icons.settings_outlined),
+            ),
+          ],
         ),
       ),
     );
 
-    final Widget body;
-    if (isToolbarVertical) {
-      body = Row(
-        textDirection: toolbarAlignment == AxisDirection.left ? .ltr : .rtl,
-        children: [
-          toolbar,
-          Expanded(
-            child: Column(
-              children: [
-                Expanded(child: canvas),
-                readonlyBanner,
-              ],
-            ),
-          ),
-        ],
-      );
-    } else {
-      body = Column(
-        verticalDirection: toolbarAlignment == AxisDirection.up
-            ? VerticalDirection.up
-            : VerticalDirection.down,
+    final Widget body = ToolbarDock(
+      alignment: toolbarAlignment,
+      onAlignmentChanged: setToolbarAlignment,
+      toolbar: toolbar,
+      child: Column(
         children: [
           Expanded(child: canvas),
-          toolbar,
           readonlyBanner,
         ],
-      );
-    }
+      ),
+    );
 
     return ValueListenableBuilder(
       valueListenable: savingState,
@@ -1809,8 +1917,8 @@ class EditorState extends State<Editor> {
         appBar:
             DynamicMaterialApp.isFullscreen ||
                 (!widget.showDocumentHeader &&
-                    !showPageActions &&
-                    !showPageMode)
+                    (pageActionsInToolbar ||
+                        !showPageActions && !showPageMode))
             ? null
             : AppBar(
                 primary: widget.showDocumentHeader,
@@ -1840,68 +1948,11 @@ class EditorState extends State<Editor> {
                         onBack: widget.onBack,
                       )
                     : null,
-                actions: [
-                  if (showPageMode)
-                    IconButton(
-                      key: const ValueKey('editor-single-page-toggle'),
-                      icon: Icon(
-                        _singlePageMode
-                            ? Icons.view_agenda_outlined
-                            : Icons.description_outlined,
-                      ),
-                      tooltip: _singlePageMode ? '연속 스크롤' : '한 쪽씩 보기',
-                      onPressed: _togglePageMode,
-                    ),
-                  if (showPageActions) ...[
-                    IconButton(
-                      icon: const AdaptiveIcon(
-                        icon: Icons.insert_page_break,
-                        cupertinoIcon: CupertinoIcons.add,
-                      ),
-                      tooltip: t.editor.menu.insertPage,
-                      onPressed: () => setState(() {
-                        final currentPageIndex = this.currentPageIndex;
-                        insertPageAfter(currentPageIndex);
-                        _scrollToPage(currentPageIndex + 1);
-                      }),
-                    ),
-                    IconButton(
-                      icon: const AdaptiveIcon(
-                        icon: Icons.grid_view,
-                        cupertinoIcon: CupertinoIcons.rectangle_grid_2x2,
-                      ),
-                      tooltip: t.editor.pages,
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AdaptiveAlertDialog(
-                            title: Text(t.editor.pages),
-                            content: pageManager(context),
-                            actions: const [],
-                          ),
-                        );
-                      },
-                    ),
-                    IconButton(
-                      icon: const AdaptiveIcon(
-                        icon: Icons.more_vert,
-                        cupertinoIcon: CupertinoIcons.ellipsis_vertical,
-                      ),
-                      tooltip: MaterialLocalizations.of(context)
-                          .moreButtonTooltip,
-                      onPressed: () {
-                        showModalBottomSheet(
-                          context: context,
-                          builder: (context) => bottomSheet(context),
-                          isScrollControlled: true,
-                          showDragHandle: true,
-                          backgroundColor: colorScheme.surface,
-                          constraints: const BoxConstraints(maxWidth: 500),
-                        );
-                      },
-                    ),
-                  ],
-                ],
+                actions: _pageActionButtons(
+                  showPageMode: showPageMode,
+                  showPageActions: showPageActions,
+                  toolbar: false,
+                ),
               ),
         body: Column(
           children: [
@@ -1952,6 +2003,104 @@ class EditorState extends State<Editor> {
             : null,
       ),
     );
+  }
+
+  /// The page actions, as the bar's icon buttons or (with [toolbar]) as pen toolbar buttons.
+  List<Widget> _pageActionButtons({
+    required bool showPageMode,
+    required bool showPageActions,
+    required bool toolbar,
+  }) => [
+    for (final (_, button) in _pageActions(
+      showPageMode: showPageMode,
+      showPageActions: showPageActions,
+      toolbar: toolbar,
+    ))
+      button,
+  ];
+
+  /// [_pageActionButtons] with the toolbar item id of each (see pageToolbarItems).
+  List<(String, Widget)> _pageActions({
+    required bool showPageMode,
+    required bool showPageActions,
+    required bool toolbar,
+  }) {
+    Widget action({
+      Key? key,
+      required String tooltip,
+      required Widget icon,
+      required VoidCallback onPressed,
+    }) => toolbar
+        ? ToolbarIconButton(
+            key: key,
+            tooltip: tooltip,
+            onPressed: onPressed,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: icon,
+          )
+        : IconButton(key: key, tooltip: tooltip, icon: icon, onPressed: onPressed);
+
+    return [
+      if (showPageMode)
+        ('pageMode', action(
+          key: const ValueKey('editor-single-page-toggle'),
+          icon: Icon(
+            _singlePageMode
+                ? Icons.view_agenda_outlined
+                : Icons.description_outlined,
+          ),
+          tooltip: _singlePageMode ? '연속 스크롤' : '한 쪽씩 보기',
+          onPressed: _togglePageMode,
+        )),
+      if (showPageActions) ...[
+        ('insertPage', action(
+          icon: const AdaptiveIcon(
+            icon: Icons.insert_page_break,
+            cupertinoIcon: CupertinoIcons.add,
+          ),
+          tooltip: '쪽 추가',
+          onPressed: () => setState(() {
+            final currentPageIndex = this.currentPageIndex;
+            insertPageAfter(currentPageIndex);
+            _scrollToPage(currentPageIndex + 1);
+          }),
+        )),
+        ('pages', action(
+          icon: const AdaptiveIcon(
+            icon: Icons.grid_view,
+            cupertinoIcon: CupertinoIcons.rectangle_grid_2x2,
+          ),
+          tooltip: '쪽 관리',
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (context) => AdaptiveAlertDialog(
+                title: const Text('쪽 관리'),
+                content: pageManager(context),
+                actions: const [],
+              ),
+            );
+          },
+        )),
+        ('pageMenu', action(
+          icon: const AdaptiveIcon(
+            icon: Icons.more_vert,
+            cupertinoIcon: CupertinoIcons.ellipsis_vertical,
+          ),
+          tooltip: '쪽 메뉴',
+          onPressed: () {
+            showModalBottomSheet(
+              context: context,
+              builder: (context) => bottomSheet(context),
+              isScrollControlled: true,
+              showDragHandle: true,
+              backgroundColor: ColorScheme.of(context).surface,
+              constraints: const BoxConstraints(maxWidth: 500),
+            );
+          },
+        )),
+      ],
+    ];
   }
 
   void snackBarNeedsToSaveBeforeExiting() {
@@ -2064,6 +2213,18 @@ class EditorState extends State<Editor> {
           ? ShapePen.detectedShape
           : null,
       currentSelection: () {
+        // The eraser's loop shows like a lasso (the canvas draws it in the
+        // error colour while the eraser is in hand).
+        if (currentTool case final Eraser eraser) {
+          final loop = eraser.lassoPath;
+          if (loop == null || eraser.lassoPageIndex != pageIndex) return null;
+          return SelectResult(
+            pageIndex: pageIndex,
+            strokes: const [],
+            images: const [],
+            path: loop,
+          );
+        }
         if (currentTool is! Select) return null;
         final selectResult = (currentTool as Select).selectResult;
         if (selectResult.pageIndex != pageIndex) return null;

@@ -72,6 +72,18 @@ public final class HwpEditorActivity extends Activity {
     private Object backCallback;
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        SystemBars.hideNavigationBar(this);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) SystemBars.hideNavigationBar(this);
+    }
+
+    @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Intent intent = getIntent();

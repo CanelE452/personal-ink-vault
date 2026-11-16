@@ -6,9 +6,16 @@ import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
+import android.content.res.Configuration;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
+import android.util.TypedValue;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.Gravity;
+import android.view.Window;
+import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.widget.Button;
 import android.widget.FrameLayout;
@@ -30,7 +37,7 @@ import java.nio.file.LinkOption;
 import java.security.MessageDigest;
 import java.util.Map;
 
-public final class OfficeEditorActivity extends LOActivity {
+public class OfficeEditorActivity extends LOActivity {
     private static final String FORMAT_MISMATCH = OfficeLegacyContainer.MISMATCH_CODE;
     private volatile boolean ready;
     private File directory;
@@ -50,6 +57,9 @@ public final class OfficeEditorActivity extends LOActivity {
     private long workingModified;
     private volatile OfficePresentationCells presentationCells;
     private boolean engineAttached;
+    private FrameLayout previewOverlay;
+    private View engineContent;
+    private boolean previewQuestionShown;
 
     static { System.loadLibrary("piv_office_bridge"); }
 
@@ -169,6 +179,18 @@ public final class OfficeEditorActivity extends LOActivity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        SystemBars.hideNavigationBar(this);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) SystemBars.hideNavigationBar(this);
+    }
+
+    @Override
     protected void onDestroy() {
         OfficeEngineProcess.log("editor destroy session=" + sessionId);
         try {
@@ -210,6 +232,13 @@ public final class OfficeEditorActivity extends LOActivity {
     @Override
     protected boolean onEmbeddedNativeMessage(byte[] message) {
         if (previewOnly) {
+            // A dialog the engine opens while preparing the PDF (for example a repair or update question) waits
+            // for the user, so it is shown instead of the progress screen until it closes.
+            String question = previewQuestion(message);
+            if (question != null) {
+                runOnUiThread(() -> showPreviewQuestion(!"close".equals(question), question));
+                return false;
+            }
             // Collabora sends status after loading the native document. A WebView
             // progress notification can also come from an unrelated dialog.
             String prefix = "status: ";
@@ -234,6 +263,39 @@ public final class OfficeEditorActivity extends LOActivity {
             return failure != null;
         }
         return presentationCells != null && presentationCells.onNativeMessage(message);
+    }
+
+    /** "open:" plus the dialog type when the engine opens a dialog, "close" when it closes one, otherwise null. */
+    private static String previewQuestion(byte[] message) {
+        String prefix = "jsdialog:";
+        if (message.length <= prefix.length() || message[0] != 'j'
+                || !prefix.equals(new String(message, 0, prefix.length(), StandardCharsets.US_ASCII))) return null;
+        try {
+            String json = new String(message, StandardCharsets.UTF_8).substring(prefix.length()).trim();
+            JSONObject dialog = new JSONObject(json);
+            if (!"dialog".equals(dialog.optString("jsontype"))) return null;
+            String action = dialog.optString("action", "");
+            if ("close".equals(action)) return "close";
+            return action.isEmpty() ? "open:" + dialog.optString("type", "") : null;
+        } catch (Exception invalid) {
+            return null;
+        }
+    }
+
+    private void showPreviewQuestion(boolean shown, String detail) {
+        if (previewOverlay == null || previewCancelled || isFinishing() || isDestroyed()) return;
+        OfficeEngineProcess.log("preview question " + (shown ? "shown " + detail : "closed") + " session=" + sessionId);
+        if (shown == previewQuestionShown) return;
+        previewQuestionShown = shown;
+        previewOverlay.setVisibility(shown ? View.GONE : View.VISIBLE);
+        if (engineContent != null && this instanceof OfficePreviewActivity) engineContent.setAlpha(shown ? 1f : 0f);
+        if (shown) {
+            holdEmbeddedWatchdog();
+            if (engineContent != null) engineContent.requestFocus();
+        } else {
+            resumeEmbeddedWatchdog();
+            previewOverlay.requestFocus();
+        }
     }
 
     private static String previewLoadFailure(byte[] message) {
@@ -286,26 +348,60 @@ public final class OfficeEditorActivity extends LOActivity {
     }
 
     private void showPreviewProgress() {
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setGravity(Gravity.CENTER);
-        content.setBackgroundColor(Color.WHITE);
-        content.setClickable(true);
-        content.setFocusableInTouchMode(true);
-        content.setPadding(32, 32, 32, 32);
-        content.addView(new ProgressBar(this));
+        // OfficePreviewActivity uses a floating dialog theme, so the app's own screen stays visible behind a
+        // dimmed, transparent window with a progress card. The plain Activity keeps the opaque progress screen.
+        boolean floating = this instanceof OfficePreviewActivity;
+        ViewGroup root = findViewById(android.R.id.content);
+        engineContent = root != null && root.getChildCount() > 0 ? root.getChildAt(0) : null;
+        boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+        if (floating) {
+            Window window = getWindow();
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.35f);
+            if (engineContent != null) engineContent.setAlpha(0f);
+        }
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setClickable(true);
+        overlay.setFocusableInTouchMode(true);
+        if (!floating) overlay.setBackgroundColor(Color.WHITE);
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER);
+        card.setPadding(dp(28), dp(24), dp(28), dp(16));
+        card.setMinimumWidth(dp(300));
+        if (floating) {
+            GradientDrawable surface = new GradientDrawable();
+            surface.setColor(night ? 0xFF2C2C2C : Color.WHITE);
+            surface.setCornerRadius(dp(20));
+            card.setBackground(surface);
+            card.setElevation(dp(8));
+        }
+        card.addView(new ProgressBar(this));
         TextView label = new TextView(this);
         label.setText(reopenedSource ? "저장한 원본을 다시 열어 필기용 PDF를 준비하고 있습니다."
                 : "원본을 바꾸지 않고 PDF를 준비하고 있습니다.");
-        label.setPadding(0, 24, 0, 24);
-        content.addView(label);
+        label.setGravity(Gravity.CENTER);
+        if (floating) label.setTextColor(night ? 0xFFE6E6E6 : 0xFF202020);
+        label.setPadding(0, dp(16), 0, dp(8));
+        card.addView(label);
         Button cancel = new Button(this);
         cancel.setText("취소");
         cancel.setOnClickListener(view -> cancelPreview());
-        content.addView(cancel);
-        addContentView(content, new FrameLayout.LayoutParams(
+        card.addView(cancel);
+        overlay.addView(card, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        addContentView(overlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        content.requestFocus();
+        previewOverlay = overlay;
+        overlay.requestFocus();
+    }
+
+    private int dp(int value) {
+        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
+                getResources().getDisplayMetrics()));
     }
 
     private void cancelPreview() {

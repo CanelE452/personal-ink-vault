@@ -76,6 +76,7 @@ class Canvas extends StatelessWidget {
                       currentSelection: currentSelection,
                       setAsBackground: setAsBackground,
                       currentToolIsSelect: currentTool.toolId == ToolId.select,
+                      selectionErases: currentTool.toolId == ToolId.eraser,
                       currentScale: currentScale,
                     ),
                   ),

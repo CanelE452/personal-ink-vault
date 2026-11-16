@@ -14,9 +14,22 @@ class Highlighter extends Pen {
         icon: highlighterIcon,
         options: stows.lastHighlighterOptions.value,
         pressureEnabled: false,
-        color: Colors.yellow.withAlpha(Highlighter.alpha),
+        color: Color(stows.lastHighlighterColor.value),
         toolId: .highlighter,
       );
+
+  /// With the highlighter panel's straight line on, the stroke stays a line
+  /// from where it started to the pen; with horizontal/vertical on as well,
+  /// that line keeps to the closer axis.
+  @override
+  void onDragUpdate(Offset position, double? pressure) {
+    super.onDragUpdate(position, pressure);
+    if (stows.highlighterStraightLine.value) {
+      Pen.currentStroke?.straightenWhileDrawing(
+        axisLock: stows.highlighterAxisLock.value,
+      );
+    }
+  }
 
   static const alpha = 100;
 

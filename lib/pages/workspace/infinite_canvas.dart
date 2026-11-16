@@ -5,7 +5,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ink_vault_core/ink_vault_core.dart' show newId;
+import 'package:saber/components/canvas/hud/zoom_pill.dart';
 import 'package:saber/components/toolbar/ink_width_presets.dart';
+import 'package:saber/components/toolbar/toolbar_dock.dart';
+import 'package:saber/components/toolbar/toolbar_layout.dart';
+import 'package:saber/components/toolbar/toolbar_settings_sheet.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/infinite_document.dart';
 
 enum _Tool { pen, highlighter, eraser, lasso, pan }
@@ -38,7 +43,18 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
   static const _teal = Color(0xff237d82);
   static const _quickWidths = [1.0, 2.5, 5.0];
   late InfiniteDocument _document;
-  var _viewport = const InfiniteViewport();
+  var _view = const InfiniteViewport();
+
+  /// The view scale for the zoom pill; it notifies only when the scale changes.
+  final _zoomScale = ValueNotifier<double>(1);
+  Size _surfaceSize = Size.zero;
+
+  InfiniteViewport get _viewport => _view;
+  set _viewport(InfiniteViewport value) {
+    _view = value;
+    _zoomScale.value = value.scale;
+  }
+
   final _undo = <InfiniteDocument>[];
   final _redo = <InfiniteDocument>[];
   final _contacts = <int, PointerEvent>{};
@@ -48,7 +64,7 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
   final _lasso = <Offset>[];
   _Tool _tool = _Tool.pen;
   _Tool? _activeTool;
-  var _color = 0xff202923;
+  var _color = toolbarQuickColors.first;
   var _width = 2.5;
   var _activeWidth = 2.5;
   var _fingerInk = false;
@@ -516,236 +532,294 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
         ),
       );
 
-  Widget _toolbar(BuildContext context, BoxConstraints constraints) {
-    final wide = constraints.maxWidth >= 720;
+  void _setToolbarAlignment(AxisDirection alignment) =>
+      setState(() => stows.workspaceToolbarAlignment.value = alignment);
+
+  /// Zooms around the centre of the view, from the zoom pill.
+  void _zoomToScale(double target) {
+    if (_interacting) return;
+    final focal = _surfaceSize.center(Offset.zero);
+    setState(
+      () => _viewport = _viewport.zoomAt(focal, target / _viewport.scale),
+    );
+  }
+
+  Widget _toolbar(BuildContext context, AxisDirection alignment) {
+    final vertical =
+        alignment == AxisDirection.left || alignment == AxisDirection.right;
+    final axis = vertical ? Axis.vertical : Axis.horizontal;
     final scale = _widthScale(_tool);
     final widthLabel = _tool == _Tool.highlighter ? '형광펜 굵기' : '펜 굵기';
-    return Material(
+    return SafeArea(
+      top: false,
+      bottom: alignment != AxisDirection.up,
+      left: alignment != AxisDirection.right,
+      right: alignment != AxisDirection.left,
+      child: Material(
       color: Theme.of(context).colorScheme.surface,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          children: [
-            if (widget.onBack != null)
-              IconButton(
-                tooltip: '문서 목록으로',
-                onPressed: _interacting ? null : () => unawaited(_back()),
-                icon: const Icon(Icons.arrow_back),
-              ),
-            IconButton(
-              key: const ValueKey('infinite-undo'),
-              tooltip: '실행 취소',
-              onPressed: _undo.isEmpty || _interacting
-                  ? null
-                  : () => _undoOrRedo(redo: false),
-              icon: const Icon(Icons.undo),
-            ),
-            IconButton(
-              key: const ValueKey('infinite-redo'),
-              tooltip: '다시 실행',
-              onPressed: _redo.isEmpty || _interacting
-                  ? null
-                  : () => _undoOrRedo(redo: true),
-              icon: const Icon(Icons.redo),
-            ),
-            const SizedBox(width: 8),
-            _toolButton(_Tool.pen, Icons.edit_outlined, '펜'),
-            _toolButton(_Tool.highlighter, Icons.border_color_outlined, '형광펜'),
-            if (!wide) _widthMenu(scale, widthLabel, wide: false),
-            _toolButton(_Tool.eraser, Icons.auto_fix_normal_outlined, '지우개'),
-            _toolButton(_Tool.lasso, Icons.gesture, '올가미'),
-            _toolButton(_Tool.pan, Icons.pan_tool_outlined, '이동'),
-            const SizedBox(width: 12),
-            for (final color in const [
-              0xff202923,
-              0xffb63a3a,
-              0xff315fa0,
-              0xff237d82,
-              0xffd7a51c,
-            ])
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Tooltip(
-                  message: '펜 색상',
-                  child: InkResponse(
-                    onTap: _interacting
-                        ? null
-                        : () => setState(() => _color = color),
-                    child: Container(
-                      width: 27,
-                      height: 27,
-                      decoration: BoxDecoration(
-                        color: Color(color),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: _color == color ? _teal : Colors.transparent,
-                          width: 3,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = !vertical && constraints.maxWidth >= 720;
+          return ValueListenableBuilder(
+            valueListenable: stows.infiniteToolbarLayout,
+            builder: (context, stored, _) {
+              final layout = ToolbarLayout.decode(infiniteToolbarItems, stored);
+              String label(String id) => layout.labelOf(id);
+              final items = <String, Widget>{
+                'undo': IconButton(
+                  key: const ValueKey('infinite-undo'),
+                  tooltip: label('undo'),
+                  onPressed: _undo.isEmpty || _interacting
+                      ? null
+                      : () => _undoOrRedo(redo: false),
+                  icon: const Icon(Icons.undo),
+                ),
+                'redo': IconButton(
+                  key: const ValueKey('infinite-redo'),
+                  tooltip: label('redo'),
+                  onPressed: _redo.isEmpty || _interacting
+                      ? null
+                      : () => _undoOrRedo(redo: true),
+                  icon: const Icon(Icons.redo),
+                ),
+                'pen': _toolButton(_Tool.pen, Icons.edit_outlined, label('pen')),
+                'highlighter': _toolButton(
+                  _Tool.highlighter,
+                  Icons.border_color_outlined,
+                  label('highlighter'),
+                ),
+                'widths': wide
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          InkWidthPresets(
+                            key: const ValueKey('infinite-quick-ink-widths'),
+                            widths: [
+                              for (final width in _quickWidths) width * scale,
+                            ],
+                            selectedWidth: _width * scale,
+                            onSelected: _interacting
+                                ? null
+                                : (width) => _selectWidth(width / scale),
+                            widthLabel: widthLabel,
+                          ),
+                          _widthMenu(scale, widthLabel, wide: true),
+                        ],
+                      )
+                    : _widthMenu(scale, widthLabel, wide: false),
+                'eraser': _toolButton(
+                  _Tool.eraser,
+                  Icons.auto_fix_normal_outlined,
+                  label('eraser'),
+                ),
+                'lasso': _toolButton(_Tool.lasso, Icons.gesture, label('lasso')),
+                'pan': _toolButton(_Tool.pan, Icons.pan_tool_outlined, label('pan')),
+                'colors': Flex(
+                  direction: axis,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final color in toolbarQuickColors)
+                      Padding(
+                        padding: const EdgeInsets.all(2),
+                        child: Tooltip(
+                          message: '펜 색상',
+                          child: InkResponse(
+                            onTap: _interacting
+                                ? null
+                                : () => setState(() => _color = color),
+                            child: Container(
+                              width: 27,
+                              height: 27,
+                              decoration: BoxDecoration(
+                                color: Color(color),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: _color == color
+                                      ? _teal
+                                      : Colors.transparent,
+                                  width: 3,
+                                ),
+                              ),
+                              child: _color == color
+                                  ? const Icon(
+                                      Icons.check,
+                                      size: 16,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                          ),
                         ),
                       ),
-                      child: _color == color
-                          ? const Icon(
-                              Icons.check,
-                              size: 16,
-                              color: Colors.white,
-                            )
-                          : null,
-                    ),
+                  ],
+                ),
+                'origin': IconButton(
+                  tooltip: label('origin'),
+                  onPressed: _interacting
+                      ? null
+                      : () => setState(
+                          () => _viewport = const InfiniteViewport(),
+                        ),
+                  icon: const Icon(Icons.my_location),
+                ),
+                'finger': IconButton(
+                  tooltip: _fingerInk ? '손가락 필기 켜짐' : '손가락으로 이동',
+                  isSelected: _fingerInk,
+                  onPressed: _interacting
+                      ? null
+                      : () => setState(() => _fingerInk = !_fingerInk),
+                  icon: const Icon(Icons.touch_app_outlined),
+                ),
+                'save': IconButton(
+                  tooltip: label('save'),
+                  onPressed: _saving || _interacting
+                      ? null
+                      : () => unawaited(_saveFromUi()),
+                  icon: Icon(
+                    _saving
+                        ? Icons.hourglass_top
+                        : _dirty
+                        ? Icons.save_outlined
+                        : Icons.check_circle_outline,
                   ),
                 ),
-              ),
-            const SizedBox(width: 8),
-            if (wide) ...[
-              InkWidthPresets(
-                key: const ValueKey('infinite-quick-ink-widths'),
-                widths: [for (final width in _quickWidths) width * scale],
-                selectedWidth: _width * scale,
-                onSelected: _interacting
-                    ? null
-                    : (width) => _selectWidth(width / scale),
-                widthLabel: widthLabel,
-              ),
-              _widthMenu(scale, widthLabel, wide: true),
-            ],
-            IconButton(
-              tooltip: _fingerInk ? '손가락 필기 켜짐' : '손가락으로 이동',
-              isSelected: _fingerInk,
-              onPressed: _interacting
-                  ? null
-                  : () => setState(() => _fingerInk = !_fingerInk),
-              icon: const Icon(Icons.touch_app_outlined),
-            ),
-            IconButton(
-              tooltip: '저장',
-              onPressed: _saving || _interacting
-                  ? null
-                  : () => unawaited(_saveFromUi()),
-              icon: Icon(
-                _saving
-                    ? Icons.hourglass_top
-                    : _dirty
-                    ? Icons.save_outlined
-                    : Icons.check_circle_outline,
-              ),
-            ),
-          ],
-        ),
+              };
+              return Padding(
+                padding: vertical
+                    ? const EdgeInsets.symmetric(horizontal: 4, vertical: 8)
+                    : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Flex(
+                  direction: axis,
+                  children: [
+                    ToolbarDockHandle(axis: axis),
+                    if (widget.onBack != null)
+                      IconButton(
+                        tooltip: '문서 목록으로',
+                        onPressed: _interacting
+                            ? null
+                            : () => unawaited(_back()),
+                        icon: const Icon(Icons.arrow_back),
+                      ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: axis,
+                        child: Flex(
+                          key: const ValueKey('infinite-toolbar'),
+                          direction: axis,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final id in layout.shownIds) ?items[id],
+                          ],
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '툴바 설정',
+                      onPressed: () => unawaited(
+                        showToolbarSettings(
+                          context,
+                          alignment: alignment,
+                          onAlignmentChanged: _setToolbarAlignment,
+                          items: infiniteToolbarItems,
+                          layout: stows.infiniteToolbarLayout,
+                        ),
+                      ),
+                      icon: const Icon(Icons.settings_outlined),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
       ),
     );
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      LayoutBuilder(builder: _toolbar),
-      if (_saveFailed)
-        Material(
-          color: Theme.of(context).colorScheme.errorContainer,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: Row(
-              children: [
-                const Expanded(child: Text('저장하지 못했습니다. 다시 시도하세요.')),
-                TextButton(
-                  key: const ValueKey('infinite-retry-save'),
-                  onPressed: () => unawaited(_saveFromUi()),
-                  child: const Text('다시 시도'),
+  Widget build(BuildContext context) {
+    final alignment = stows.workspaceToolbarAlignment.value;
+    return ToolbarDock(
+      alignment: alignment,
+      onAlignmentChanged: _setToolbarAlignment,
+      toolbar: _toolbar(context, alignment),
+      child: Column(
+        children: [
+          if (_saveFailed)
+            Material(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
                 ),
-              ],
-            ),
-          ),
-        ),
-      Expanded(
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: ClipRect(
-                child: Listener(
-                  key: const ValueKey('infinite-surface'),
-                  behavior: HitTestBehavior.opaque,
-                  onPointerDown: _down,
-                  onPointerMove: _move,
-                  onPointerUp: _up,
-                  onPointerCancel: (event) => _up(event, cancel: true),
-                  onPointerSignal: _signal,
-                  child: CustomPaint(
-                    painter: _InfinitePainter(
-                      document: _document,
-                      viewport: _viewport,
-                      activePoints: List.of(_points),
-                      activeTool: _activeTool,
-                      color: _color,
-                      width: _activeWidth,
-                      erased: Set.of(_erased),
-                      selected: Set.of(_selected),
-                      selectionBounds: _selectionBounds,
-                      selectionDelta: _selectionDelta,
-                      lasso: List.of(_lasso),
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              right: 12,
-              bottom: 12,
-              child: Material(
-                color: Theme.of(context).colorScheme.surface
-                    .withValues(alpha: .9),
-                borderRadius: BorderRadius.circular(8),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      tooltip: '축소',
-                      onPressed: _interacting
-                          ? null
-                          : () => setState(
-                              () => _viewport = _viewport.zoomAt(
-                                Offset.zero,
-                                1 / 1.25,
-                              ),
-                            ),
-                      icon: const Icon(Icons.remove, size: 19),
-                    ),
-                    Text(
-                      '${(_viewport.scale * 100).round()}%',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    IconButton(
-                      tooltip: '확대',
-                      onPressed: _interacting
-                          ? null
-                          : () => setState(
-                              () => _viewport = _viewport.zoomAt(
-                                Offset.zero,
-                                1.25,
-                              ),
-                            ),
-                      icon: const Icon(Icons.add, size: 19),
-                    ),
-                    IconButton(
-                      tooltip: '원점으로',
-                      onPressed: _interacting
-                          ? null
-                          : () => setState(
-                              () => _viewport = const InfiniteViewport(),
-                            ),
-                      icon: const Icon(Icons.my_location, size: 19),
+                    const Expanded(child: Text('저장하지 못했습니다. 다시 시도하세요.')),
+                    TextButton(
+                      key: const ValueKey('infinite-retry-save'),
+                      onPressed: () => unawaited(_saveFromUi()),
+                      child: const Text('다시 시도'),
                     ),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                _surfaceSize = constraints.biggest;
+                return Stack(
+                  children: [
+                    Positioned.fill(
+                      child: ClipRect(
+                        child: Listener(
+                          key: const ValueKey('infinite-surface'),
+                          behavior: HitTestBehavior.opaque,
+                          onPointerDown: _down,
+                          onPointerMove: _move,
+                          onPointerUp: _up,
+                          onPointerCancel: (event) => _up(event, cancel: true),
+                          onPointerSignal: _signal,
+                        child: CustomPaint(
+                          painter: _InfinitePainter(
+                            document: _document,
+                            viewport: _viewport,
+                            activePoints: List.of(_points),
+                            activeTool: _activeTool,
+                            color: _color,
+                            width: _activeWidth,
+                            erased: Set.of(_erased),
+                            selected: Set.of(_selected),
+                            selectionBounds: _selectionBounds,
+                            selectionDelta: _selectionDelta,
+                            lasso: List.of(_lasso),
+                          ),
+                          child: const SizedBox.expand(),
+                        ),
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: ZoomPillOverlay(
+                        scale: _zoomScale,
+                        onSelectScale: _interacting ? null : _zoomToScale,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
-    ],
-  );
+    );
+  }
 
   @override
   void dispose() {
+    _zoomScale.dispose();
     _autosave?.cancel();
     _interactionDone?.complete();
     _interactionDone = null;

@@ -477,11 +477,16 @@ void main() {
         );
         await waitForLinkedPage(fixture.secondPage, 2);
         if (defaultTargetPlatform == TargetPlatform.android) {
+          // The note bar's view switch (it replaced the bottom bar) shows the PDF, not its Markdown: a wide bar
+          // selects the note segment, a narrow one offers Markdown as the other view.
+          final toggle = tester.widget(
+            find.byKey(const ValueKey('note-view-toggle')),
+          );
           expect(
-            tester
-                .widget<NavigationBar>(find.byType(NavigationBar))
-                .selectedIndex,
-            0,
+            toggle is SegmentedButton
+                ? (toggle.selected.single as Enum).name
+                : (toggle as IconButton).tooltip,
+            toggle is SegmentedButton ? 'note' : 'Markdown',
           );
         }
         expect(state().coreInfo.pages[2].strokes, hasLength(1));

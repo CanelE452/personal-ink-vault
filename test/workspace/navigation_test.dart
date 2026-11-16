@@ -301,12 +301,14 @@ class FailingInkSession extends NoteSession {
     Map<String, Uint8List> files, {
     Map<String, List<String>>? expectedHeads,
     void Function()? requireWrite,
+    bool initialPdfImport = false,
   }) async {
     if (failSave) throw const FileSystemException('Storage unavailable');
     await super.saveInk(
       files,
       expectedHeads: expectedHeads,
       requireWrite: requireWrite,
+      initialPdfImport: initialPdfImport,
     );
   }
 }
@@ -328,6 +330,7 @@ class DelayedInkSession extends NoteSession {
     Map<String, Uint8List> files, {
     Map<String, List<String>>? expectedHeads,
     void Function()? requireWrite,
+    bool initialPdfImport = false,
   }) async {
     entered.complete();
     await release.future;
@@ -335,6 +338,7 @@ class DelayedInkSession extends NoteSession {
       files,
       expectedHeads: expectedHeads,
       requireWrite: requireWrite,
+      initialPdfImport: initialPdfImport,
     );
   }
 }

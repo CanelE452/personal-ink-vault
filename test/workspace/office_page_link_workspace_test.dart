@@ -235,16 +235,40 @@ void main() {
         }
 
         final valid = NoteLink.officePage(fixture.office.id, fixture.target);
-        Future<void> pasteLink(String link) async {
-          final button = find.byTooltip('노트 링크 열기');
+        // An open note on Android keeps these actions in its note bar's "더 많은 작업" menu.
+        final more = find.byKey(const ValueKey('workspace-more-actions'));
+        Future<void> tapWorkspaceAction(String label) async {
+          final button = find.byTooltip(label);
           await officePreviewUntil(
             tester,
             () =>
-                button.hitTestable().evaluate().length == 1 &&
+                (button.hitTestable().evaluate().length == 1 ||
+                    more.hitTestable().evaluate().length == 1) &&
                 find.byType(LinearProgressIndicator).evaluate().isEmpty,
-            'The page link action must be reachable.',
+            'The "$label" action must be reachable.',
           );
-          await tester.runAsync(() => tester.tap(button));
+          if (button.evaluate().isNotEmpty) {
+            await tester.runAsync(() => tester.tap(button));
+            return;
+          }
+          await tester.runAsync(() => tester.tap(more));
+          final item = find.text(label);
+          await officePreviewUntil(
+            tester,
+            () => item.hitTestable().evaluate().length == 1,
+            'The "$label" action must be in the more menu.',
+          );
+          await tester.runAsync(() => tester.tap(item));
+          // A closing menu still shows its labels, which the error check below would read as a page link error.
+          await officePreviewUntil(
+            tester,
+            () => find.byType(PopupMenuItem<void>).evaluate().isEmpty,
+            'The more menu must close.',
+          );
+        }
+
+        Future<void> pasteLink(String link) async {
+          await tapWorkspaceAction('노트 링크 열기');
           final dialog = find.byType(AlertDialog);
           final field = find.descendant(
             of: dialog,
@@ -346,7 +370,7 @@ void main() {
           selected('office-pdf-variant-selector'),
           fixture.target.pdfBindingId,
         );
-        await tester.runAsync(() => tester.tap(find.byTooltip('현재 페이지 링크 복사')));
+        await tapWorkspaceAction('현재 페이지 링크 복사');
         await officePreviewUntil(
           tester,
           () => copied.isNotEmpty,

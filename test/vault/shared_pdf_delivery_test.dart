@@ -10,6 +10,7 @@ import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/vault/workspace_store.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
@@ -69,6 +70,22 @@ void main() {
       });
     }
     expect(ready(), isTrue, reason: message);
+  }
+
+  // The library's link and AI dialogs are in its settings, in the side bar
+  // (closed at first on this 800 dp wide test screen).
+  Future<void> openFromSettings(WidgetTester tester, String item) async {
+    final settings = find.byKey(const ValueKey('library-settings'));
+    if (settings.hitTestable().evaluate().isEmpty) {
+      addTearDown(() => stows.libraryPanelOpen.value = null);
+      await tester.tap(find.byKey(const ValueKey('library-panel-toggle')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    await tester.tap(settings);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(ValueKey(item)));
   }
 
   Future<void> mount(WidgetTester tester) async {
@@ -280,7 +297,7 @@ void main() {
   ) async {
     final pdf = await source(tester, 'after-dialog');
     await mount(tester);
-    await tester.tap(find.byTooltip('노트 링크 열기'));
+    await openFromSettings(tester, 'settings-open-link');
     await pumpUntil(
       tester,
       () => find.text('inkvault 링크 열기').evaluate().isNotEmpty,
@@ -327,7 +344,7 @@ void main() {
     (tester) async {
       final pdf = await source(tester, 'after-popup');
       await mount(tester);
-      await tester.tap(find.byTooltip('다른 AI 연결 · MCP'));
+      await openFromSettings(tester, 'settings-mcp');
       await tester.pumpAndSettle();
       await tester.runAsync(() async {
         StudyWorkspace.pendingDocumentImport.value = pdf.path;
@@ -420,7 +437,7 @@ void main() {
     (tester) async {
       final pdf = await source(tester, 'old-vault');
       await mount(tester);
-      await tester.tap(find.byTooltip('노트 링크 열기'));
+      await openFromSettings(tester, 'settings-open-link');
       await pumpUntil(
         tester,
         () => find.text('inkvault 링크 열기').evaluate().isNotEmpty,

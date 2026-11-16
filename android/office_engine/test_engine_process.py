@@ -508,8 +508,12 @@ class EngineProcessSourceTests(unittest.TestCase):
         editor = re.search(r'<activity\s+android:name="io\.github\.canele452\.personalinkvault\.office\.OfficeEditorActivity"[^>]*/>', text, re.S)
         slideshow = re.search(r'<activity\s+android:name="org\.libreoffice\.androidlib\.SlideShowActivity"[^>]*/>', text, re.S)
         link = re.search(r'<provider\s+android:name="io\.github\.canele452\.personalinkvault\.office\.OfficeEngineLink"[^>]*/>', text, re.S)
-        self.assertTrue(editor and slideshow and link, text)
+        preview = re.search(r'<activity\s+android:name="io\.github\.canele452\.personalinkvault\.office\.OfficePreviewActivity"[^>]*/>', text, re.S)
+        self.assertTrue(editor and slideshow and link and preview, text)
         self.assertIn('android:process=":office"', editor.group(0))
+        self.assertIn('android:process=":office"', preview.group(0))
+        # A floating theme that already exists in the app's resources keeps the app visible behind the PDF card.
+        self.assertIn('android:theme="@style/Theme.MaterialComponents.DayNight.Dialog"', preview.group(0))
         self.assertNotIn("android:process", slideshow.group(0))
         self.assertIn('android:authorities="${applicationId}.office-link"', link.group(0))
         self.assertIn('android:exported="false"', link.group(0))
@@ -517,7 +521,9 @@ class EngineProcessSourceTests(unittest.TestCase):
 
     def test_main_process_never_initializes_the_engine_class(self):
         bridge = self.read("OfficeEngineBridge.java")
-        self.assertIn("Class.forName(OfficeEditorActivity.class.getName(), false, activity.getClassLoader())", bridge)
+        self.assertIn("Class<?> screen = previewOnly ? OfficePreviewActivity.class : OfficeEditorActivity.class;", bridge)
+        self.assertIn("Class.forName(screen.getName(), false, activity.getClassLoader())", bridge)
+        self.assertNotIn("Class.forName(screen.getName(), true", bridge)
         self.assertNotIn("Class.forName(OfficeEditorActivity.class.getName(), true", bridge)
         self.assertIn('.putExtra("piv.launchId", launchId)', bridge)
 

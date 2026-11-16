@@ -2,20 +2,31 @@ import 'dart:ui';
 
 import 'package:saber/components/canvas/_stroke.dart';
 
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
+import 'package:saber/data/tools/select.dart';
 import 'package:sbn/tool_id.dart';
 
 double square(double x) => x * x;
 double sqrDistanceBetween(Offset p1, Offset p2) =>
     square(p1.dx - p2.dx) + square(p1.dy - p2.dy);
 
+/// How the eraser picks strokes: the ones it touches, or (StarNote's
+/// circle-select erase) the ones inside a loop drawn around them.
+///
+/// Saved by position (stows.eraserMode): add new modes at the end.
+enum EraserMode { stroke, lasso }
+
 class Eraser extends Tool {
-  final double size;
-  late final double sqrSize = square(size);
+  /// Without an explicit size the eraser follows the eraser panel, so a change
+  /// there applies to the eraser already in hand.
+  double get size => _size ?? stows.eraserSize.value;
+  final double? _size;
+  double get sqrSize => square(size);
 
   List<Stroke> _erased = [];
 
-  new({this.size = 10});
+  new({double? size}) : _size = size;
 
   @override
   ToolId get toolId => .eraser;
@@ -26,14 +37,57 @@ class Eraser extends Tool {
     List<Stroke> strokes,
   ) {
     final List<Stroke> overlapping = [];
+    final sqrSize = this.sqrSize;
+    final highlighterOnly = stows.eraseHighlighterOnly.value;
     for (int i = 0; i < strokes.length; i++) {
       final stroke = strokes[i];
+      if (highlighterOnly && stroke.toolId != ToolId.highlighter) continue;
       if (_shouldStrokeBeErased(eraserPos, stroke, sqrSize)) {
         overlapping.add(stroke);
         _erased.add(stroke);
       }
     }
     return overlapping;
+  }
+
+  /// The loop drawn in [EraserMode.lasso], on page [lassoPageIndex]; null
+  /// when no loop is being drawn.
+  Path? lassoPath;
+  int? lassoPageIndex;
+
+  void startLasso(Offset position, int pageIndex) {
+    lassoPageIndex = pageIndex;
+    lassoPath = Path()..moveTo(position.dx, position.dy);
+  }
+
+  void extendLasso(Offset position) =>
+      lassoPath?.lineTo(position.dx, position.dy);
+
+  /// Forgets the loop without erasing anything.
+  void cancelLasso() {
+    lassoPath = null;
+    lassoPageIndex = null;
+  }
+
+  /// Closes the loop and returns the [strokes] mostly inside it, by the
+  /// lasso's own rule ([Select.minPercentInside]); with the panel's
+  /// highlighter-only switch, only highlighter strokes. The caller removes
+  /// them; [onDragEnd] reports them like rubbed-out strokes.
+  List<Stroke> finishLasso(List<Stroke> strokes) {
+    final path = lassoPath?..close();
+    lassoPath = null;
+    lassoPageIndex = null;
+    if (path == null) return const [];
+    final highlighterOnly = stows.eraseHighlighterOnly.value;
+    final inside = [
+      for (final stroke in strokes)
+        if ((!highlighterOnly || stroke.toolId == ToolId.highlighter) &&
+            Select.polygonPercentInside(path, stroke.lowQualityPolygon) >
+                Select.minPercentInside)
+          stroke,
+    ];
+    _erased.addAll(inside);
+    return inside;
   }
 
   /// Returns the strokes that have been erased during this drag.

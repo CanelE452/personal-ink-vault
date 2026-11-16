@@ -62,6 +62,8 @@ void main() {
     void Function(VaultNote, LibraryNoteAction)? onNoteAction,
     bool showTrash = false,
     double width = 1100,
+    String? searchQuery,
+    ValueChanged<String>? onSearchChanged,
   }) async {
     tester.view.physicalSize = Size(width, 900);
     tester.view.devicePixelRatio = 1;
@@ -79,6 +81,8 @@ void main() {
             onCreate: onCreate ?? (_) {},
             onNoteAction: onNoteAction,
             showTrash: showTrash,
+            searchQuery: searchQuery,
+            onSearchChanged: onSearchChanged,
           ),
         ),
       ),
@@ -180,7 +184,7 @@ void main() {
     expect(selections, isEmpty);
   });
 
-  testWidgets('folder cards and breadcrumbs open the selected location', (
+  testWidgets("folder cards open a folder and the title's ‹ goes up one", (
     tester,
   ) async {
     final parent = folder('대학');
@@ -194,8 +198,20 @@ void main() {
     );
     await tester.tap(find.byKey(ValueKey('library-folder-${child.id}')));
     expect(locations, [child.id]);
-    await tester.tap(find.byKey(const ValueKey('library-root')));
+    await tester.tap(find.byKey(const ValueKey('library-up')));
     expect(locations, [child.id, null]);
+    await mount(
+      tester,
+      folders: [parent, child],
+      currentFolderId: child.id,
+      onOpenFolder: locations.add,
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('library-title'))).data,
+      '연구',
+    );
+    await tester.tap(find.byKey(const ValueKey('library-up')));
+    expect(locations, [child.id, null, parent.id]);
   });
 
   testWidgets(
@@ -233,10 +249,8 @@ void main() {
       expect(find.text('강의 자료'), findsOneWidget);
       expect(find.text('필기 수업'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('library-filter-all')));
-      await tester.enterText(
-        find.byKey(const ValueKey('library-search')),
-        '정리',
-      );
+      // The search box is in the side bar; the library takes its query.
+      await mount(tester, notes: [ink, pdf, md], searchQuery: '정리');
       await tester.pumpAndSettle();
       expect(find.text('정리 문서'), findsOneWidget);
       expect(find.text('강의 자료'), findsNothing);
@@ -289,4 +303,174 @@ void main() {
       },
     );
   }
+
+  testWidgets('swiping the document area moves to the next kind tab', (
+    tester,
+  ) async {
+    final ink = note('필기 수업');
+    final pdf = note('강의 자료', kind: VaultDocumentKind.pdf);
+    await mount(tester, notes: [ink, pdf]);
+    expect(find.text('강의 자료'), findsOneWidget);
+    await tester.fling(find.byType(TabBarView), const Offset(-600, 0), 2000);
+    await tester.pumpAndSettle();
+    expect(find.text('필기 수업'), findsOneWidget);
+    expect(find.text('강의 자료'), findsNothing);
+    final tabs = tester.widget<TabBar>(
+      find.byKey(const ValueKey('library-filter-tabs')),
+    );
+    expect(tabs.controller!.index, 1);
+  });
+
+  testWidgets(
+    'the header centres the current folder, with no search box over it',
+    (tester) async {
+      final lectures = folder('강의');
+      await mount(
+        tester,
+        folders: [lectures],
+        notes: [note('필기 수업', folderId: lectures.id)],
+        currentFolderId: lectures.id,
+      );
+      final title = find.byKey(const ValueKey('library-title'));
+      expect(tester.widget<Text>(title).data, '강의');
+      expect(find.byKey(const ValueKey('library-search')), findsNothing);
+      // The ‹ and the folder name sit in the middle of the header.
+      final up = tester.getRect(find.byKey(const ValueKey('library-up')));
+      final text = tester.getRect(title);
+      final middle = tester.getCenter(find.byType(LibraryHome)).dx;
+      expect(((up.left + text.right) / 2 - middle).abs(), lessThan(4));
+      final create = tester.getCenter(
+        find.byKey(const ValueKey('library-create-button')),
+      );
+      expect((create.dy - text.center.dy).abs(), lessThan(12));
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('library-filter-tabs'))).dy,
+        greaterThan(text.bottom),
+      );
+    },
+  );
+
+  testWidgets('the root and the trash are titled, without a ‹', (tester) async {
+    await mount(tester, notes: [note('필기 수업')]);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('library-title'))).data,
+      '내 문서',
+    );
+    expect(find.byKey(const ValueKey('library-up')), findsNothing);
+    await mount(tester, showTrash: true);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('library-title'))).data,
+      '휴지통',
+    );
+    expect(find.byKey(const ValueKey('library-up')), findsNothing);
+  });
+
+  testWidgets('a search in the trash shows in its title too', (tester) async {
+    final searches = <String>[];
+    await mount(
+      tester,
+      showTrash: true,
+      searchQuery: '초안',
+      onSearchChanged: searches.add,
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('library-title'))).data,
+      "휴지통 '초안' 검색 결과",
+    );
+    await tester.tap(find.byKey(const ValueKey('library-search-clear')));
+    expect(searches, ['']);
+  });
+
+  testWidgets('while searching the title says so and its × clears it', (
+    tester,
+  ) async {
+    final searches = <String>[];
+    await mount(
+      tester,
+      notes: [note('정리 문서')],
+      searchQuery: '정리',
+      onSearchChanged: searches.add,
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('library-title'))).data,
+      "'정리' 검색 결과",
+    );
+    await tester.tap(find.byKey(const ValueKey('library-search-clear')));
+    expect(searches, ['']);
+  });
+
+  testWidgets(
+    "an Office card's menu previews it or makes a PDF; other cards' do not",
+    (tester) async {
+      final office = note('강의 원본', kind: VaultDocumentKind.office);
+      final ink = note('필기 수업');
+      final actions = <(VaultNote, LibraryNoteAction)>[];
+      await mount(
+        tester,
+        notes: [office, ink],
+        onNoteAction: (note, action) => actions.add((note, action)),
+      );
+      await tester.tap(
+        find.byKey(ValueKey('library-note-menu-${office.revision.revisionId}')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('library-note-preview')), findsOneWidget);
+      await tester.tap(find.text('PDF로 바꾸기'));
+      await tester.pumpAndSettle();
+      expect(actions, [(office, LibraryNoteAction.pdf)]);
+      await tester.tap(
+        find.byKey(ValueKey('library-note-menu-${ink.revision.revisionId}')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('library-note-preview')), findsNothing);
+      expect(find.text('이름 변경'), findsOneWidget);
+    },
+  );
+
+  testWidgets('cards are four across on an upright tablet, six lying flat and two on a phone', (
+    tester,
+  ) async {
+    final notes = [for (var i = 0; i < 12; i++) note('노트 $i')];
+    Future<int> columns(double width) async {
+      await mount(tester, notes: notes, width: width);
+      await tester.pump();
+      final top = tester
+          .getTopLeft(find.byKey(const ValueKey('library-create-tile')))
+          .dy;
+      final inFirstRow = notes.where((note) {
+        final card = find.byKey(
+          ValueKey('library-note-${note.revision.revisionId}'),
+        );
+        return card.evaluate().isNotEmpty &&
+            (tester.getTopLeft(card).dy - top).abs() < 8;
+      });
+      return 1 + inFirstRow.length;
+    }
+
+    // The Galaxy Tab S9+ at density 340: 824 x 1318 dp.
+    expect(await columns(824), 4);
+    expect(await columns(1318), 6);
+    expect(await columns(412), 2);
+  });
+
+  testWidgets('folders are covers in the grid with their document counts', (
+    tester,
+  ) async {
+    final outer = folder('랩');
+    final inner = folder('통합세미나', parentId: outer.id);
+    await mount(
+      tester,
+      folders: [outer, inner],
+      notes: [
+        note('회의', folderId: outer.id),
+        note('발표', folderId: inner.id),
+        note('지운 것', folderId: outer.id, trashed: true),
+      ],
+    );
+    expect(find.text('2개 문서'), findsOneWidget);
+    final cover = tester.getSize(
+      find.byKey(ValueKey('library-folder-${outer.id}')),
+    );
+    expect(cover.height, greaterThan(200));
+  });
 }

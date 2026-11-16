@@ -415,8 +415,10 @@ public final class OfficeEngineBridge {
         }
         try {
             // Load without initializing: the engine's native libraries belong to the ":office" process.
-            Class.forName(OfficeEditorActivity.class.getName(), false, activity.getClassLoader());
-            Intent intent = new Intent(activity, OfficeEditorActivity.class)
+            // A PDF preparation floats over the app's own screen; editing uses the full-screen editor.
+            Class<?> screen = previewOnly ? OfficePreviewActivity.class : OfficeEditorActivity.class;
+            Class.forName(screen.getName(), false, activity.getClassLoader());
+            Intent intent = new Intent(activity, screen)
                     .setAction(previewOnly ? Intent.ACTION_VIEW : Intent.ACTION_EDIT)
                     .putExtra("piv.workingPath", working.getPath())
                     .putExtra("piv.sessionDirectory", directory.getPath())

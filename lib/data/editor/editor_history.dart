@@ -107,9 +107,13 @@ class EditorHistory {
   EditorHistoryItem? removeAccidentalStroke() {
     _isRedoPossible = true;
     if (_past.isEmpty) return null;
-    assert(_past.last.type == .draw, 'Accidental stroke is not a draw');
+    // The eraser's first finger of a pinch leaves an erase instead.
     assert(
-      _past.last.strokes.length == 1,
+      _past.last.type == .draw || _past.last.type == .erase,
+      'Accidental stroke is not a draw or an erase',
+    );
+    assert(
+      _past.last.type != .draw || _past.last.strokes.length == 1,
       'Accidental strokes should be single-stroke',
     );
     assert(

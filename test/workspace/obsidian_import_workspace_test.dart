@@ -503,18 +503,17 @@ void main() {
       final open = inBoard(find.text('문서 열기')).hitTestable();
       await waitUntil(tester, () => open.evaluate().length == 1);
       await tester.runAsync(() => tester.tap(open));
-      final readyToNavigate = find.byWidgetPredicate(
-        (widget) =>
-            widget is IconButton &&
-            widget.tooltip == '문서 연결 · 태그 · 그래프' &&
-            widget.onPressed != null,
+      // The open note's bar keeps the workspace actions in "더 많은 작업"; no progress bar means it is not busy.
+      final readyToNavigate = find.byKey(
+        const ValueKey('workspace-more-actions'),
       );
       await waitUntil(
         tester,
         () =>
             controller.activeSession?.note.id == note.id &&
             controller.navigation.current.markdownAnchor == 'Target section' &&
-            readyToNavigate.evaluate().length == 1,
+            readyToNavigate.evaluate().length == 1 &&
+            find.byType(LinearProgressIndicator).evaluate().isEmpty,
       );
       await tapMarkdownLink(tester, 'Open board');
       await waitUntil(

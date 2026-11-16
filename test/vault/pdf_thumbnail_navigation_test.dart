@@ -219,7 +219,7 @@ void main() {
 }
 
 Future<void> _tapThumbnail(WidgetTester tester, int target) async {
-  await tester.tap(find.byTooltip(t.editor.pages));
+  await tester.tap(find.byTooltip('쪽 관리'));
   await tester.pumpAndSettle();
   final manager = find.byType(EditorPageManager);
   final thumbnail = find.descendant(

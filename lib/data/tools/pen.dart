@@ -7,6 +7,7 @@ import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pencil.dart';
+import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:sbn/tool_id.dart';
 
@@ -64,7 +65,12 @@ class Pen extends Tool {
   bool pressureEnabled;
   StrokeOptions options;
 
-  static var _currentPen = Pen.fountainPen();
+  // Starts as the pen button's last kind, so a restart keeps the ballpoint.
+  static var _currentPen = switch (stows.lastPenFamily.value) {
+    .ballpointPen => Pen.ballpointPen(),
+    .shapePen => ShapePen(),
+    _ => Pen.fountainPen(),
+  };
   static Pen get currentPen => _currentPen;
   static set currentPen(Pen currentPen) {
     assert(
@@ -73,6 +79,29 @@ class Pen extends Tool {
     );
     assert(currentPen is! Pencil, 'Use Pencil.currentPencil instead');
     _currentPen = currentPen;
+  }
+
+  /// What the pen button holds: the pencil if it was the last pen kind
+  /// chosen, otherwise [currentPen] (fountain pen, ballpoint or shape pen).
+  static Pen get currentPenFamily => stows.lastPenFamily.value == .pencil
+      ? Pencil.currentPencil
+      : currentPen;
+
+  /// Whether [tool] is one of the pen button's kinds (not the highlighter).
+  static bool isPenFamily(Tool tool) => tool is Pen && tool is! Highlighter;
+
+  /// Colours this pen and keeps the colour for the next pen of the same kind.
+  void setColor(Color color) {
+    this.color = color;
+    final setting = switch (toolId) {
+      .fountainPen => stows.lastFountainPenColor,
+      .ballpointPen => stows.lastBallpointPenColor,
+      .shapePen => stows.lastShapePenColor,
+      .pencil => stows.lastPencilColor,
+      .highlighter => stows.lastHighlighterColor,
+      _ => null,
+    };
+    setting?.value = color.toARGB32();
   }
 
   List<double>? get sizePresets => switch (toolId) {
@@ -86,7 +115,22 @@ class Pen extends Tool {
   void setSize(double size) {
     assert(size >= sizeMin && size <= sizeMax);
     if (options.size == size) return;
-    final updated = options.copyWith(size: size);
+    _save(options.copyWith(size: size));
+  }
+
+  /// How much the pen steadies a stroke while it is drawn (0–1), shown as
+  /// stroke stabilisation in the pen panel. It is kept in [options] as
+  /// perfect_freehand's streamline, but the pens and the pencil smooth with
+  /// the stroke stabiliser instead (see [onDragStart]).
+  void setStreamline(double streamline) {
+    assert(streamline >= 0 && streamline <= 1);
+    if (options.streamline == streamline) return;
+    _save(options.copyWith(streamline: streamline));
+  }
+
+  /// Keeps [updated] as this pen's options and, for the saved pens, as the
+  /// options the next pen of the same kind starts with.
+  void _save(StrokeOptions updated) {
     final setting = switch (toolId) {
       .fountainPen => stows.lastFountainPenOptions,
       .ballpointPen => stows.lastBallpointPenOptions,
@@ -103,20 +147,39 @@ class Pen extends Tool {
     }
   }
 
+  /// The stabiliser's width along the stroke at 100%, in logical pixels on
+  /// screen (50%, the default, is 3).
+  static const stabiliserWidthAtFull = 6.0;
+
+  /// [screenScale] is the page's scale on screen (logical pixels per page
+  /// unit), so the stabilisation looks the same at any zoom.
   void onDragStart(
     Offset position,
     EditorPage page,
     int pageIndex,
-    double? pressure,
-  ) {
+    double? pressure, {
+    double screenScale = 1,
+  }) {
+    // The pens and the pencil smooth with the stabiliser and leave out
+    // perfect_freehand's much weaker streamline; the highlighter and the
+    // shape pen keep drawing as before.
+    final stabilised = this is! Highlighter && this is! ShapePen;
     currentStroke = Stroke(
       color: color,
       pressureEnabled: pressureEnabled,
-      options: options.copyWith(isComplete: false),
+      options: options.copyWith(
+        isComplete: false,
+        streamline: stabilised ? 0 : null,
+      ),
       pageIndex: pageIndex,
       page: page,
       toolId: toolId,
     );
+    if (stabilised) {
+      currentStroke!.stabilise(
+        options.streamline * stabiliserWidthAtFull / screenScale,
+      );
+    }
     onDragUpdate(position, pressure);
   }
 
@@ -130,6 +193,8 @@ class Pen extends Tool {
     if (stroke == null) return null;
 
     return stroke
+      // Finished: the points stay as they were last smoothed.
+      ..stabilise(0)
       ..options.isComplete = true
       ..markPolygonNeedsUpdating();
   }

@@ -6,10 +6,15 @@ import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
+import 'package:pdf/pdf.dart' show PdfColors;
+import 'package:pdfrx/pdfrx.dart' show Pdfrx, pdfrxInitialize;
 import 'package:saber/data/office/office_annotation_store.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/vault/library_store.dart';
 import 'package:saber/data/vault/workspace_store.dart';
+
+import 'office_original_preview_test.dart'
+    show officePreviewPdf, officePreviewPdfiumAvailable;
 
 Uint8List officeFile(String body, {bool slides = false}) => Uint8List.fromList(
   ZipEncoder().encode(
@@ -400,6 +405,84 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test(
+    'only a readable first converted PDF is kept, once, and never as a second version',
+    () async {
+      final pdfium = await Directory.systemTemp.createTemp('office-keep-pdf-');
+      addTearDown(() => pdfium.delete(recursive: true));
+      Pdfrx.pdfiumModulePath = File(
+        'build/windows/x64/runner/Release/pdfium.dll',
+      ).absolute.path;
+      await pdfrxInitialize(tmpPath: pdfium.path);
+      final note = await imported();
+      final original = await store.readLatest(note);
+      await expectLater(
+        store.keepFirstPdf(
+          note,
+          pdfBytes: syntheticPdf('unreadable conversion'),
+          pageCount: 1,
+        ),
+        throwsA(anything),
+      );
+      await expectLater(
+        store.keepFirstPdf(
+          note,
+          pdfBytes: await officePreviewPdf(PdfColors.red, second: PdfColors.blue),
+          pageCount: 1,
+        ),
+        throwsFormatException,
+      );
+      expect(await store.readPdfVariants(note, original), isEmpty);
+
+      final first = await officePreviewPdf(PdfColors.red);
+      expect(
+        await store.keepFirstPdf(note, pdfBytes: first, pageCount: 1),
+        isTrue,
+      );
+      final kept = (await store.readPdfVariants(note, original)).single;
+      expect(await store.readPdfVariantBytes(note, original, kept), first);
+      expect(
+        (await store.readEditions(note)).single.revision.revisionId,
+        original.revision.revisionId,
+      );
+
+      expect(
+        await store.keepFirstPdf(
+          note,
+          pdfBytes: await officePreviewPdf(PdfColors.blue),
+          pageCount: 1,
+          revisionId: original.revision.revisionId,
+        ),
+        isFalse,
+      );
+      expect(
+        (await store.readPdfVariants(note, original)).single.bindingId,
+        kept.bindingId,
+      );
+
+      final edited = await store.commitEdited(
+        await store.beginEdit(note),
+        originalBytes: officeFile('real edit'),
+        pdfBytes: syntheticPdf('edited document'),
+        engineVersion: 'office-edit',
+        pageCount: 1,
+      );
+      expect(
+        await store.keepFirstPdf(
+          note,
+          pdfBytes: await officePreviewPdf(PdfColors.green),
+          pageCount: 1,
+        ),
+        isFalse,
+      );
+      expect(
+        (await store.readPdfVariants(note, edited)).single.bindingId,
+        edited.bindingId,
+      );
+    },
+    skip: !officePreviewPdfiumAvailable,
+  );
 
   test('new editions preserve all older originals, PDFs and annotation binding IDs after reopen', () async {
     final note = await imported();

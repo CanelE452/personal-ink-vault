@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:path/path.dart' as p;
@@ -18,6 +19,7 @@ import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/office/android_hwp_editor.dart';
 import 'package:saber/data/office/android_office_engine.dart';
 import 'package:saber/data/office/docx_body_text.dart';
 import 'package:saber/data/office/docx_find_replace.dart';
@@ -28,6 +30,7 @@ import 'package:saber/data/office/docx_table_structure.dart';
 import 'package:saber/data/office/hwp_office_engine.dart';
 import 'package:saber/data/office/office_annotation_store.dart';
 import 'package:saber/data/office/office_document_store.dart';
+import 'package:saber/data/office/office_edit_recovery.dart';
 import 'package:saber/data/office/office_image_asset.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
@@ -2338,6 +2341,10 @@ void main() {
     ValueChanged<bool>? dirty,
     ValueChanged<bool>? busy,
     Future<void> Function(VaultNote)? onConvertedCopy,
+    Future<void> Function(Future<OfficePdfCopy?> Function())? onPdfCopy,
+    AndroidHwpEditor? hwpEditor,
+    OfficeOpenRequest? openRequest,
+    ValueChanged<OfficeOpenRequest>? onOpenRequestHandled,
   }) async {
     final key = GlobalKey<OfficeWorkspaceState>();
     await tester.pumpWidget(
@@ -2378,6 +2385,10 @@ void main() {
               onDirtyChanged: dirty,
               onBusyChanged: busy,
               onConvertedCopy: onConvertedCopy,
+              onPdfCopy: onPdfCopy,
+              hwpEditor: hwpEditor,
+              openRequest: openRequest,
+              onOpenRequestHandled: onOpenRequestHandled,
               onBack: () {},
             ),
           ),
@@ -2586,8 +2597,8 @@ void main() {
         final cleanPeer = await openPdf(peerKey);
         expect(under(localKey, find.byType(SaveIndicator)), findsNothing);
         expect(under(peerKey, find.byType(SaveIndicator)), findsOneWidget);
-        expect(under(localKey, find.byTooltip(t.editor.pages)), findsOneWidget);
-        expect(under(peerKey, find.byTooltip(t.editor.pages)), findsOneWidget);
+        expect(under(localKey, find.byTooltip('쪽 관리')), findsOneWidget);
+        expect(under(peerKey, find.byTooltip('쪽 관리')), findsOneWidget);
         await withPumping(tester, localKey.currentState!.save);
         await withPumping(tester, peerKey.currentState!.save);
 
@@ -3917,7 +3928,9 @@ void main() {
   testWidgets(
     'Windows save refresh does not read the historical original payload',
     (tester) async {
-      final original = (await tester.runAsync(() => store.readLatest(note)))!;
+      // Reads go through withPumping: a read queued behind an operation that needs a frame would wait forever
+      // inside a bare runAsync (no frames advance there); this test hung that way in 2 of 3 full runs.
+      final original = await withPumping(tester, () => store.readLatest(note));
       final engine = WindowsOfficeEngine(
         runner: (request) async {
           Map<String, dynamic> snapshot(String hash) => {
@@ -4016,7 +4029,7 @@ void main() {
         false,
         reason: 'Post-commit refresh must not reopen the historical original',
       );
-      final editions = (await tester.runAsync(() => store.readEditions(note)))!;
+      final editions = await withPumping(tester, () => store.readEditions(note));
       expect(editions, hasLength(2));
       expect(editions.first.originalBytes, annotationOfficeFile('edited'));
       expect(editions.first.bindingId, isNotNull);
@@ -4682,6 +4695,218 @@ void main() {
       );
     },
   );
+
+  // The HWP editor screen, answering every edit with a close without changes.
+  ({AndroidHwpEditor editor, List<String> sessions}) unchangedHwpEditor() {
+    const channel = MethodChannel('test/hwp-editor');
+    final sessions = <String>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      final arguments = call.arguments as Map<Object?, Object?>;
+      final sessionId = arguments['sessionId']! as String;
+      sessions.add(sessionId);
+      final source = File(arguments['sourcePath']! as String);
+      return {
+        'status': 'cancelled',
+        'sessionId': sessionId,
+        'inputSourceSha256': sha256.convert(source.readAsBytesSync()).toString(),
+      };
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    return (editor: AndroidHwpEditor(channel: channel), sessions: sessions);
+  }
+
+  HwpStructuredOfficeEngine unusedHwpEngine() => HwpStructuredOfficeEngine(
+    runner: (_) async =>
+        throw StateError('Opening the HWP editor needs no structured HWP call'),
+  );
+
+  testWidgets(
+    'a library tap opens a HWP original in its editor; an unchanged close leaves nothing',
+    (tester) async {
+      await tester.runAsync(() async {
+        note = await store.importDocument(
+          title: '한글',
+          fileName: '연구.hwp',
+          bytes: Uint8List.fromList([1, 2, 3]),
+        );
+      });
+      final hwp = unchangedHwpEditor();
+      final handled = <OfficeOpenRequest>[];
+      final request = OfficeOpenRequest(OfficeOpenAction.edit);
+      final key = await mount(
+        tester,
+        null,
+        hwpEngine: unusedHwpEngine(),
+        hwpEditor: hwp.editor,
+        openRequest: request,
+        onOpenRequestHandled: handled.add,
+      );
+      for (var i = 0; i < 20 && hwp.sessions.isEmpty; i++) {
+        await drain(tester);
+      }
+      expect(hwp.sessions, hasLength(1));
+      expect(handled, [request]);
+      await withPumping(tester, key.currentState!.save);
+      // Later frames do not run the same request again.
+      await drain(tester);
+      expect(hwp.sessions, hasLength(1));
+      // A look without changes: no notice and nothing kept to resume.
+      expect(find.text('원본 편집을 취소했습니다.'), findsNothing);
+      expect(find.textContaining('보관한 편집 작업'), findsNothing);
+      expect(find.text('이전에 마치지 못한 원본 편집이 있습니다.'), findsNothing);
+      expect(
+        await tester.runAsync(
+          () => OfficeEditRecoveryStore(repository).list(note),
+        ),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('an unfinished earlier HWP edit is offered before a new editor', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      note = await store.importDocument(
+        title: '한글',
+        fileName: '연구.hwp',
+        bytes: Uint8List.fromList([1, 2, 3]),
+      );
+      // An edit the app was closed in the middle of.
+      final captured = await store.beginEdit(note);
+      final working = File('${temp.path}/unfinished/original.hwp');
+      await working.parent.create(recursive: true);
+      await working.writeAsBytes(captured.originalBytes, flush: true);
+      await OfficeEditRecoveryStore(
+        repository,
+      ).start(captured, sessionId: newId(), workingPath: working.path);
+    });
+    final hwp = unchangedHwpEditor();
+    final handled = <OfficeOpenRequest>[];
+    await mount(
+      tester,
+      null,
+      hwpEngine: unusedHwpEngine(),
+      hwpEditor: hwp.editor,
+      openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+      onOpenRequestHandled: handled.add,
+    );
+    for (var i = 0; i < 5; i++) {
+      await drain(tester);
+    }
+    expect(handled, hasLength(1));
+    expect(hwp.sessions, isEmpty);
+    expect(find.text('이전에 마치지 못한 원본 편집이 있습니다.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a library tap on a Word original keeps its screen on Android', (
+    tester,
+  ) async {
+    var edits = 0;
+    final handled = <OfficeOpenRequest>[];
+    await mount(
+      tester,
+      FixtureOfficeEngine(
+        onEdit: (path, id) async {
+          edits++;
+          return const AndroidOfficeEditResult(
+            status: AndroidOfficeEditStatus.cancelled,
+            engineVersion: 'fixture-engine',
+          );
+        },
+      ),
+      openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+      onOpenRequestHandled: handled.add,
+    );
+    for (var i = 0; i < 5; i++) {
+      await drain(tester);
+    }
+    expect(handled, hasLength(1));
+    // The Office editor saves the document again on every close, so it opens
+    // only from its button.
+    expect(edits, 0);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('office-edit-original')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'a library tap on an original this device cannot edit shows its screen',
+    (tester) async {
+      final handled = <OfficeOpenRequest>[];
+      await mount(
+        tester,
+        FixtureOfficeEngine(available: false),
+        openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+        onOpenRequestHandled: handled.add,
+      );
+      await drain(tester);
+      expect(handled, hasLength(1));
+      expect(find.text('lecture.docx'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a PDF request from the library makes the PDF as its button does', (
+    tester,
+  ) async {
+    final copies = <Future<OfficePdfCopy?> Function()>[];
+    await mount(
+      tester,
+      FixtureOfficeEngine(),
+      openRequest: OfficeOpenRequest(OfficeOpenAction.pdf),
+      onPdfCopy: (prepare) async => copies.add(prepare),
+    );
+    for (var i = 0; i < 20 && copies.isEmpty; i++) {
+      await drain(tester);
+    }
+    expect(copies, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the Windows app keeps the Office screen on a library tap', (
+    tester,
+  ) async {
+    final modes = <Object?>[];
+    final handled = <OfficeOpenRequest>[];
+    await mount(
+      tester,
+      null,
+      windowsEngine: WindowsOfficeEngine(
+        runner: (request) async {
+          modes.add(request['mode']);
+          throw StateError('A library tap must not start the Windows editor');
+        },
+      ),
+      openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+      onOpenRequestHandled: handled.add,
+    );
+    for (var i = 0; i < 5; i++) {
+      await drain(tester);
+    }
+    expect(handled, hasLength(1));
+    // Editing is available here, through the screen's own tools.
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('office-edit-original')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(find.byType(WindowsOfficeEditor), findsNothing, reason: '$modes');
+    expect(modes, isNot(contains('inspect')));
+  });
 
   testWidgets(
     'native saved response commits matching source and PDF as a new edition',

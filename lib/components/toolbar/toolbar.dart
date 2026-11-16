@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:collapsible/collapsible.dart';
@@ -12,12 +13,13 @@ import 'package:saber/components/theming/adaptive_icon.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/uni_icon.dart';
 import 'package:saber/components/toolbar/color_bar.dart';
-import 'package:saber/components/toolbar/export_bar.dart';
+import 'package:saber/components/toolbar/export_dialog.dart';
 import 'package:saber/components/toolbar/ink_width_presets.dart';
-import 'package:saber/components/toolbar/pen_modal.dart';
 import 'package:saber/components/toolbar/selection_bar.dart';
 import 'package:saber/components/toolbar/size_picker.dart';
+import 'package:saber/components/toolbar/tool_panels.dart';
 import 'package:saber/components/toolbar/toolbar_button.dart';
+import 'package:saber/components/toolbar/toolbar_layout.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/prefs.dart';
@@ -26,9 +28,9 @@ import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/pen.dart';
+import 'package:saber/data/tools/pen_box.dart';
 import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
-import 'package:saber/i18n/strings.g.dart';
 
 class Toolbar extends StatefulWidget {
   const new({
@@ -53,6 +55,10 @@ class Toolbar extends StatefulWidget {
     required this.exportAsSba,
     required this.exportAsPdf,
     required this.exportAsPng,
+    this.exportTitle = '',
+    this.leading = const [],
+    this.hostItems = const {},
+    this.trailing = const [],
   });
 
   final AxisDirection alignment;
@@ -80,9 +86,22 @@ class Toolbar extends StatefulWidget {
   final VoidCallback duplicateSelection;
   final VoidCallback deleteSelection;
 
-  final Future Function(BuildContext)? exportAsSba;
-  final Future Function(BuildContext)? exportAsPdf;
-  final Future Function(BuildContext)? exportAsPng;
+  final ExportFunction? exportAsSba;
+  final ExportFunction? exportAsPdf;
+  final ExportFunction? exportAsPng;
+
+  /// The note's name, the export dialog's default file name.
+  final String exportTitle;
+
+  /// Placed before the tools, for example the handle that moves the toolbar.
+  final List<Widget> leading;
+
+  /// The host's own toolbar items (the page actions), by [ToolbarItem.id];
+  /// they are ordered and hidden like the toolbar's tools.
+  final Map<String, Widget> hostItems;
+
+  /// Always placed last, for example the toolbar settings button.
+  final List<Widget> trailing;
 
   @override
   State<Toolbar> createState() => _ToolbarState();
@@ -92,9 +111,31 @@ class Toolbar extends StatefulWidget {
 }
 
 class _ToolbarState extends State<Toolbar> {
-  ValueNotifier<bool> showExportOptions = ValueNotifier(false);
   ValueNotifier<bool> showColorOptions = ValueNotifier(false);
   ValueNotifier<ToolOptions> toolOptionsType = ValueNotifier(ToolOptions.hide);
+
+  /// The tool whose panel is open ('pen', 'pencil', 'highlighter', 'eraser'
+  /// or 'select'), if any. Tapping the chosen tool again toggles it.
+  final _openPanel = ValueNotifier<String?>(null);
+
+  /// The toolbar and the open panel share this tap group, so taps on the
+  /// toolbar keep the panel open while taps on the page close it.
+  final _panelGroup = Object();
+
+  void _togglePanel(String id) =>
+      _openPanel.value = _openPanel.value == id ? null : id;
+
+  // Keyed, so a button keeps its own panel when the toolbar layout changes.
+  Widget _withPanel(String id, Widget button, WidgetBuilder panel) =>
+      ToolPanelAnchor(
+        key: ValueKey('tool-panel-anchor-$id'),
+        id: id,
+        openPanel: _openPanel,
+        edge: widget.alignment,
+        groupId: _panelGroup,
+        panel: panel,
+        child: button,
+      );
 
   @override
   void initState() {
@@ -106,6 +147,13 @@ class _ToolbarState extends State<Toolbar> {
   }
 
   void _setState() => setState(() {});
+
+  @override
+  void didUpdateWidget(Toolbar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A panel belongs to the edge it opened from.
+    if (oldWidget.alignment != widget.alignment) _openPanel.value = null;
+  }
 
   Keybinding? _ctrlF;
   Keybinding? _ctrlE;
@@ -140,7 +188,7 @@ class _ToolbarState extends State<Toolbar> {
     Keybinder.bind(_ctrlF!, widget.toggleFingerDrawing);
     Keybinder.bind(_ctrlE!, toggleEraser);
     Keybinder.bind(_ctrlC!, toggleColorOptions);
-    Keybinder.bind(_ctrlShiftS!, toggleExportBar);
+    Keybinder.bind(_ctrlShiftS!, openExportDialog);
     Keybinder.bind(_f11!, toggleFullscreen);
     Keybinder.bind(_ctrlV!, widget.paste);
   }
@@ -155,6 +203,7 @@ class _ToolbarState extends State<Toolbar> {
   }
 
   void toggleEraser() {
+    _openPanel.value = null;
     toolOptionsType.value = .hide;
     widget.setTool(Eraser()); // this toggles eraser
   }
@@ -163,8 +212,18 @@ class _ToolbarState extends State<Toolbar> {
     showColorOptions.value = !showColorOptions.value;
   }
 
-  void toggleExportBar() {
-    showExportOptions.value = !showExportOptions.value;
+  void openExportDialog() {
+    if (widget.readOnly) return;
+    _openPanel.value = null;
+    unawaited(
+      showExportDialog(
+        context,
+        title: widget.exportTitle,
+        pdf: widget.exportAsPdf,
+        image: widget.exportAsPng,
+        original: widget.exportAsSba,
+      ),
+    );
   }
 
   void toggleFullscreen() async {
@@ -183,6 +242,36 @@ class _ToolbarState extends State<Toolbar> {
     setState(() => pen.setSize(size));
   }
 
+  /// The pen button's pen: the one in hand when it is a pen kind (whatever
+  /// put it there), otherwise the pen kind chosen last.
+  Pen get _penButtonPen => Pen.isPenFamily(widget.currentTool)
+      ? widget.currentTool as Pen
+      : Pen.currentPenFamily;
+
+  /// The pen panel, shared by the pen button and the separate pencil button.
+  Widget _penPanel() => PenPanel(
+    getPen: () => _penButtonPen,
+    setTool: widget.setTool,
+    setSize: _setPenSize,
+    setColor: widget.setColor,
+    openColors: _openColorsFromPanel,
+  );
+
+  /// The chosen swatch tapped again in a panel: the full palette opens under
+  /// the toolbar, where the panel would cover it, so the panel closes.
+  void _openColorsFromPanel() {
+    _openPanel.value = null;
+    showColorOptions.value = true;
+  }
+
+  void _applyPenBoxEntry(PenBoxEntry entry) {
+    _openPanel.value = null;
+    toolOptionsType.value = .hide;
+    widget.setTool(entry.createPen());
+    // Through the editor, which adds the highlighter's transparency.
+    widget.setColor(Color(entry.color));
+  }
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) =>
@@ -198,7 +287,6 @@ class _ToolbarState extends State<Toolbar> {
     final isToolbarVertical =
         widget.alignment == AxisDirection.left ||
         widget.alignment == AxisDirection.right;
-    final axis = isToolbarVertical ? Axis.vertical : Axis.horizontal;
 
     final buttonPadding = isToolbarVertical
         ? Toolbar._buttonPaddingVertical
@@ -219,26 +307,6 @@ class _ToolbarState extends State<Toolbar> {
 
     final bars = <Widget>[
       ValueListenableBuilder(
-        valueListenable: showExportOptions,
-        builder: (context, showExportOptions, child) {
-          return Collapsible(
-            axis: isToolbarVertical
-                ? CollapsibleAxis.horizontal
-                : CollapsibleAxis.vertical,
-            maintainState: true,
-            collapsed: !showExportOptions,
-            child: child!,
-          );
-        },
-        child: ExportBar(
-          axis: isToolbarVertical ? Axis.vertical : Axis.horizontal,
-          toggleExportBar: toggleExportBar,
-          exportAsSba: widget.exportAsSba,
-          exportAsPdf: widget.exportAsPdf,
-          exportAsPng: widget.exportAsPng,
-        ),
-      ),
-      ValueListenableBuilder(
         valueListenable: toolOptionsType,
         builder: (context, toolOptionsType, _) {
           return Collapsible(
@@ -249,24 +317,6 @@ class _ToolbarState extends State<Toolbar> {
             collapsed: toolOptionsType == .hide,
             child: switch (toolOptionsType) {
               .hide => const SizedBox.square(dimension: SizePicker.smallLength),
-              .pen => PenModal(
-                axis: axis,
-                getTool: () => Pen.currentPen,
-                setTool: widget.setTool,
-                setSize: _setPenSize,
-              ),
-              .highlighter => PenModal(
-                axis: axis,
-                getTool: () => Highlighter.currentHighlighter,
-                setTool: widget.setTool,
-                setSize: _setPenSize,
-              ),
-              .pencil => PenModal(
-                axis: axis,
-                getTool: () => Pencil.currentPencil,
-                setTool: widget.setTool,
-                setSize: _setPenSize,
-              ),
               .select => SelectionBar(
                 duplicateSelection: widget.duplicateSelection,
                 deleteSelection: widget.deleteSelection,
@@ -343,266 +393,405 @@ class _ToolbarState extends State<Toolbar> {
           );
         },
       ),
-      Center(
-        child: Padding(
-          padding: const .all(8),
-          child: Wrap(
-            direction: isToolbarVertical ? Axis.vertical : Axis.horizontal,
-            alignment: WrapAlignment.center,
-            runSpacing: 8,
-            children: [
-              ToolbarIconButton(
-                tooltip: Pen.currentPen.name,
-                selected: widget.currentTool == Pen.currentPen,
-                enabled: !widget.readOnly,
-                onPressed: () {
-                  if (widget.currentTool == Pen.currentPen) {
-                    if (toolOptionsType.value == .pen) {
-                      toolOptionsType.value = .hide;
-                    } else {
-                      toolOptionsType.value = .pen;
-                    }
-                  } else {
-                    toolOptionsType.value = .hide;
-                    widget.setTool(Pen.currentPen);
-                  }
-                },
-                padding: buttonPadding,
-                child: UniIcon(Pen.currentPen.icon, size: 16),
-              ),
-              ToolbarIconButton(
-                tooltip: t.editor.pens.pencil,
-                selected: widget.currentTool == Pencil.currentPencil,
-                enabled: !widget.readOnly,
-                onPressed: () {
-                  if (widget.currentTool == Pencil.currentPencil) {
-                    if (toolOptionsType.value == .pencil) {
-                      toolOptionsType.value = .hide;
-                    } else {
-                      toolOptionsType.value = .pencil;
-                    }
-                  } else {
-                    toolOptionsType.value = .hide;
-                    widget.setTool(Pencil.currentPencil);
-                  }
-                },
-                padding: buttonPadding,
-                child: const FaIcon(Pencil.pencilIcon, size: 16),
-              ),
-              ToolbarIconButton(
-                tooltip: t.editor.pens.highlighter,
-                selected: widget.currentTool == Highlighter.currentHighlighter,
-                enabled: !widget.readOnly,
-                onPressed: () {
-                  if (widget.currentTool == Highlighter.currentHighlighter) {
-                    if (toolOptionsType.value == .highlighter) {
-                      toolOptionsType.value = .hide;
-                    } else {
-                      toolOptionsType.value = .highlighter;
-                    }
-                  } else {
-                    toolOptionsType.value = .hide;
-                    widget.setTool(Highlighter.currentHighlighter);
-                  }
-                },
-                padding: buttonPadding,
-                child: const FaIcon(Highlighter.highlighterIcon, size: 16),
-              ),
-              ValueListenableBuilder(
-                valueListenable: showColorOptions,
-                builder: (context, showColorOptions, child) {
-                  return ToolbarIconButton(
-                    tooltip: t.editor.toolbar.toggleColors,
-                    selected: showColorOptions,
-                    enabled: !widget.readOnly,
-                    onPressed: toggleColorOptions,
-                    padding: buttonPadding,
-                    child: child!,
-                  );
-                },
-                child: currentColor == null
-                    ? const Icon(Icons.palette)
-                    : Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: currentColor
-                              .withInversion(invert)
-                              .withValues(alpha: 1),
-                          shape: .circle,
-                          border: Border.all(
-                            color: colorScheme.primary,
-                            width: 2,
-                          ),
-                        ),
+      Padding(
+        padding: const .all(4),
+        child: ValueListenableBuilder(
+          valueListenable: stows.pageToolbarLayout,
+          builder: (context, stored, _) {
+            final layout = ToolbarLayout.decode(pageToolbarItems, stored);
+            final items = _mainItems(
+              layout: layout,
+              isToolbarVertical: isToolbarVertical,
+              availableWidth: availableWidth,
+              buttonPadding: buttonPadding,
+              currentColor: currentColor,
+              invert: invert,
+            );
+            // One line like StarNote: the tools scroll when they do not fit,
+            // while the handle and the settings button stay at the ends.
+            final axis = isToolbarVertical ? Axis.vertical : Axis.horizontal;
+            return Flex(
+              direction: axis,
+              children: [
+                ...widget.leading,
+                Expanded(
+                  // An open panel would stay where its button was.
+                  child: NotificationListener<ScrollStartNotification>(
+                    onNotification: (_) {
+                      _openPanel.value = null;
+                      return false;
+                    },
+                    child: SingleChildScrollView(
+                      key: const ValueKey('toolbar-scroll'),
+                      scrollDirection: axis,
+                      child: Flex(
+                        direction: axis,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final id in layout.shownIds) ?items[id],
+                        ],
                       ),
-              ),
-              if (widget.currentTool case final Pen pen
-                  when !isToolbarVertical && availableWidth >= 700)
-                if (pen.sizePresets case final widths?)
-                  InkWidthPresets(
-                    key: const ValueKey('toolbar-quick-ink-widths'),
-                    widths: widths,
-                    selectedWidth: pen.options.size,
-                    onSelected: widget.readOnly
-                        ? null
-                        : (size) => _setPenSize(pen, size),
-                    widthLabel: t.editor.penOptions.size,
-                  ),
-              ToolbarIconButton(
-                tooltip: t.editor.toolbar.select,
-                selected: widget.currentTool is Select,
-                enabled: !widget.readOnly,
-                onPressed: () {
-                  toolOptionsType.value = .hide;
-                  widget.setTool(Select.currentSelect);
-                },
-                padding: buttonPadding,
-                child: Icon(
-                  CupertinoIcons.lasso,
-                  shadows: !widget.readOnly
-                      ? [
-                          BoxShadow(
-                            color: colorScheme.primary,
-                            blurRadius: 0.1,
-                            spreadRadius: 10,
-                            blurStyle: BlurStyle.solid,
-                          ),
-                        ]
-                      : null,
-                ),
-              ),
-              ToolbarIconButton(
-                tooltip: t.editor.pens.laserPointer,
-                selected:
-                    widget.currentTool == LaserPointer.currentLaserPointer,
-                enabled: true, // even in read-only mode
-                onPressed: () {
-                  toolOptionsType.value = .hide;
-                  widget.setTool(LaserPointer.currentLaserPointer);
-                },
-                padding: buttonPadding,
-                child: const Icon(Symbols.stylus_laser_pointer),
-              ),
-              ToolbarIconButton(
-                tooltip: t.editor.toolbar.toggleEraser,
-                selected: widget.currentTool is Eraser,
-                enabled: !widget.readOnly,
-                onPressed: toggleEraser,
-                padding: buttonPadding,
-                child: const FaIcon(FontAwesomeIcons.eraser, size: 16),
-              ),
-              ToolbarIconButton(
-                tooltip: t.editor.toolbar.photo,
-                enabled: !widget.readOnly,
-                onPressed: widget.pickPhoto,
-                padding: buttonPadding,
-                child: const AdaptiveIcon(
-                  icon: Icons.photo,
-                  cupertinoIcon: CupertinoIcons.photo,
-                ),
-              ),
-              ToolbarIconButton(
-                tooltip: t.editor.toolbar.text,
-                selected: widget.textEditing,
-                enabled: !widget.readOnly,
-                onPressed: widget.toggleTextEditing,
-                padding: buttonPadding,
-                child: const AdaptiveIcon(
-                  icon: Icons.text_fields,
-                  cupertinoIcon: CupertinoIcons.text_cursor,
-                ),
-              ),
-              if (!stows.hideFingerDrawingToggle.value)
-                ValueListenableBuilder(
-                  valueListenable: stows.editorFingerDrawing,
-                  builder: (context, value, child) {
-                    return ToolbarIconButton(
-                      tooltip: t.editor.toolbar.toggleFingerDrawing,
-                      selected: value,
-                      enabled: !widget.readOnly,
-                      onPressed: widget.toggleFingerDrawing,
-                      padding: buttonPadding,
-                      child: const Icon(CupertinoIcons.hand_draw),
-                    );
-                  },
-                ),
-              ToolbarIconButton(
-                tooltip: t.editor.toolbar.fullscreen,
-                selected: DynamicMaterialApp.isFullscreen,
-                enabled: !widget.readOnly,
-                onPressed: toggleFullscreen,
-                padding: buttonPadding,
-                child: AdaptiveIcon(
-                  icon: DynamicMaterialApp.isFullscreen
-                      ? Icons.fullscreen_exit
-                      : Icons.fullscreen,
-                  cupertinoIcon: DynamicMaterialApp.isFullscreen
-                      ? CupertinoIcons.fullscreen_exit
-                      : CupertinoIcons.fullscreen,
-                ),
-              ),
-              Wrap(
-                direction: isToolbarVertical ? Axis.vertical : Axis.horizontal,
-                children: [
-                  ToolbarIconButton(
-                    tooltip: t.editor.toolbar.undo,
-                    enabled: !widget.readOnly && widget.isUndoPossible,
-                    onPressed: widget.undo,
-                    padding: buttonPadding,
-                    child: const AdaptiveIcon(
-                      icon: Icons.undo,
-                      cupertinoIcon: CupertinoIcons.arrow_uturn_left,
                     ),
                   ),
-                  ToolbarIconButton(
-                    tooltip: t.editor.toolbar.redo,
-                    enabled: !widget.readOnly && widget.isRedoPossible,
-                    onPressed: widget.redo,
-                    padding: buttonPadding,
-                    child: const AdaptiveIcon(
-                      icon: Icons.redo,
-                      cupertinoIcon: CupertinoIcons.arrow_uturn_right,
-                    ),
-                  ),
-                ],
-              ),
-              ValueListenableBuilder(
-                valueListenable: showExportOptions,
-                builder: (context, showExportOptions, child) {
-                  return ToolbarIconButton(
-                    tooltip: t.editor.toolbar.export,
-                    selected: showExportOptions,
-                    enabled: !widget.readOnly,
-                    onPressed: toggleExportBar,
-                    padding: buttonPadding,
-                    child: child!,
-                  );
-                },
-                child: const AdaptiveIcon(
-                  icon: Icons.share,
-                  cupertinoIcon: CupertinoIcons.share,
                 ),
-              ),
-            ],
-          ),
+                ...widget.trailing,
+              ],
+            );
+          },
         ),
       ),
     ];
 
-    return Flex(
-      direction: isToolbarVertical ? Axis.horizontal : Axis.vertical,
-      textDirection: switch (widget.alignment) {
-        AxisDirection.left => .rtl,
-        AxisDirection.right => .ltr,
-        _ => null,
-      },
-      verticalDirection: switch (widget.alignment) {
-        AxisDirection.down => VerticalDirection.down,
-        AxisDirection.up => VerticalDirection.up,
-        _ => VerticalDirection.down,
-      },
-      children: bars,
+    return TapRegion(
+      groupId: _panelGroup,
+      child: Flex(
+        direction: isToolbarVertical ? Axis.horizontal : Axis.vertical,
+        textDirection: switch (widget.alignment) {
+          AxisDirection.left => .rtl,
+          AxisDirection.right => .ltr,
+          _ => null,
+        },
+        verticalDirection: switch (widget.alignment) {
+          AxisDirection.down => VerticalDirection.down,
+          AxisDirection.up => VerticalDirection.up,
+          _ => VerticalDirection.down,
+        },
+        children: bars,
+      ),
+    );
+  }
+
+  /// The toolbar's own tools and the host's items, by [ToolbarItem.id]; the
+  /// user's [ToolbarLayout] picks and orders them.
+  Map<String, Widget> _mainItems({
+    required ToolbarLayout layout,
+    required bool isToolbarVertical,
+    required double availableWidth,
+    required EdgeInsets buttonPadding,
+    required Color? currentColor,
+    required bool invert,
+  }) {
+    final colorScheme = ColorScheme.of(context);
+    final axis = isToolbarVertical ? Axis.vertical : Axis.horizontal;
+    String label(String id) => layout.labelOf(id);
+    // StarNote's toolbar shows the highlighter's own colours while it is in
+    // hand.
+    final quickColors = widget.currentTool is Highlighter
+        ? highlighterQuickColors
+        : toolbarQuickColors;
+    return {
+      'undo': ToolbarIconButton(
+        tooltip: label('undo'),
+        enabled: !widget.readOnly && widget.isUndoPossible,
+        onPressed: widget.undo,
+        padding: buttonPadding,
+        child: const AdaptiveIcon(
+          icon: Icons.undo,
+          cupertinoIcon: CupertinoIcons.arrow_uturn_left,
+        ),
+      ),
+      'redo': ToolbarIconButton(
+        tooltip: label('redo'),
+        enabled: !widget.readOnly && widget.isRedoPossible,
+        onPressed: widget.redo,
+        padding: buttonPadding,
+        child: const AdaptiveIcon(
+          icon: Icons.redo,
+          cupertinoIcon: CupertinoIcons.arrow_uturn_right,
+        ),
+      ),
+      // Tapping the chosen tool again opens its panel (StarNote's tool panels).
+      // The pen button holds every pen kind, the pencil included, like
+      // StarNote's pen; it shows and picks the kind chosen last.
+      'pen': _withPanel(
+        'pen',
+        ToolbarIconButton(
+          tooltip: label('pen'),
+          selected: Pen.isPenFamily(widget.currentTool),
+          enabled: !widget.readOnly,
+          onPressed: () {
+            if (Pen.isPenFamily(widget.currentTool)) {
+              _togglePanel('pen');
+            } else {
+              _openPanel.value = null;
+              toolOptionsType.value = .hide;
+              widget.setTool(_penButtonPen);
+            }
+          },
+          padding: buttonPadding,
+          child: UniIcon(_penButtonPen.icon, size: 16),
+        ),
+        (_) => _penPanel(),
+      ),
+      'pencil': _withPanel(
+        'pencil',
+        ToolbarIconButton(
+          tooltip: label('pencil'),
+          selected: widget.currentTool == Pencil.currentPencil,
+          enabled: !widget.readOnly,
+          onPressed: () {
+            if (widget.currentTool == Pencil.currentPencil) {
+              _togglePanel('pencil');
+            } else {
+              _openPanel.value = null;
+              toolOptionsType.value = .hide;
+              widget.setTool(Pencil.currentPencil);
+            }
+          },
+          padding: buttonPadding,
+          child: const FaIcon(Pencil.pencilIcon, size: 16),
+        ),
+        (_) => _penPanel(),
+      ),
+      'highlighter': _withPanel(
+        'highlighter',
+        ToolbarIconButton(
+          tooltip: label('highlighter'),
+          selected: widget.currentTool == Highlighter.currentHighlighter,
+          enabled: !widget.readOnly,
+          onPressed: () {
+            if (widget.currentTool == Highlighter.currentHighlighter) {
+              _togglePanel('highlighter');
+            } else {
+              _openPanel.value = null;
+              toolOptionsType.value = .hide;
+              widget.setTool(Highlighter.currentHighlighter);
+            }
+          },
+          padding: buttonPadding,
+          child: const FaIcon(Highlighter.highlighterIcon, size: 16),
+        ),
+        (_) => HighlighterPanel(
+          getPen: () => Highlighter.currentHighlighter,
+          setSize: _setPenSize,
+          setColor: widget.setColor,
+          openColors: _openColorsFromPanel,
+        ),
+      ),
+      // A second tap opens the panel; Ctrl+E (toggleEraser) still switches
+      // back to the previous tool.
+      'eraser': _withPanel(
+        'eraser',
+        ToolbarIconButton(
+          tooltip: label('eraser'),
+          selected: widget.currentTool is Eraser,
+          enabled: !widget.readOnly,
+          onPressed: () {
+            if (widget.currentTool is Eraser) {
+              _togglePanel('eraser');
+            } else {
+              toggleEraser();
+            }
+          },
+          padding: buttonPadding,
+          child: const FaIcon(FontAwesomeIcons.eraser, size: 16),
+        ),
+        (_) => const EraserPanel(),
+      ),
+      'select': _withPanel(
+        'select',
+        ToolbarIconButton(
+          tooltip: label('select'),
+          selected: widget.currentTool is Select,
+          enabled: !widget.readOnly,
+          onPressed: () {
+            if (widget.currentTool is Select) {
+              _togglePanel('select');
+            } else {
+              _openPanel.value = null;
+              toolOptionsType.value = .hide;
+              widget.setTool(Select.currentSelect);
+            }
+          },
+          padding: buttonPadding,
+          child: Icon(
+            CupertinoIcons.lasso,
+            shadows: !widget.readOnly
+                ? [
+                    BoxShadow(
+                      color: colorScheme.primary,
+                      blurRadius: 0.1,
+                      spreadRadius: 10,
+                      blurStyle: BlurStyle.solid,
+                    ),
+                  ]
+                : null,
+          ),
+        ),
+        (_) => const SelectPanel(),
+      ),
+      'photo': ToolbarIconButton(
+        tooltip: label('photo'),
+        enabled: !widget.readOnly,
+        onPressed: widget.pickPhoto,
+        padding: buttonPadding,
+        child: const AdaptiveIcon(
+          icon: Icons.photo,
+          cupertinoIcon: CupertinoIcons.photo,
+        ),
+      ),
+      'text': ToolbarIconButton(
+        tooltip: label('text'),
+        selected: widget.textEditing,
+        enabled: !widget.readOnly,
+        onPressed: widget.toggleTextEditing,
+        padding: buttonPadding,
+        child: const AdaptiveIcon(
+          icon: Icons.text_fields,
+          cupertinoIcon: CupertinoIcons.text_cursor,
+        ),
+      ),
+      'colors': Flex(
+        key: const ValueKey('toolbar-colors'),
+        direction: axis,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (index, value) in quickColors.indexed)
+            _quickColor(index, Color(value), currentColor, invert),
+          ValueListenableBuilder(
+            valueListenable: showColorOptions,
+            builder: (context, showColorOptions, child) {
+              return ToolbarIconButton(
+                tooltip: '색 더보기',
+                selected: showColorOptions,
+                enabled: !widget.readOnly,
+                onPressed: toggleColorOptions,
+                padding: buttonPadding,
+                child: child!,
+              );
+            },
+            child: currentColor != null &&
+                    !quickColors.contains(
+                      currentColor.withValues(alpha: 1).toARGB32(),
+                    )
+                ? Container(
+                    key: const ValueKey('toolbar-current-color'),
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: currentColor
+                          .withInversion(invert)
+                          .withValues(alpha: 1),
+                      shape: .circle,
+                      border: Border.all(color: colorScheme.primary, width: 2),
+                    ),
+                  )
+                : const Icon(Icons.palette_outlined),
+          ),
+        ],
+      ),
+      // The pens kept with "펜박스에 추가" (the star at the end of StarNote's
+      // colour row).
+      'penBox': _withPanel(
+        'penBox',
+        ToolbarIconButton(
+          key: const ValueKey('toolbar-pen-box'),
+          tooltip: label('penBox'),
+          enabled: !widget.readOnly,
+          onPressed: () => _togglePanel('penBox'),
+          padding: buttonPadding,
+          child: const Icon(Icons.star_border),
+        ),
+        (_) => PenBoxPanel(apply: _applyPenBoxEntry),
+      ),
+      if (widget.currentTool case final Pen pen
+          when isToolbarVertical || availableWidth >= 700)
+        if (pen.sizePresets case final widths?)
+          'widths': InkWidthPresets(
+            key: const ValueKey('toolbar-quick-ink-widths'),
+            widths: widths,
+            selectedWidth: pen.options.size,
+            onSelected: widget.readOnly
+                ? null
+                : (size) => _setPenSize(pen, size),
+            widthLabel: label('widths'),
+            axis: axis,
+          ),
+      ...widget.hostItems,
+      if (!stows.hideFingerDrawingToggle.value)
+        'finger': ValueListenableBuilder(
+          valueListenable: stows.editorFingerDrawing,
+          builder: (context, value, child) {
+            return ToolbarIconButton(
+              tooltip: label('finger'),
+              selected: value,
+              enabled: !widget.readOnly,
+              onPressed: widget.toggleFingerDrawing,
+              padding: buttonPadding,
+              child: const Icon(CupertinoIcons.hand_draw),
+            );
+          },
+        ),
+      'fullscreen': ToolbarIconButton(
+        tooltip: label('fullscreen'),
+        selected: DynamicMaterialApp.isFullscreen,
+        enabled: !widget.readOnly,
+        onPressed: toggleFullscreen,
+        padding: buttonPadding,
+        child: AdaptiveIcon(
+          icon: DynamicMaterialApp.isFullscreen
+              ? Icons.fullscreen_exit
+              : Icons.fullscreen,
+          cupertinoIcon: DynamicMaterialApp.isFullscreen
+              ? CupertinoIcons.fullscreen_exit
+              : CupertinoIcons.fullscreen,
+        ),
+      ),
+      'laser': ToolbarIconButton(
+        tooltip: label('laser'),
+        selected: widget.currentTool == LaserPointer.currentLaserPointer,
+        enabled: true, // even in read-only mode
+        onPressed: () {
+          toolOptionsType.value = .hide;
+          widget.setTool(LaserPointer.currentLaserPointer);
+        },
+        padding: buttonPadding,
+        child: const Icon(Symbols.stylus_laser_pointer),
+      ),
+      'export': ToolbarIconButton(
+        tooltip: label('export'),
+        enabled: !widget.readOnly,
+        onPressed: openExportDialog,
+        padding: buttonPadding,
+        child: const AdaptiveIcon(
+          icon: Icons.share,
+          cupertinoIcon: CupertinoIcons.share,
+        ),
+      ),
+    };
+  }
+
+  /// One of the five colours always shown in the toolbar.
+  Widget _quickColor(int index, Color color, Color? currentColor, bool invert) {
+    final selected =
+        currentColor != null &&
+        currentColor.withValues(alpha: 1).toARGB32() == color.toARGB32();
+    final colorScheme = ColorScheme.of(context);
+    return Tooltip(
+      message: '색 ${index + 1}',
+      child: InkResponse(
+        key: ValueKey('toolbar-color-$index'),
+        onTap: widget.readOnly ? null : () => widget.setColor(color),
+        radius: 20,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: color.withInversion(invert),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected ? colorScheme.primary : Colors.transparent,
+                width: 3,
+              ),
+            ),
+            child: selected
+                ? const Icon(Icons.check, size: 14, color: Colors.white)
+                : null,
+          ),
+        ),
+      ),
     );
   }
 
@@ -612,8 +801,11 @@ class _ToolbarState extends State<Toolbar> {
     DynamicMaterialApp.setFullscreen(false, updateSystem: true);
 
     _removeKeybindings();
+    _openPanel.dispose();
     super.dispose();
   }
 }
 
-enum ToolOptions { hide, pen, highlighter, pencil, select }
+/// The strip under the toolbar: nothing, or the selection's actions. The pen
+/// options moved to the tool panels.
+enum ToolOptions { hide, select }

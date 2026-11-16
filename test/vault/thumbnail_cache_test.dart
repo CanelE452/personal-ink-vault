@@ -20,6 +20,7 @@ import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/windows_office_engine.dart';
+import 'package:saber/data/vault/pdf_import_state.dart';
 import 'package:saber/data/vault/saber_ink_adapter.dart';
 import 'package:saber/data/vault/thumbnail_cache.dart';
 import 'package:saber/data/vault/workspace_store.dart';
@@ -452,6 +453,105 @@ void main() {
         !Platform.isWindows ||
         !File('build/windows/x64/runner/Release/pdfium.dll').existsSync(),
   );
+
+  testWidgets(
+    'imported PDF note saved with its import marker still gets a cover',
+    (tester) async {
+      await tester.runAsync(() async {
+        final previousModulePath = Pdfrx.pdfiumModulePath;
+        Pdfrx.pdfiumModulePath = File(
+          'build/windows/x64/runner/Release/pdfium.dll',
+        ).absolute.path;
+        try {
+          await pdfrxInitialize(tmpPath: temp.path);
+          final pdf = pw.Document()
+            ..addPage(
+              pw.Page(
+                pageFormat: const PdfPageFormat(200, 300),
+                margin: pw.EdgeInsets.zero,
+                build: (_) =>
+                    pw.Container(width: 200, height: 300, color: PdfColors.red),
+              ),
+            );
+          final bytes = await pdf.save();
+          final note = await store.create(
+            'Imported PDF',
+            documentKind: VaultDocumentKind.pdf,
+          );
+          final source = core();
+          source.pages.first.backgroundImage = PdfEditorImage(
+            id: 0,
+            assetCache: source.assetCache,
+            pdfBytes: bytes,
+            pdfFile: null,
+            pdfPage: 0,
+            pageIndex: 0,
+            pageSize: const Size(1000, 1400),
+            naturalSize: const Size(200, 300),
+            onMoveImage: null,
+            onDeleteImage: null,
+            onMiscChange: null,
+          );
+          // WorkspaceController.saveInk adds this marker to every save of an imported PDF note.
+          final files = await SaberInkAdapter.capture(source, 0);
+          files[PdfImportMarker.fileName] = PdfImportMarker(
+            vaultId: repository.vaultId,
+            noteId: note.id,
+            sourceEntityId: newId(),
+            sourceRevisionId: newId(),
+            sourceSha256: sha256.convert(bytes).toString(),
+          ).encode();
+          final revision = await repository.commit(
+            entityId: note.inkEntityId,
+            kind: EntityKind.ink,
+            ownerNoteId: note.id,
+            files: files,
+            parentRevisionIds: [],
+          );
+          expect(revision.blobs.keys, contains(PdfImportMarker.fileName));
+          final thumbnail = await cache.getOrCreate(repository, note);
+          expect(thumbnail, isNotNull);
+          expect((await inspectPng(thumbnail!)).$3, greaterThan(1000));
+          final page = await cache.renderSnapshotPage(
+            repository,
+            revision,
+            width: 400,
+          );
+          expect(page.pageIndex, 0);
+          expect(page.png, isNotEmpty);
+          source.dispose();
+        } finally {
+          Pdfrx.pdfiumModulePath = previousModulePath;
+        }
+      });
+    },
+    skip:
+        !Platform.isWindows ||
+        !File('build/windows/x64/runner/Release/pdfium.dll').existsSync(),
+  );
+
+  test('a cover snapshot still refuses files other than the body, its assets and the PDF marker', () async {
+    final note = await store.create(
+      'Extra file',
+      documentKind: VaultDocumentKind.pdf,
+    );
+    final drawing = core(ink: Colors.red);
+    final files = await SaberInkAdapter.capture(drawing, 0);
+    drawing.dispose();
+    files['notes.json'] = Uint8List.fromList('{}'.codeUnits);
+    final revision = await repository.commit(
+      entityId: note.inkEntityId,
+      kind: EntityKind.ink,
+      ownerNoteId: note.id,
+      files: files,
+      parentRevisionIds: [],
+    );
+    expect(await cache.getOrCreate(repository, note), isNull);
+    await expectLater(
+      cache.renderSnapshotPage(repository, revision),
+      throwsFormatException,
+    );
+  });
 
   for (final validPdf in [true, false]) {
     testWidgets(

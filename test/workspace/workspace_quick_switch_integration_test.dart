@@ -95,6 +95,14 @@ void main() {
   }
 
   Future<void> openPicker(WidgetTester tester) async {
+    if (open.evaluate().isEmpty) {
+      // An open note keeps the quick switch in its note bar's "더 많은 작업" menu. The menu opens in fake time
+      // only, so the switch still starts as soon after the edits as the bar button did: before the real 500 ms
+      // Markdown autosave, which would change the vault while the switcher lists it.
+      await tester.tap(find.byKey(const ValueKey('workspace-more-actions')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
     expect(open, findsOneWidget);
     await tester.runAsync(() => tester.tap(open));
     await drain(tester);

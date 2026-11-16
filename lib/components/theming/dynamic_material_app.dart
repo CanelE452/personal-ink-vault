@@ -32,6 +32,7 @@ class DynamicMaterialApp extends StatefulHookWidget {
 
   static final ValueNotifier<bool> _isFullscreen = ValueNotifier(false);
   static bool get isFullscreen => _isFullscreen.value;
+  static const _systemBars = MethodChannel('personal_ink_vault/system_bars');
 
   static void setFullscreen(bool value, {required bool updateSystem}) {
     _isFullscreen.value = value;
@@ -39,6 +40,10 @@ class DynamicMaterialApp extends StatefulHookWidget {
 
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       windowManager.setFullScreen(value);
+    } else if (Platform.isAndroid) {
+      // MainActivity owns the bars there: the navigation bar stays hidden
+      // outside fullscreen too.
+      _systemBars.invokeMethod<void>('setFullscreen', value);
     } else {
       SystemChrome.setEnabledSystemUIMode(
         value ? SystemUiMode.immersive : SystemUiMode.edgeToEdge,
@@ -76,6 +81,8 @@ class DynamicMaterialAppState extends State<DynamicMaterialApp>
   }
 
   Future<void> _onFullscreenChange(bool systemOverlaysAreVisible) async {
+    // On Android a swipe shows the bars only for a moment, so fullscreen stays.
+    if (Platform.isAndroid) return;
     DynamicMaterialApp.setFullscreen(
       !systemOverlaysAreVisible,
       updateSystem: false,

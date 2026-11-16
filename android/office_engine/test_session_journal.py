@@ -1173,6 +1173,8 @@ public class OfficeEditorActivity {
   public static volatile boolean live;
   public static boolean hasLiveEditor() { return live; }
 }''',
+    "io/github/canele452/personalinkvault/office/OfficePreviewActivity.java": r'''package io.github.canele452.personalinkvault.office;
+public final class OfficePreviewActivity extends OfficeEditorActivity {}''',
 }
 
 CLASSIFIER_DOUBLE = r'''private static int classifyNative(byte[] path) {

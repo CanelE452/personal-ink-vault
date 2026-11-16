@@ -19,11 +19,13 @@ import 'package:saber/components/canvas/interactive_canvas.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/native/ink_vault_native.dart';
+import 'package:saber/data/office/android_office_engine.dart';
 import 'package:saber/data/office/hwp_office_engine.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/office/pdf_note_original.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/note_link.dart';
 import 'package:saber/data/vault/pdf_import_state.dart';
 import 'package:saber/data/vault/thumbnail_cache.dart';
@@ -43,6 +45,7 @@ import '../office/office_original_preview_test.dart'
         officePreviewPdfiumAvailable,
         officePreviewUntil,
         withOfficePreviewPdfium;
+import '../office/office_workspace_test.dart' show FixtureOfficeEngine;
 import '../utils/test_mock_channel_handlers.dart';
 
 void main() {
@@ -130,6 +133,7 @@ void main() {
   Future<void> mount(
     WidgetTester tester, {
     OfficePreviewEngine? office,
+    AndroidOfficeEngine? officeEditor,
     ThumbnailCache Function(Directory) thumbnailCache = ThumbnailCache.new,
   }) async {
     await tester.pumpWidget(
@@ -138,6 +142,7 @@ void main() {
           home: StudyWorkspace(
             controller: controller,
             officePreviewEngine: office,
+            officeEngine: officeEditor,
             thumbnailCacheFactory: thumbnailCache,
           ),
         ),
@@ -145,6 +150,21 @@ void main() {
     );
     await drain(tester);
     addTearDown(() => tester.pumpWidget(const SizedBox()));
+  }
+
+  /// The library's search box is in the side bar, closed at first at 800 dp.
+  Future<void> showSideBar(WidgetTester tester) async {
+    if (find
+        .byKey(const ValueKey('library-search'))
+        .hitTestable()
+        .evaluate()
+        .isNotEmpty) {
+      return;
+    }
+    addTearDown(() => stows.libraryPanelOpen.value = null);
+    await tester.tap(find.byKey(const ValueKey('library-panel-toggle')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
   }
 
   Future<void> closeOfficeFlow(WidgetTester tester) async {
@@ -158,6 +178,105 @@ void main() {
     controllerDisposed = true;
     debugDefaultTargetPlatformOverride = null;
   }
+
+  testWidgets(
+    'an upright tablet library has no top row and a side panel beside the documents',
+    (tester) async {
+      tester.view.physicalSize = const Size(824, 1318);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(() => stows.libraryPanelOpen.value = null);
+      final note = (await tester.runAsync(
+        () => controller.store.createMarkdown(
+          '패널 옆 문서',
+          Uint8List.fromList(utf8.encode('본문')),
+        ),
+      ))!;
+      await tester.runAsync(controller.refresh);
+      await mount(tester, thumbnailCache: _NoCoverCache.new);
+      expect(find.text('Personal Ink Vault'), findsNothing);
+      expect(find.byType(DrawerButton), findsNothing);
+      // Like StarNote's library: no top row, and no document tabs on it.
+      expect(find.byType(AppBar), findsNothing);
+      // Closed at first on an upright tablet, so the documents get the width;
+      // the button that shows it stands before the path above the documents.
+      expect(find.byKey(const ValueKey('library-panel')), findsNothing);
+      expect(find.byTooltip('왼쪽 바 보이기'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('library-panel-toggle')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('library-panel')), findsOneWidget);
+      // The bar's own head hides it again and holds the settings.
+      expect(find.byTooltip('왼쪽 바 보이기'), findsNothing);
+      expect(find.byTooltip('왼쪽 바 숨기기').hitTestable(), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('library-settings')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(stows.libraryPanelOpen.value, isTrue);
+      // The panel does not cover the documents: the library beside it still takes taps.
+      final card = controller.notes.singleWhere((n) => n.id == note.id);
+      expect(
+        find.byKey(ValueKey('library-note-${card.revision.revisionId}')).hitTestable(),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('library-select-mode')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('library-select-all')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('library-panel-toggle')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('library-panel')), findsNothing);
+      expect(stows.libraryPanelOpen.value, isFalse);
+      expect(tester.takeException(), isNull);
+      // Let the work the library started (card covers) finish in real time, or the tearDown waits on it.
+      for (var i = 0; i < 6; i++) {
+        await drain(tester);
+      }
+      await tester.pumpWidget(const SizedBox());
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
+
+  testWidgets(
+    'a short library side bar scrolls to its folders and sets the status bar icons',
+    (tester) async {
+      // A tablet held sideways with the keyboard up: wide, but short. (The
+      // test vault has no tags, graph or Drive rows, so the bar is shorter
+      // than on the tablet; 300 dp is short enough to need the scroll.)
+      tester.view.physicalSize = const Size(1100, 300);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await mount(tester, thumbnailCache: _NoCoverCache.new);
+      final panel = find.byKey(const ValueKey('library-panel'));
+      expect(panel, findsOneWidget);
+      // Nothing overflows: below its head the bar is one scrolling list.
+      expect(tester.takeException(), isNull);
+      final folders = find.descendant(of: panel, matching: find.text('폴더'));
+      await tester.scrollUntilVisible(
+        folders,
+        100,
+        scrollable: find
+            .descendant(of: panel, matching: find.byType(Scrollable))
+            .first,
+      );
+      expect(folders.hitTestable(), findsOneWidget);
+      // With no top row, the library itself asks for dark status bar icons on
+      // the light screen, as the AppBar used to.
+      final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+        find
+            .byWidgetPredicate(
+              (widget) => widget is AnnotatedRegion<SystemUiOverlayStyle>,
+            )
+            .first,
+      );
+      expect(region.value.statusBarIconBrightness, Brightness.dark);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
 
   testWidgets(
     'the Android Office picker reads a document only after mode selection',
@@ -636,12 +755,19 @@ void main() {
           );
           expect(after.revision.revisionId, before.revision.revisionId);
           expect(after.originalBytes, before.originalBytes);
+          // The valid conversion also stays with the Office note as its cover PDF; the unreadable first one did
+          // not, so the second attempt still reached the engine.
+          final kept = await readWhilePumping(
+            tester,
+            () => documents.readPdfVariants(original, after),
+          );
+          expect(kept, hasLength(1));
           expect(
             await readWhilePumping(
               tester,
-              () => documents.readPdfVariants(original, after),
+              () => documents.readPdfVariantBytes(original, after, kept.single),
             ),
-            isEmpty,
+            goodPdf,
           );
           expect(converter.calls, 2);
         } finally {
@@ -1027,9 +1153,103 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets(
+    'an Office card opens into its editor; its menu previews it or makes a PDF',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(() => stows.libraryPanelOpen.value = null);
+      await readWhilePumping(tester, () async {
+        final starter = OfficeTemplates.create(
+          OfficeTemplateKind.document,
+          title: '강의 원본',
+        );
+        await OfficeDocumentStore(controller.repository).importDocument(
+          title: '강의 원본',
+          fileName: starter.fileName,
+          bytes: starter.bytes,
+        );
+        await controller.refresh();
+      });
+      // An editor this test machine does not have: the requests reach the
+      // Office screen without starting anything.
+      await mount(
+        tester,
+        officeEditor: FixtureOfficeEngine(available: false),
+        thumbnailCache: _NoCoverCache.new,
+      );
+
+      // What the library asked the Office screen it opened to do first.
+      Future<OfficeOpenAction?> requested() async {
+        for (var i = 0; i < 300; i++) {
+          for (final screen in tester.widgetList<OfficeWorkspace>(
+            find.byType(OfficeWorkspace),
+          )) {
+            if (screen.openRequest case final request?) return request.action;
+          }
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump();
+        }
+        return null;
+      }
+
+      Future<void> backToLibrary() async {
+        // Back is off while the document is still opening.
+        final back = find.byKey(const ValueKey('workspace-back-to-library'));
+        await officePreviewUntil(
+          tester,
+          () =>
+              back.evaluate().isNotEmpty &&
+              tester.widget<IconButton>(back.first).onPressed != null,
+          'Back is available once the Office document is open.',
+        );
+        await tester.runAsync(() => tester.tap(back.first));
+        await officePreviewUntil(
+          tester,
+          () => find.byType(OfficeWorkspace).evaluate().isEmpty,
+          'Back returns to the library.',
+        );
+        // The workspace takes the next action once back has finished.
+        await drain(tester);
+      }
+
+      Future<void> fromMenu(String item) async {
+        await tester.tap(find.byTooltip('문서 메뉴'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.text(item));
+        await tester.pump();
+      }
+
+      await tester.tap(find.text('강의 원본'));
+      expect(await requested(), OfficeOpenAction.edit);
+      await backToLibrary();
+      await fromMenu('미리보기');
+      expect(await requested(), OfficeOpenAction.preview);
+      await backToLibrary();
+      await fromMenu('PDF로 바꾸기');
+      expect(await requested(), OfficeOpenAction.pdf);
+      await drain(tester);
+      expect(tester.takeException(), isNull);
+      await closeOfficeFlow(tester);
+    },
+  );
+
   testWidgets('library exposes vault bookmarks', (tester) async {
+    addTearDown(() => stows.libraryPanelOpen.value = null);
     await mount(tester);
-    expect(find.byKey(const ValueKey('workspace-bookmarks')), findsOneWidget);
+    // A row in the side bar, like StarNote's; the bar starts closed at 800 dp.
+    await tester.tap(find.byKey(const ValueKey('library-panel-toggle')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.byKey(const ValueKey('workspace-bookmarks')).hitTestable(),
+      findsOneWidget,
+    );
     await tester.pumpWidget(const SizedBox());
     debugDefaultTargetPlatformOverride = null;
   });
@@ -1045,6 +1265,7 @@ void main() {
       await controller.refresh();
     });
     await mount(tester);
+    await showSideBar(tester);
     final field = find.byKey(const ValueKey('library-search'));
     final toggle = find.byKey(const ValueKey('library-search-expression'));
     final error = find.byKey(const ValueKey('library-search-error'));
@@ -1099,6 +1320,7 @@ void main() {
             return note;
           });
           await mount(tester);
+          await showSideBar(tester);
           final field = find.byKey(const ValueKey('library-search'));
           final toggle = find.byKey(
             const ValueKey('library-search-expression'),
@@ -1219,6 +1441,7 @@ void main() {
         await controller.refresh();
       });
       await mount(tester);
+      await showSideBar(tester);
       final field = find.byKey(const ValueKey('library-search'));
       final toggle = find.byKey(const ValueKey('library-search-expression'));
       final error = find.byKey(const ValueKey('library-search-error'));
@@ -1250,6 +1473,15 @@ void main() {
         await drain(tester);
       }
 
+      // The bookmarks are a row in the side bar, closed at first at 800 dp.
+      if (find
+          .byKey(const ValueKey('workspace-bookmarks'))
+          .hitTestable()
+          .evaluate()
+          .isEmpty) {
+        addTearDown(() => stows.libraryPanelOpen.value = null);
+        await tap('library-panel-toggle');
+      }
       await tap('workspace-bookmarks');
       await tap('workspace-bookmark-add-current');
       await tap('workspace-bookmark-target-0');
@@ -1378,18 +1610,39 @@ void main() {
       await controller.refresh();
       return note;
     });
-    await mount(tester);
+    addTearDown(() => stows.libraryPanelOpen.value = null);
+    // Covers are not the subject here (see the upright tablet test).
+    await mount(tester, thumbnailCache: _NoCoverCache.new);
     final bookmarks = find.byKey(const ValueKey('workspace-bookmarks'));
+    final more = find.byKey(const ValueKey('workspace-more-actions'));
     Future<void> openBookmark(String title) async {
-      for (
-        var i = 0;
-        i < 16 && tester.widget<IconButton>(bookmarks).onPressed == null;
-        i++
-      ) {
+      if (controller.activeSession != null) {
+        // An open note keeps the bookmarks in its "더 많은 작업" menu.
+        for (var i = 0; i < 16 && more.evaluate().isEmpty; i++) {
+          await drain(tester);
+        }
+        await tester.runAsync(() => tester.tap(more));
         await drain(tester);
+        expect(bookmarks, findsOneWidget);
+        await tester.runAsync(() => tester.tap(bookmarks));
+      } else {
+        // The library keeps them in its side bar, closed at first at 800 dp.
+        if (bookmarks.hitTestable().evaluate().isEmpty) {
+          await tester.runAsync(
+            () => tester.tap(find.byKey(const ValueKey('library-panel-toggle'))),
+          );
+          await drain(tester);
+        }
+        for (
+          var i = 0;
+          i < 16 && tester.widget<ListTile>(bookmarks).onTap == null;
+          i++
+        ) {
+          await drain(tester);
+        }
+        expect(tester.widget<ListTile>(bookmarks).onTap, isNotNull);
+        await tester.runAsync(() => tester.tap(bookmarks));
       }
-      expect(tester.widget<IconButton>(bookmarks).onPressed, isNotNull);
-      await tester.runAsync(() => tester.tap(bookmarks));
       final row = find.text(title);
       for (var i = 0; i < 12 && row.evaluate().isEmpty; i++) {
         await drain(tester);
@@ -1495,9 +1748,14 @@ void main() {
     expect(note.title, '빠른 메모');
     expect(note.folderId, folder.id);
     expect(note.documentKind, VaultDocumentKind.handwriting);
+    // The note bar's view switch (it replaced the bottom bar) shows the note itself, not its Markdown: a wide bar
+    // selects the note segment, a narrow one offers Markdown as the other view.
+    final toggle = tester.widget(find.byKey(const ValueKey('note-view-toggle')));
     expect(
-      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
-      0,
+      toggle is SegmentedButton
+          ? (toggle.selected.single as Enum).name
+          : (toggle as IconButton).tooltip,
+      toggle is SegmentedButton ? 'note' : 'Markdown',
     );
     expect(
       (await readWhilePumping(

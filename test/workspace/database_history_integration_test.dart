@@ -117,7 +117,8 @@ void main() {
       }
       await tester.binding.setSurfaceSize(const Size(700, 820));
       await tester.pumpAndSettle();
-      expect(more, findsNothing);
+      // An open note keeps its slim note bar, and so this menu, at every tablet or phone width.
+      expect(more, findsOneWidget);
       await tester.tap(find.text('노트 링크 열기'));
       final linkDialog = find.text('inkvault 링크 열기');
       final cancelLink = find.widgetWithText(TextButton, '취소');

@@ -15,7 +15,9 @@ import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart' show PdfDocument, PdfImage, PdfImageExt;
+import 'package:saber/components/user_error_text.dart';
 import 'package:saber/components/drive/drive_panel.dart';
+import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/data/app_external_screen.dart';
 import 'package:saber/data/drive/drive_connection.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -27,10 +29,12 @@ import 'package:saber/data/imports/shared_document_queue.dart';
 import 'package:saber/data/mcp/vault_mcp_bridge.dart';
 import 'package:saber/data/mcp/vault_mcp_render.dart';
 import 'package:saber/data/mcp/vault_mcp_service.dart';
+import 'package:saber/data/office/android_office_engine.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/office/pdf_note_original.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/block_page_document.dart';
 import 'package:saber/data/vault/card_canvas_document.dart';
 import 'package:saber/data/vault/card_canvas_raster.dart';
@@ -160,6 +164,9 @@ class _DocumentNameDialogState extends State<_DocumentNameDialog> {
 
 enum _OfficeImportMode { pdf, office }
 
+/// The open note's two views in the note bar's switch.
+enum _NoteView { note, markdown }
+
 class StudyWorkspace extends StatefulWidget {
   static final pendingDocumentImport = SharedDocumentInbox();
   final WorkspaceController? controller;
@@ -168,6 +175,10 @@ class StudyWorkspace extends StatefulWidget {
   createDriveConnection;
   final ThumbnailCache Function(Directory) thumbnailCacheFactory;
   final OfficePreviewEngine? officePreviewEngine;
+
+  /// The Office documents' Android editor; tests inject one so nothing on
+  /// the test machine is started.
+  final AndroidOfficeEngine? officeEngine;
   const new({
     super.key,
     this.controller,
@@ -175,6 +186,7 @@ class StudyWorkspace extends StatefulWidget {
     this.createDriveConnection,
     this.thumbnailCacheFactory = ThumbnailCache.new,
     this.officePreviewEngine,
+    this.officeEngine,
   });
   @override
   State<StudyWorkspace> createState() => _StudyWorkspaceState();
@@ -227,16 +239,21 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   Object? _pendingPdfScope;
   String? _targetPage;
   ({NoteSession session, OfficePageLinkRequest request})? _officePageLink;
+  // What the library asked the Office document it opened to do first.
+  ({NoteSession session, OfficeOpenRequest request})? _officeOpenRequest;
   NoteSession? _rememberedPageSession;
   ({NoteRepository repository, NoteSession? outgoing})? _documentTabChange;
   var _markdownAnchorRequest = 0;
   var _searchSelectionRequest = 0;
   ({NoteSession session, KnowledgeBodyMatch match})? _searchSelection;
   (WorkspaceController, _VaultMarkdownScope, MarkdownDataviewAccess)? _dataview;
-  String? _startupError;
+  Object? _startupError;
   String? _closeError;
   var markdownTab = false;
   var busy = false;
+
+  /// Folders the user folded in the sidebar tree.
+  final _collapsedFolders = <String>{};
   var _exporting = false;
   final _sharedDocumentOwner = Object();
   Object? _sharedDocumentScope;
@@ -260,6 +277,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     _appliedLifecycle = lifecycle ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     AppExternalScreen.open.addListener(_externalScreenChanged);
+    DynamicMaterialApp.addFullscreenListener(_fullscreenChanged);
     if (Platform.isWindows) {
       windowManager.addListener(this);
       unawaited(windowManager.setPreventClose(true));
@@ -346,7 +364,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       _invalidateThumbnailScope();
       _sharedDocument();
     } catch (e) {
-      if (mounted) setState(() => _startupError = '$e');
+      if (mounted) setState(() => _startupError = e);
     }
   }
 
@@ -379,6 +397,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           _officePageLink = null;
         }
       }
+      if (_officeOpenRequest case final pending?
+          when !identical(c?.activeSession, pending.session)) {
+        _officeOpenRequest = null;
+      }
       if (_automation != null &&
           !identical(_automationRepository, c?.repository)) {
         _automationRepository = c?.repository;
@@ -388,7 +410,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           c.activeSession?.note.documentKind == VaultDocumentKind.database &&
           _relatedEpoch != c.repositoryGeneration) {
         _relatedEpoch = c.repositoryGeneration;
-        _relatedDatabases = _loadRelatedDatabases(c.repository);
+        _relatedDatabases = _loadRelatedDatabases(c.repository)..ignore();
       }
       if (_mcp?.connected == true &&
           !identical(_mcpRepository, controller?.repository)) {
@@ -986,9 +1008,41 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         folderId: c.currentFolderId,
         sharedRequestId: sharedRequestId,
       );
-      if (!note.trashed && isCurrent()) await c.openNote(note);
+      if (!note.trashed && isCurrent()) {
+        await _makeOfficeCover(repository, note, fileName: fileName, bytes: bytes);
+        if (await _settledAfterExternalScreen(isCurrent)) await c.openNote(note);
+      }
     }
     _finishOfficeImport(c, repository, note);
+  }
+
+  /// An Office original imported on Android is converted once so the library shows its first page as the cover
+  /// (HWP and Windows covers are made in the background). Cancelling or a failure only leaves the cover out.
+  Future<void> _makeOfficeCover(
+    NoteRepository repository,
+    VaultNote note, {
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    final engine = widget.officePreviewEngine ?? OfficePreviewEngine();
+    if (defaultTargetPlatform != TargetPlatform.android ||
+        engine.supportsBackgroundPreview(fileName)) {
+      return;
+    }
+    try {
+      final converted = await engine.convertToPdf(
+        fileName: fileName,
+        original: bytes,
+      );
+      if (converted == null) return;
+      await OfficeDocumentStore(repository).keepFirstPdf(
+        note,
+        pdfBytes: converted.bytes,
+        pageCount: converted.pageCount,
+      );
+    } catch (error) {
+      _importLog.warning('Office cover was not made: $error');
+    }
   }
 
   static const _officeImportMaxBytes = 128 * 1024 * 1024;
@@ -1213,8 +1267,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     } catch (e) {
       if (mounted) {
         _scaffold.currentState?.closeDrawer();
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+        showUserErrorSnackBar(context, e);
       }
     } finally {
       _finishBusy();
@@ -1295,7 +1348,13 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     });
   }
 
-  Future<void> _open(VaultNote note, {KnowledgeBodyMatch? bodyMatch}) async {
+  /// [officeAction] is what an Office·한글 document does as soon as it is
+  /// open (the library card's tap and ⋮ menu).
+  Future<void> _open(
+    VaultNote note, {
+    KnowledgeBodyMatch? bodyMatch,
+    OfficeOpenAction? officeAction,
+  }) async {
     final c = controller!;
     final repository = c.repository;
     await _save();
@@ -1313,6 +1372,17 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       return;
     markdownTab = note.documentKind == VaultDocumentKind.markdown;
     final session = c.activeSession;
+    if (officeAction != null &&
+        session != null &&
+        session.note.id == note.id &&
+        session.note.documentKind == VaultDocumentKind.office) {
+      setState(() {
+        _officeOpenRequest = (
+          session: session,
+          request: OfficeOpenRequest(officeAction),
+        );
+      });
+    }
     final displayed = c.searchBodyMatches[note.id];
     if (bodyMatch != null &&
         displayed != null &&
@@ -1374,31 +1444,39 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
             identical(c.activeSession, outgoing) &&
             !c.externalBusy;
 
-        final catalogGeneration = c.repositoryGeneration;
         final notes = <String, VaultNote>{};
-        final seenNotes = <String>{};
-        for (final note in await c.store.list()) {
-          if (!seenNotes.add(note.id)) {
-            notes.remove(note.id);
-          } else if (!note.trashed && !note.deletionConflict) {
-            notes[note.id] = note;
-          }
-        }
-        if (!current()) return;
         final folders = <String, VaultFolder>{};
-        if (repository.formatVersion >= 2) {
-          final seenFolders = <String>{};
-          for (final folder in await c.library.listFolders()) {
-            if (!seenFolders.add(folder.id)) {
-              folders.remove(folder.id);
-            } else if (!folder.trashed && !folder.deletionConflict) {
-              folders[folder.id] = folder;
+        // A save that lands while the catalog is read (such as the Markdown autosave half a second after an
+        // edit, which "더 많은 작업" → 빠른 문서 전환 can easily overlap) changes the vault: read it again a
+        // few times before asking the user to search again.
+        for (var attempt = 1; ; attempt++) {
+          final catalogGeneration = c.repositoryGeneration;
+          notes.clear();
+          folders.clear();
+          final seenNotes = <String>{};
+          for (final note in await c.store.list()) {
+            if (!seenNotes.add(note.id)) {
+              notes.remove(note.id);
+            } else if (!note.trashed && !note.deletionConflict) {
+              notes[note.id] = note;
             }
           }
-        }
-        if (!mounted || !current()) return;
-        if (catalogGeneration != c.repositoryGeneration) {
-          throw StateError('보관함 내용이 바뀌었습니다. 최신 문서를 다시 검색하세요.');
+          if (!current()) return;
+          if (repository.formatVersion >= 2) {
+            final seenFolders = <String>{};
+            for (final folder in await c.library.listFolders()) {
+              if (!seenFolders.add(folder.id)) {
+                folders.remove(folder.id);
+              } else if (!folder.trashed && !folder.deletionConflict) {
+                folders[folder.id] = folder;
+              }
+            }
+          }
+          if (!mounted || !current()) return;
+          if (catalogGeneration == c.repositoryGeneration) break;
+          if (attempt == 3) {
+            throw StateError('보관함 내용이 바뀌었습니다. 최신 문서를 다시 검색하세요.');
+          }
         }
         String pathOf(VaultNote note) {
           final segments = [note.title];
@@ -1503,7 +1581,135 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     _scaffold.currentState?.closeDrawer();
   }
 
-  Widget _documentTabs(WorkspaceController c) {
+  static const _noteBarHeight = 44.0;
+
+  /// The open note's single top row: back, the document tabs, the note's view switch and its compact actions
+  /// (the rest are in "더 많은 작업"). Full screen hides it, together with the editor's own bars. A [compact]
+  /// (narrow) row switches views with one button.
+  PreferredSizeWidget? _noteBar(
+    WorkspaceController c,
+    NoteSession session, {
+    required bool compact,
+  }) {
+    if (DynamicMaterialApp.isFullscreen) return null;
+    final kind = session.note.documentKind;
+    return AppBar(
+      toolbarHeight: _noteBarHeight,
+      titleSpacing: 0,
+      leading: IconButton(
+        key: const ValueKey('workspace-back-to-library'),
+        tooltip: '문서 목록으로',
+        onPressed: busy ? null : () => unawaited(_back()),
+        icon: const Icon(Icons.arrow_back),
+      ),
+      // The tabs get the width the actions leave, so the history arrows and the open-tabs menu come only when
+      // that width holds them.
+      title: LayoutBuilder(
+        builder: (context, constraints) => _documentTabs(
+          c,
+          history: constraints.maxWidth >= 260,
+          switcher: constraints.maxWidth >= 120,
+          fallbackTitle: session.note.title,
+        ),
+      ),
+      actions: [
+        if (kind != VaultDocumentKind.markdown)
+          _noteViewToggle(kind, compact: compact),
+        ..._toolbarActions(c, session, compact: true),
+      ],
+    );
+  }
+
+  /// What stands before the path above the documents (the library has no top
+  /// row): on a tablet, the button that brings the hidden side bar back; on a
+  /// phone, the drawer button.
+  Widget _libraryLeading({required bool panel}) {
+    if (!panel) return const DrawerButton();
+    return ValueListenableBuilder(
+      valueListenable: stows.libraryPanelOpen,
+      builder: (context, _, _) => _libraryPanelOpen()
+          ? const SizedBox.shrink()
+          : IconButton(
+              key: const ValueKey('library-panel-toggle'),
+              tooltip: '왼쪽 바 보이기',
+              icon: const Icon(Icons.view_sidebar_outlined),
+              onPressed: () => stows.libraryPanelOpen.value = true,
+            ),
+    );
+  }
+
+  bool _libraryPanelOpen() =>
+      stows.libraryPanelOpen.value ?? MediaQuery.sizeOf(context).width >= 1000;
+
+  /// The library's side panel sits beside the documents instead of covering them, so both stay usable; the top
+  /// row's menu button opens and closes it.
+  Widget _libraryPanel(WorkspaceController c) => ValueListenableBuilder(
+    valueListenable: stows.libraryPanelOpen,
+    builder: (context, _, _) => AnimatedSize(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.centerLeft,
+      child: _libraryPanelOpen()
+          ? Row(
+              key: const ValueKey('library-panel'),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(width: 300, child: _library(c, panel: true)),
+                const VerticalDivider(width: 1),
+              ],
+            )
+          // Keeps the full height so only the width animates.
+          : const SizedBox(height: double.infinity),
+    ),
+  );
+
+  /// Switches the open note between its own view and its Markdown, as the bottom bar used to.
+  Widget _noteViewToggle(VaultDocumentKind kind, {required bool compact}) {
+    final (label, icon) = switch (kind) {
+      VaultDocumentKind.page => ('페이지', Icons.view_agenda_outlined),
+      VaultDocumentKind.database => ('데이터베이스', Icons.draw_outlined),
+      VaultDocumentKind.canvas => ('캔버스', Icons.draw_outlined),
+      _ => ('PDF·필기', Icons.draw_outlined),
+    };
+    if (compact) {
+      return IconButton(
+        key: const ValueKey('note-view-toggle'),
+        tooltip: markdownTab ? label : 'Markdown',
+        icon: Icon(markdownTab ? icon : Icons.notes),
+        onPressed: () => setState(() => markdownTab = !markdownTab),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: SegmentedButton<_NoteView>(
+        key: const ValueKey('note-view-toggle'),
+        showSelectedIcon: false,
+        style: const ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        segments: [
+          ButtonSegment(value: _NoteView.note, icon: Icon(icon), tooltip: label),
+          const ButtonSegment(
+            value: _NoteView.markdown,
+            icon: Icon(Icons.notes),
+            tooltip: 'Markdown',
+          ),
+        ],
+        selected: {if (markdownTab) _NoteView.markdown else _NoteView.note},
+        onSelectionChanged: (selection) => setState(
+          () => markdownTab = selection.single == _NoteView.markdown,
+        ),
+      ),
+    );
+  }
+
+  Widget _documentTabs(
+    WorkspaceController c, {
+    bool history = true,
+    bool switcher = true,
+    String? fallbackTitle,
+  }) {
     final repository = c.repository;
     final tabs = c.navigation.tabs;
     final enabled = !busy && !c.externalBusy;
@@ -1525,20 +1731,32 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       height: 44,
       child: Row(
         children: [
-          IconButton(
-            tooltip: '이전 위치',
-            icon: const Icon(Icons.arrow_back, size: 20),
-            onPressed: !enabled || c.navigation.peekBack == null
-                ? null
-                : () => _run(() => _history(forward: false)),
-          ),
-          IconButton(
-            tooltip: '다음 위치',
-            icon: const Icon(Icons.arrow_forward, size: 20),
-            onPressed: !enabled || c.navigation.peekForward == null
-                ? null
-                : () => _run(() => _history(forward: true)),
-          ),
+          if (history) ...[
+            IconButton(
+              tooltip: '이전 위치',
+              icon: const Icon(Icons.arrow_back, size: 20),
+              onPressed: !enabled || c.navigation.peekBack == null
+                  ? null
+                  : () => _run(() => _history(forward: false)),
+            ),
+            IconButton(
+              tooltip: '다음 위치',
+              icon: const Icon(Icons.arrow_forward, size: 20),
+              onPressed: !enabled || c.navigation.peekForward == null
+                  ? null
+                  : () => _run(() => _history(forward: true)),
+            ),
+          ],
+          if (tabs.isEmpty && fallbackTitle != null)
+            Expanded(
+              child: Text(
+                fallbackTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            )
+          else
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -1596,11 +1814,12 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               ),
             ),
           ),
-          WorkspaceTabSwitcher(
-            tabs: tabs,
-            activeNoteId: c.activeSession?.note.id,
-            onSelected: enabled ? select : null,
-          ),
+          if (switcher)
+            WorkspaceTabSwitcher(
+              tabs: tabs,
+              activeNoteId: c.activeSession?.note.id,
+              onSelected: enabled ? select : null,
+            ),
         ],
       ),
     );
@@ -2230,6 +2449,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         operation = () => c.store.setDeleted(note, true);
       case LibraryNoteAction.restore:
         operation = () => c.store.setDeleted(note, false);
+      case LibraryNoteAction.preview:
+        return _open(note, officeAction: OfficeOpenAction.preview);
+      case LibraryNoteAction.pdf:
+        return _open(note, officeAction: OfficeOpenAction.pdf);
     }
     final change = operation;
     if (change == null) {
@@ -3354,7 +3577,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     }
   }
 
-  Future<void> _knowledge() async {
+  /// The backlinks, tags and graph window, on [tab] (0, 1 or 2).
+  Future<void> _knowledge({int tab = 0}) async {
     if (busy) return;
     final c = controller!;
     final repository = c.repository;
@@ -3392,6 +3616,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
             return index == null
                 ? const Center(child: Text('문서 연결을 준비 중입니다.'))
                 : KnowledgePanel(
+                    initialTab: tab,
                     index: index,
                     selectedNoteId: session?.note.id,
                     mentionsCurrent: c.knowledgeCurrent,
@@ -3953,136 +4178,440 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     );
   }
 
-  Widget _library(WorkspaceController c) {
-    int depth(VaultFolder folder) {
-      var count = 0;
-      var id = folder.parentId;
-      final seen = <String>{folder.id};
-      while (id != null && seen.add(id)) {
-        final parent = c.folders.where((f) => f.id == id).firstOrNull;
-        if (parent == null) break;
-        count++;
-        id = parent.parentId;
+  /// Searches the library: the side bar's box, and the title's clear button.
+  void _searchLibrary(WorkspaceController c, String query) {
+    setState(() {
+      c.setSearchQuery(
+        query,
+        bookmark: c.searchesFromBookmark,
+        literal: c.searchesLiterally,
+        expression: !c.showDeleted && c.searchesWithOperators,
+      );
+    });
+    unawaited(c.refresh());
+  }
+
+  Widget _library(WorkspaceController c, {bool panel = false}) {
+    final folders = [
+      for (final folder in c.folders)
+        if (!folder.trashed || folder.deletionConflict) folder,
+    ];
+    final ids = {for (final folder in folders) folder.id};
+    final children = <String?, List<VaultFolder>>{};
+    for (final folder in folders) {
+      final parent = ids.contains(folder.parentId) ? folder.parentId : null;
+      (children[parent] ??= []).add(folder);
+    }
+    for (final list in children.values) {
+      list.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    }
+    // Documents per folder, counting the folders inside it.
+    final parents = {for (final folder in folders) folder.id: folder.parentId};
+    final counts = <String, int>{};
+    var live = 0, trashed = 0;
+    for (final note in c.notes) {
+      if (note.trashed) {
+        trashed++;
+        continue;
       }
-      return count;
+      live++;
+      var id = note.folderId;
+      final seen = <String>{};
+      while (id != null && seen.add(id)) {
+        counts[id] = (counts[id] ?? 0) + 1;
+        id = parents[id];
+      }
+    }
+    Widget count(int value) => Text(
+      '$value',
+      style: TextStyle(
+        fontSize: 13,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+    final rows = <Widget>[];
+    void addFolders(String? parent, int depth, Set<String> seen) {
+      for (final folder in children[parent] ?? const <VaultFolder>[]) {
+        if (!seen.add(folder.id)) continue;
+        final hasChildren = children[folder.id]?.isNotEmpty ?? false;
+        final collapsed = _collapsedFolders.contains(folder.id);
+        rows.add(
+          Padding(
+            padding: EdgeInsets.only(left: (depth.clamp(0, 6) * 14).toDouble()),
+            child: ListTile(
+              key: ValueKey('sidebar-folder-${folder.id}'),
+              dense: true,
+              contentPadding: const EdgeInsets.only(left: 4, right: 4),
+              horizontalTitleGap: 6,
+              leading: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 32,
+                    child: hasChildren
+                        ? IconButton(
+                            key: ValueKey('sidebar-folder-toggle-${folder.id}'),
+                            tooltip: collapsed ? '펼치기' : '접기',
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            iconSize: 20,
+                            onPressed: () => setState(() {
+                              if (!_collapsedFolders.remove(folder.id)) {
+                                _collapsedFolders.add(folder.id);
+                              }
+                            }),
+                            icon: Icon(
+                              collapsed ? Icons.chevron_right : Icons.expand_more,
+                            ),
+                          )
+                        : null,
+                  ),
+                  Icon(
+                    folder.deletionConflict
+                        ? Icons.warning_amber
+                        : Icons.folder_outlined,
+                  ),
+                ],
+              ),
+              title: Text(
+                folder.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              selected: folder.id == c.currentFolderId,
+              onTap: busy ? null : () => _run(() => _goFolder(folder.id)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  count(counts[folder.id] ?? 0),
+                  PopupMenuButton<LibraryFolderAction>(
+                    onSelected: (action) =>
+                        _run(() => _folderAction(folder, action)),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: LibraryFolderAction.rename,
+                        child: Text('이름 변경'),
+                      ),
+                      PopupMenuItem(
+                        value: LibraryFolderAction.move,
+                        child: Text('이동'),
+                      ),
+                      PopupMenuItem(
+                        value: LibraryFolderAction.trash,
+                        child: Text('휴지통으로'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        if (!collapsed) addFolders(folder.id, depth + 1, seen);
+      }
     }
 
+    addFolders(null, 0, <String>{});
+
+    // A row in the drawer closes it first; the tablet's side bar stays.
+    void tap(VoidCallback action) {
+      if (_scaffold.currentState?.isDrawerOpen ?? false) {
+        _scaffold.currentState!.closeDrawer();
+      }
+      action();
+    }
+
+    Widget row(
+      String label,
+      IconData icon,
+      VoidCallback? action, {
+      Key? key,
+      Widget? trailing,
+      bool selected = false,
+    }) => ListTile(
+      key: key,
+      dense: true,
+      enabled: action != null,
+      leading: Icon(icon),
+      title: Text(label),
+      trailing: trailing,
+      selected: selected,
+      onTap: action == null ? null : () => tap(action),
+    );
+
+    final repository = c.repository;
+    final ready = !busy && !c.externalBusy;
+    // StarNote's side bar: its head (hide the bar, settings), then search,
+    // the documents, bookmarks, tags, backlinks, graph, trash and folders.
     return Column(
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 28, 20, 20),
-          child: Text(
-            'Personal Ink Vault',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+          child: Row(
+            children: [
+              if (panel)
+                IconButton(
+                  key: const ValueKey('library-panel-toggle'),
+                  tooltip: '왼쪽 바 숨기기',
+                  icon: const Icon(Icons.view_sidebar_outlined),
+                  onPressed: () => stows.libraryPanelOpen.value = false,
+                ),
+              const Spacer(),
+              IconButton(
+                key: const ValueKey('library-settings'),
+                tooltip: '설정',
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: busy
+                    ? null
+                    : () => tap(() => unawaited(_settings(c))),
+              ),
+            ],
           ),
         ),
-        ListTile(
-          leading: const Icon(Icons.library_books_outlined),
-          title: const Text('내 문서'),
-          selected: c.currentFolderId == null && !c.showDeleted,
-          onTap: busy
-              ? null
-              : () => _run(() async {
-                  c.showDeleted = false;
-                  await c.refresh();
-                  await _goFolder(null);
-                }),
-        ),
-        ListTile(
-          leading: const Icon(Icons.delete_outline),
-          title: const Text('휴지통'),
-          selected: c.showDeleted,
-          onTap: busy
-              ? null
-              : () => _run(() async {
-                  await _goFolder(null);
-                  c.showDeleted = true;
-                  await c.refresh();
-                }),
-        ),
-        const Divider(),
-        ListTile(
-          title: const Text('폴더'),
-          trailing: IconButton(
-            tooltip: '새 폴더',
-            onPressed: busy
-                ? null
-                : () => _run(() => _createDocument(LibraryCreateAction.folder)),
-            icon: const Icon(Icons.create_new_folder_outlined),
-          ),
-        ),
+        // Below the head everything scrolls together, so a short screen (a
+        // tablet held sideways with the keyboard up) still reaches the folders.
         Expanded(
           child: ListView(
             children: [
-              for (final folder in c.folders.where(
-                (f) => !f.trashed || f.deletionConflict,
-              ))
-                Padding(
-                  padding: EdgeInsets.only(
-                    left: (depth(folder).clamp(0, 6) * 12).toDouble(),
-                  ),
-                  child: ListTile(
-                    leading: Icon(
-                      folder.deletionConflict
-                          ? Icons.warning_amber
-                          : Icons.folder_outlined,
-                    ),
-                    title: Text(
-                      folder.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    selected: folder.id == c.currentFolderId,
-                    onTap: busy ? null : () => _run(() => _goFolder(folder.id)),
-                    trailing: PopupMenuButton<LibraryFolderAction>(
-                      onSelected: (action) =>
-                          _run(() => _folderAction(folder, action)),
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(
-                          value: LibraryFolderAction.rename,
-                          child: Text('이름 변경'),
-                        ),
-                        PopupMenuItem(
-                          value: LibraryFolderAction.move,
-                          child: Text('이동'),
-                        ),
-                        PopupMenuItem(
-                          value: LibraryFolderAction.trash,
-                          child: Text('휴지통으로'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+            // On the library, its search box (it used to sit over the
+            // documents). With a note open the documents are not shown, so
+            // the bar keeps the quick switch there, as before.
+            if (c.activeSession != null)
+              row(
+                '검색',
+                Icons.search,
+                ready ? _quickSwitch : null,
+                key: const ValueKey('workspace-quick-switch'),
+              )
+            else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+              child: LibrarySearchField(
+                query: c.query,
+                expression: c.searchesWithOperators,
+                enabled:
+                    !(_librarySelection == _librarySelectionScope(c) &&
+                        (busy || c.externalBusy)),
+                onChanged: (query) => _searchLibrary(c, query),
+                onExpressionChanged: c.showDeleted
+                    ? null
+                    : (enabled) {
+                        setState(() {
+                          c.setSearchQuery(
+                            c.query,
+                            bookmark: c.searchesFromBookmark,
+                            expression: enabled,
+                          );
+                        });
+                        unawaited(c.refresh());
+                      },
+                // In the drawer, Enter closes it to show what was found.
+                onSubmitted: () => tap(() {}),
+              ),
+            ),
+            row(
+              '내 문서',
+              Icons.library_books_outlined,
+              busy
+                  ? null
+                  : () => _run(() async {
+                      c.showDeleted = false;
+                      await c.refresh();
+                      await _goFolder(null);
+                    }),
+              trailing: count(live),
+              selected: c.currentFolderId == null && !c.showDeleted,
+            ),
+            if (repository.formatVersion >= 2)
+              row(
+                '북마크',
+                Icons.bookmark_border,
+                ready ? _bookmarks : null,
+                key: const ValueKey('workspace-bookmarks'),
+              ),
+            if (c.native != null) ...[
+              row(
+                '태그',
+                Icons.tag,
+                busy ? null : () => unawaited(_knowledge(tab: 1)),
+                key: const ValueKey('library-tags'),
+              ),
+              row(
+                '역링크',
+                Icons.link,
+                busy ? null : () => unawaited(_knowledge()),
+                key: const ValueKey('library-backlinks'),
+              ),
+              row(
+                '그래프',
+                Icons.hub_outlined,
+                busy ? null : () => unawaited(_knowledge(tab: 2)),
+                key: const ValueKey('library-graph'),
+              ),
+            ],
+            row(
+              '휴지통',
+              Icons.delete_outline,
+              busy
+                  ? null
+                  : () => _run(() async {
+                      await _goFolder(null);
+                      c.showDeleted = true;
+                      await c.refresh();
+                    }),
+              trailing: count(trashed),
+              selected: c.showDeleted,
+            ),
+            const Divider(),
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.folder_outlined),
+              title: const Text('폴더'),
+              trailing: IconButton(
+                tooltip: '새 폴더',
+                onPressed: busy
+                    ? null
+                    : () => _run(() => _createDocument(LibraryCreateAction.folder)),
+                icon: const Icon(Icons.create_new_folder_outlined),
+              ),
+            ),
+              ...rows,
             ],
           ),
         ),
         if (_driveConnection case final drive?) DrivePanel(controller: drive),
-        Wrap(
-          children: [
-            TextButton(
-              onPressed: busy ? null : () => _run(_localVaults),
-              child: const Text('기기의 저장소'),
-            ),
-            TextButton(
-              onPressed: busy ? null : () => _run(_backup),
-              child: const Text('백업 내보내기'),
-            ),
-            TextButton(
-              onPressed: busy || c.externalBusy || c.native == null
-                  ? null
-                  : () => _run(_exportObsidianVault),
-              child: const Text('Obsidian 보관함 ZIP'),
-            ),
-            TextButton(
-              onPressed: busy ? null : () => _run(_restore),
-              child: const Text('별도 저장소로 복원'),
-            ),
-          ],
-        ),
       ],
     );
   }
+
+  /// Dark status bar icons on a light screen and light ones on a dark screen,
+  /// as an AppBar sets them.
+  static SystemUiOverlayStyle _statusBarIcons(Brightness brightness) =>
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: brightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
+        statusBarBrightness: brightness,
+        systemStatusBarContrastEnforced: false,
+      );
+
+  /// The library's settings: the vault tools and the connections that sat in
+  /// the old top row and in the side bar's vault menu.
+  Future<void> _settings(WorkspaceController c) => showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      final mcp = _mcp;
+      final ready = !busy && !c.externalBusy;
+      void closeThen(VoidCallback action) {
+        Navigator.of(dialogContext).pop();
+        action();
+      }
+
+      Widget item(
+        String key,
+        IconData icon,
+        String label,
+        VoidCallback? action,
+      ) => ListTile(
+        key: ValueKey(key),
+        leading: Icon(icon),
+        title: Text(label),
+        enabled: action != null,
+        onTap: action == null ? null : () => closeThen(action),
+      );
+
+      Widget section(String title) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 4),
+        child: Text(
+          title,
+          style: TextTheme.of(dialogContext).labelLarge?.copyWith(
+            color: ColorScheme.of(dialogContext).primary,
+          ),
+        ),
+      );
+
+      return Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: ListView(
+            key: const ValueKey('library-settings-dialog'),
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(bottom: 12),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 8, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '설정',
+                        style: TextTheme.of(dialogContext).titleLarge,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '닫기',
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+              section('보관함'),
+              item(
+                'settings-local-vaults',
+                Icons.folder_open_outlined,
+                '기기의 저장소',
+                busy ? null : () => _run(_localVaults),
+              ),
+              item(
+                'settings-backup',
+                Icons.backup_outlined,
+                '백업 내보내기',
+                busy ? null : () => _run(_backup),
+              ),
+              item(
+                'settings-obsidian',
+                Icons.archive_outlined,
+                'Obsidian 보관함 ZIP',
+                ready && c.native != null
+                    ? () => _run(_exportObsidianVault)
+                    : null,
+              ),
+              item(
+                'settings-restore',
+                Icons.settings_backup_restore,
+                '별도 저장소로 복원',
+                busy ? null : () => _run(_restore),
+              ),
+              section('연결'),
+              if (mcp != null)
+                item(
+                  'settings-mcp',
+                  Icons.smart_toy_outlined,
+                  '다른 AI 연결 · MCP',
+                  () => unawaited(
+                    showDialog<void>(
+                      context: context,
+                      builder: (_) => McpPanel(access: mcp),
+                    ),
+                  ),
+                ),
+              item(
+                'settings-open-link',
+                Icons.open_in_new,
+                '노트 링크 열기',
+                () => _run(() async {
+                  final link = await _input('inkvault 링크 열기', '');
+                  if (link != null) await _openLink(link);
+                }),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 
   List<Widget> _toolbarActions(
     WorkspaceController c,
@@ -4283,7 +4812,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         body: Center(
           child: _startupError == null
               ? const CircularProgressIndicator()
-              : Text('저장소를 열 수 없습니다: $_startupError'),
+              : UserErrorText.of(
+                  _startupError!,
+                  prefix: '저장소를 열 수 없습니다',
+                  textAlign: TextAlign.center,
+                ),
         ),
       );
     final session = c.activeSession;
@@ -4312,12 +4845,19 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     final selectingLibrary = _librarySelection == _librarySelectionScope(c);
     final pdfPeerPreview = c.pdfPeerPreview;
     final desktop = defaultTargetPlatform != TargetPlatform.android;
-    final wide = MediaQuery.sizeOf(context).width >= 1000;
-    final showLibraryRail = wide && (desktop || session == null);
+    final width = MediaQuery.sizeOf(context).width;
+    final wide = width >= 1000;
+    // The library keeps its side panel beside the documents on tablets (824 dp upright) and wider windows, so both
+    // stay usable; phones and narrow windows keep the drawer.
+    final libraryPanel = session == null && width >= 720;
+    final showNoteRail = wide && desktop && session != null;
+    // An open note on a tablet, phone or narrow window keeps one slim row above its tools (see _noteBar).
+    final noteChrome = session != null && !(desktop && wide);
     Widget body;
     if (session == null) {
       _dataview = null;
       body = LibraryHome(
+        leading: _libraryLeading(panel: libraryPanel),
         thumbnails: _thumbnails,
         onPreviewRequested: (note) => unawaited(_requestThumbnail(note)),
         notes: c.notes,
@@ -4362,7 +4902,15 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           LibraryCreateAction.pdf,
           LibraryCreateAction.folder,
         },
-        onOpenNote: (note) => _run(() => _open(note)),
+        // An Office·한글 card opens straight into its editor.
+        onOpenNote: (note) => _run(
+          () => _open(
+            note,
+            officeAction: note.documentKind == VaultDocumentKind.office
+                ? OfficeOpenAction.edit
+                : null,
+          ),
+        ),
         searchBodyMatches: c.searchBodyMatches,
         onOpenBodyMatch: (note, match) =>
             _run(() => _open(note, bodyMatch: match)),
@@ -4371,27 +4919,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         onNoteAction: (note, action) => _run(() => _noteAction(note, action)),
         onFolderAction: (folder, action) =>
             _run(() => _folderAction(folder, action)),
-        onSearchChanged: (query) {
-          setState(() {
-            c.setSearchQuery(
-              query,
-              bookmark: c.searchesFromBookmark,
-              literal: c.searchesLiterally,
-              expression: !c.showDeleted && c.searchesWithOperators,
-            );
-          });
-          unawaited(c.refresh());
-        },
-        onSearchExpressionChanged: (enabled) {
-          setState(() {
-            c.setSearchQuery(
-              c.query,
-              bookmark: c.searchesFromBookmark,
-              expression: enabled,
-            );
-          });
-          unawaited(c.refresh());
-        },
+        // The search box is in the side bar; the title's × clears it.
+        onSearchChanged: (query) => _searchLibrary(c, query),
         searchQuery: c.query,
         searchAcrossFolders: c.searchesAcrossFolders,
         searchExpression: c.searchesWithOperators,
@@ -4417,7 +4946,9 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
             : null;
         if (session.note.documentKind == VaultDocumentKind.database) {
           _relatedEpoch = c.repositoryGeneration;
-          _relatedDatabases = _loadRelatedDatabases(c.repository);
+          // The FutureBuilder still gets its errors; ignore() only keeps a late "Repository is closed", after the
+          // screen is gone, from becoming an unhandled error.
+          _relatedDatabases = _loadRelatedDatabases(c.repository)..ignore();
         }
         _pageContents = session.note.documentKind == VaultDocumentKind.page
             ? _loadPageContents(c, session)
@@ -4478,7 +5009,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               builder: (_, snapshot) {
                 if (snapshot.hasError)
                   return Center(
-                    child: Text('데이터베이스를 열 수 없습니다: ${snapshot.error}'),
+                    child: UserErrorText.of(
+                      snapshot.error!,
+                      prefix: '데이터베이스를 열 수 없습니다',
+                      textAlign: TextAlign.center,
+                    ),
                   );
                 if (!snapshot.hasData)
                   return const Center(child: CircularProgressIndicator());
@@ -4579,7 +5114,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               builder: (_, snapshot) {
                 if (snapshot.hasError)
                   return Center(
-                    child: Text('페이지를 열 수 없습니다: ${snapshot.error}'),
+                    child: UserErrorText.of(
+                      snapshot.error!,
+                      prefix: '페이지를 열 수 없습니다',
+                      textAlign: TextAlign.center,
+                    ),
                   );
                 if (!snapshot.hasData)
                   return const Center(child: CircularProgressIndicator());
@@ -4625,7 +5164,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               builder: (_, snapshot) {
                 if (snapshot.hasError)
                   return Center(
-                    child: Text('카드 캔버스를 열 수 없습니다: ${snapshot.error}'),
+                    child: UserErrorText.of(
+                      snapshot.error!,
+                      prefix: '카드 캔버스를 열 수 없습니다',
+                      textAlign: TextAlign.center,
+                    ),
                   );
                 if (!snapshot.hasData)
                   return const Center(child: CircularProgressIndicator());
@@ -4669,6 +5212,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               showBackButton: false,
               repository: c.repository,
               note: session.note,
+              engine: widget.officeEngine,
               previewEngine: widget.officePreviewEngine,
               pageLink: identical(_officePageLink?.session, session)
                   ? _officePageLink?.request
@@ -4676,6 +5220,14 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               onPageLinkHandled: (request) {
                 if (identical(_officePageLink?.request, request)) {
                   _officePageLink = null;
+                }
+              },
+              openRequest: identical(_officeOpenRequest?.session, session)
+                  ? _officeOpenRequest?.request
+                  : null,
+              onOpenRequestHandled: (request) {
+                if (identical(_officeOpenRequest?.request, request)) {
+                  _officeOpenRequest = null;
                 }
               },
               onDirtyChanged: (value) => c.setInkDirty(value, session: session),
@@ -4719,7 +5271,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               builder: (_, snapshot) {
                 if (snapshot.hasError)
                   return Center(
-                    child: Text('무한 노트를 열 수 없습니다: ${snapshot.error}'),
+                    child: UserErrorText.of(
+                      snapshot.error!,
+                      prefix: '무한 노트를 열 수 없습니다',
+                      textAlign: TextAlign.center,
+                    ),
                   );
                 if (!snapshot.hasData)
                   return const Center(child: CircularProgressIndicator());
@@ -4772,6 +5328,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               path: '/.working/${session.note.id}/new/main',
               customTitle: session.note.title,
               showDocumentHeader: false,
+              pageActionsInToolbar: noteChrome,
               pdfPath: pdfPeerPreview
                   ? c.pdfPeerPreviewPath
                   : c.pendingPdfPath ?? _pendingPdf,
@@ -4932,152 +5489,142 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) unawaited(_back());
       },
-      child: Scaffold(
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: _statusBarIcons(Theme.of(context).brightness),
+        child: Scaffold(
         key: _scaffold,
-        appBar: AppBar(
-          leading:
-              !selectingLibrary && session == null && c.currentFolderId == null
-              ? null
-              : IconButton(
-                  key: selectingLibrary
-                      ? const ValueKey('workspace-exit-library-selection')
-                      : session == null
-                      ? null
-                      : const ValueKey('workspace-back-to-library'),
-                  tooltip: selectingLibrary
-                      ? '일괄 관리 닫기'
-                      : session == null
-                      ? '상위 폴더로'
-                      : '문서 목록으로',
-                  onPressed: busy ? null : () => unawaited(_back()),
-                  icon: const Icon(Icons.arrow_back),
-                ),
+        // The library has no top row, like StarNote's: its side bar and the
+        // header above the documents hold its buttons.
+        appBar: noteChrome
+            ? _noteBar(c, session, compact: compactToolbar)
+            : session == null
+            ? null
+            // An open note on a wide desktop window.
+            : AppBar(
+          leading: IconButton(
+            key: selectingLibrary
+                ? const ValueKey('workspace-exit-library-selection')
+                : const ValueKey('workspace-back-to-library'),
+            tooltip: selectingLibrary ? '일괄 관리 닫기' : '문서 목록으로',
+            onPressed: busy ? null : () => unawaited(_back()),
+            icon: const Icon(Icons.arrow_back),
+          ),
           title: Text(
-            session?.note.title ?? 'Personal Ink Vault',
+            session.note.title,
             maxLines: compactToolbar ? 1 : null,
             overflow: compactToolbar ? TextOverflow.ellipsis : null,
           ),
           actions: _toolbarActions(c, session, compact: compactToolbar),
         ),
-        drawer: wide ? null : Drawer(child: _library(c)),
-        body: Row(
-          children: [
-            if (showLibraryRail) SizedBox(width: 300, child: _library(c)),
-            if (showLibraryRail) const VerticalDivider(width: 1),
-            Expanded(
-              child: Column(
-                children: [
-                  if (c.navigation.tabs.isNotEmpty ||
-                      c.navigation.peekBack != null)
-                    _documentTabs(c),
-                  if (busy ||
-                      c.externalBusy ||
-                      StudyWorkspace.pendingDocumentImport.processing)
-                    const LinearProgressIndicator(),
-                  if (c.externalBusy)
-                    const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Text('문서 변경 사항을 저장하고 있습니다.'),
-                    ),
-                  if (_closeError != null)
-                    MaterialBanner(
-                      content: Text(_closeError!),
-                      actions: [
-                        TextButton(
-                          onPressed: busy ? null : onWindowClose,
-                          child: const Text('다시 저장하고 닫기'),
-                        ),
-                      ],
-                    ),
-                  ?_sharedDocumentBanner(c),
-                  if (c.error != null)
-                    MaterialBanner(
-                      content: Text(c.error!),
-                      actions: [
-                        TextButton(
-                          onPressed: () => _run(c.refresh),
-                          child: const Text('다시 읽기'),
-                        ),
-                      ],
-                    ),
-                  if (c.remoteConflict)
-                    MaterialBanner(
-                      content: const Text(
-                        '다른 버전이 있습니다. 작업본과 기존 부모 리비전을 보존합니다.',
+        // The drawer stays in the tree even where the library uses its side panel: removing it while it closes
+        // would leave the Scaffold remembering it as open, and the next note would show it open again.
+        drawer: wide ? null : Drawer(child: SafeArea(child: _library(c))),
+        drawerEnableOpenDragGesture: !libraryPanel,
+        // Without a top row the library starts below the status bar.
+        body: SafeArea(
+          top: session == null,
+          bottom: false,
+          left: false,
+          right: false,
+          child: Row(
+            children: [
+              if (libraryPanel)
+                _libraryPanel(c)
+              else if (showNoteRail) ...[
+                SizedBox(width: 300, child: _library(c)),
+                const VerticalDivider(width: 1),
+              ],
+              Expanded(
+                child: Column(
+                  children: [
+                    // The library shows its tabs in its top row (_libraryBar).
+                    if (!noteChrome &&
+                        session != null &&
+                        (c.navigation.tabs.isNotEmpty ||
+                            c.navigation.peekBack != null))
+                      _documentTabs(c),
+                    if (busy ||
+                        c.externalBusy ||
+                        StudyWorkspace.pendingDocumentImport.processing)
+                      const LinearProgressIndicator(),
+                    if (c.externalBusy)
+                      const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Text('문서 변경 사항을 저장하고 있습니다.'),
                       ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => _run(_conflicts),
-                          child: const Text('충돌 확인'),
-                        ),
-                      ],
-                    ),
-                  if (session != null && pdfPeerPreview)
-                    MaterialBanner(
-                      content: const Text(
-                        '다른 기기의 첫 필기 판본을 기다리는 중입니다. '
-                        '지금은 PDF를 읽기 전용으로 볼 수 있습니다.',
+                    if (_closeError != null)
+                      MaterialBanner(
+                        content: Text(_closeError!),
+                        actions: [
+                          TextButton(
+                            onPressed: busy ? null : onWindowClose,
+                            child: const Text('다시 저장하고 닫기'),
+                          ),
+                        ],
                       ),
-                      actions: [
-                        TextButton(
-                          onPressed: busy || c.dirty || c.remoteConflict
-                              ? null
-                              : () => _run(
-                                  () => c.beginPdfInkHere(session: session),
-                                ),
-                          child: const Text('이 기기에서 필기 시작'),
+                    ?_sharedDocumentBanner(c),
+                    if (c.error != null)
+                      MaterialBanner(
+                        content: UserErrorText(
+                          message: c.error!,
+                          details: c.errorDetails,
                         ),
-                      ],
-                    ),
-                  Expanded(
-                    child: AbsorbPointer(
-                      absorbing: c.externalBusy || _exporting,
-                      child: ExcludeFocus(
-                        excluding:
-                            c.externalBusy ||
-                            (_exporting &&
-                                session?.note.documentKind ==
-                                    VaultDocumentKind.canvas),
-                        child: body,
+                        actions: [
+                          TextButton(
+                            onPressed: () => _run(c.refresh),
+                            child: const Text('다시 읽기'),
+                          ),
+                        ],
+                      ),
+                    if (c.remoteConflict)
+                      MaterialBanner(
+                        content: const Text(
+                          '다른 버전이 있습니다. 작업본과 기존 부모 리비전을 보존합니다.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => _run(_conflicts),
+                            child: const Text('충돌 확인'),
+                          ),
+                        ],
+                      ),
+                    if (session != null && pdfPeerPreview)
+                      MaterialBanner(
+                        content: const Text(
+                          '다른 기기의 첫 필기 판본을 기다리는 중입니다. '
+                          '지금은 PDF를 읽기 전용으로 볼 수 있습니다.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: busy || c.dirty || c.remoteConflict
+                                ? null
+                                : () => _run(
+                                    () => c.beginPdfInkHere(session: session),
+                                  ),
+                            child: const Text('이 기기에서 필기 시작'),
+                          ),
+                        ],
+                      ),
+                    Expanded(
+                      child: AbsorbPointer(
+                        absorbing: c.externalBusy || _exporting,
+                        child: ExcludeFocus(
+                          excluding:
+                              c.externalBusy ||
+                              (_exporting &&
+                                  session?.note.documentKind ==
+                                      VaultDocumentKind.canvas),
+                          child: body,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        bottomNavigationBar:
-            session == null ||
-                session.note.documentKind == VaultDocumentKind.markdown ||
-                desktop && wide
-            ? null
-            : NavigationBar(
-                selectedIndex: markdownTab ? 1 : 0,
-                onDestinationSelected: (i) =>
-                    setState(() => markdownTab = i == 1),
-                destinations: [
-                  NavigationDestination(
-                    icon: Icon(
-                      session.note.documentKind == VaultDocumentKind.page
-                          ? Icons.view_agenda_outlined
-                          : Icons.draw_outlined,
-                    ),
-                    label: session.note.documentKind == VaultDocumentKind.page
-                        ? '페이지'
-                        : session.note.documentKind ==
-                              VaultDocumentKind.database
-                        ? '데이터베이스'
-                        : session.note.documentKind == VaultDocumentKind.canvas
-                        ? '캔버스'
-                        : 'PDF·필기',
-                  ),
-                  const NavigationDestination(
-                    icon: Icon(Icons.notes),
-                    label: 'Markdown',
-                  ),
-                ],
-              ),
+        ),
       ),
     );
     return CallbackShortcuts(
@@ -5162,6 +5709,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     _applyLifecycle(state);
   }
 
+  // The pen toolbar's full screen button also hides this screen's note bar.
+  void _fullscreenChanged() {
+    if (mounted) setState(() {});
+  }
+
   void _externalScreenChanged() {
     _externalScreenGrace?.cancel();
     if (AppExternalScreen.active || !mounted) return;
@@ -5205,6 +5757,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     _sharedDocumentTimer?.cancel();
     _externalScreenGrace?.cancel();
     AppExternalScreen.open.removeListener(_externalScreenChanged);
+    DynamicMaterialApp.removeFullscreenListener(_fullscreenChanged);
     _automation?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isWindows) windowManager.removeListener(this);

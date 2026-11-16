@@ -305,6 +305,46 @@ class OfficeEditRecoveryStore {
     return _entry(note, sessionId, next, session);
   });
 
+  /// Removes an edit that ended without saving and left nothing to resume:
+  /// it holds no result, its working copy is still the original and nothing
+  /// was written beside it. Its receipt goes first (the list skips a folder
+  /// without one), then its folders. Any other session, kept work included,
+  /// is left as it is (false).
+  Future<bool> discardUnchanged(VaultNote note, String sessionId) =>
+      _queue.run(() async {
+        final (data, session) = await _load(note, sessionId);
+        if (data['stage'] != OfficeEditRecoveryStage.started.name) {
+          return false;
+        }
+        final working = File(data['workingPath'] as String);
+        final folder = working.parent;
+        try {
+          final contents = await folder.list(followLinks: false).toList();
+          if (contents.length != 1 ||
+              !p.equals(contents.single.path, working.path)) {
+            return false;
+          }
+          await _readFile(
+            working,
+            hash: session.originalSha256,
+            length: session.originalLength,
+          );
+        } on FileSystemException {
+          return false;
+        } on FormatException {
+          return false;
+        }
+        await _receipt(note, sessionId).delete();
+        for (final leftover in [Directory(_folder(note, sessionId)), folder]) {
+          try {
+            await leftover.delete(recursive: true);
+          } on FileSystemException {
+            // Only takes space: without its receipt the session is gone.
+          }
+        }
+        return true;
+      });
+
   Future<bool> completeIfIdentical(VaultNote note, String sessionId) =>
       _queue.run(() async {
         final (data, session) = await _load(note, sessionId);

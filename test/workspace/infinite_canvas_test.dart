@@ -3,7 +3,10 @@ import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/infinite_document.dart';
 import 'package:saber/pages/workspace/infinite_canvas.dart';
 
@@ -23,6 +26,9 @@ InfiniteStroke stroke({
 );
 
 void main() {
+  // The canvas reads its toolbar position from the app preferences.
+  setUp(FlavorConfig.setup);
+
   test('infinite document roundtrips negative and distant world coordinates with pressure', () {
     final source = InfiniteDocument(
       strokes: [
@@ -123,11 +129,11 @@ void main() {
       ),
       onSaveViewport: (view) async => saved = view,
     );
-    await tester.tap(find.byTooltip('확대'));
+    await tester.tap(find.byTooltip('원점으로'));
     await tester.pump();
     await key.currentState!.save();
-    expect(saved!.scale, 2.5);
-    expect(saved!.offset.dx, -1250000);
+    expect(saved!.scale, 1);
+    expect(saved!.offset, Offset.zero);
     await tester.pumpWidget(const SizedBox());
     final reopened = await mount(tester, initialViewport: saved!);
     expect(reopened.currentState!.viewport.offset, saved!.offset);
@@ -243,6 +249,11 @@ void main() {
     await tester.tap(find.text('8.0 px'));
     await tester.pumpAndSettle();
     await draw(tester, [const Offset(60, 90), const Offset(90, 90)]);
+    // The highlighter sits behind the width on a phone-width toolbar.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('infinite-tool-highlighter')),
+    );
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('infinite-tool-highlighter')));
     await tester.pump();
     expect(find.text('40.0 px'), findsOneWidget);
@@ -399,4 +410,84 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  double pillOpacity(WidgetTester tester) => tester
+      .widget<AnimatedOpacity>(find.byKey(const ValueKey('zoom-pill')))
+      .opacity;
+
+  Future<void> ctrlScroll(WidgetTester tester, double dy) async {
+    final center = tester.getCenter(
+      find.byKey(const ValueKey('infinite-surface')),
+    );
+    final mouse = TestPointer(9, PointerDeviceKind.mouse);
+    await tester.sendEventToBinding(mouse.hover(center));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendEventToBinding(mouse.scroll(Offset(0, dy)));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+  }
+
+  testWidgets('zoom pill shows only when the scale changes', (tester) async {
+    await mount(tester);
+    expect(find.byTooltip('축소'), findsNothing);
+    expect(find.byTooltip('확대'), findsNothing);
+    final center = tester.getCenter(
+      find.byKey(const ValueKey('infinite-surface')),
+    );
+    final mouse = TestPointer(8, PointerDeviceKind.mouse);
+    await tester.sendEventToBinding(mouse.hover(center));
+    await tester.sendEventToBinding(mouse.scroll(const Offset(0, 40)));
+    await tester.pump();
+    expect(pillOpacity(tester), 0);
+    await ctrlScroll(tester, -60);
+    expect(pillOpacity(tester), 1);
+    await tester.pump(const Duration(milliseconds: 2100));
+    expect(pillOpacity(tester), 0);
+  });
+
+  testWidgets('pill scale list zooms the view to the chosen scale', (
+    tester,
+  ) async {
+    final key = await mount(tester);
+    await ctrlScroll(tester, -60);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('zoom-pill')),
+        matching: find.textContaining('%'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('200%').last);
+    await tester.pumpAndSettle();
+    expect(key.currentState!.viewport.scale, closeTo(2, 1e-9));
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('infinite toolbar docks to the left as a column', (
+    tester,
+  ) async {
+    final previous = stows.workspaceToolbarAlignment.value;
+    stows.workspaceToolbarAlignment.value = AxisDirection.left;
+    addTearDown(() => stows.workspaceToolbarAlignment.value = previous);
+    await mount(tester);
+    expect(
+      tester.widget<Flex>(find.byKey(const ValueKey('infinite-toolbar'))).direction,
+      Axis.vertical,
+    );
+    expect(tester.getTopLeft(find.byTooltip('펜')).dx, lessThan(100));
+    expect(find.byKey(const ValueKey('toolbar-dock-handle')), findsOneWidget);
+    expect(find.byTooltip('툴바 설정'), findsOneWidget);
+  });
+  testWidgets('infinite toolbar follows the saved layout', (tester) async {
+    final previous = stows.infiniteToolbarLayout.value;
+    stows.infiniteToolbarLayout.value = ['!pan', 'save', 'undo'];
+    addTearDown(() => stows.infiniteToolbarLayout.value = previous);
+    await mount(tester);
+    expect(find.byTooltip('이동'), findsNothing);
+    expect(
+      tester.getCenter(find.byTooltip('저장')).dx,
+      lessThan(tester.getCenter(find.byTooltip('실행 취소')).dx),
+    );
+    expect(find.byTooltip('원점으로'), findsOneWidget);
+  });
 }

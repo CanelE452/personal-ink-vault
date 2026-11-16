@@ -5,6 +5,7 @@ import 'package:saber/components/canvas/canvas_gesture_detector.dart';
 import 'package:saber/components/canvas/interactive_canvas.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
 import 'package:saber/components/toolbar/toolbar.dart';
+import 'package:saber/components/toolbar/toolbar_dock.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -53,6 +54,68 @@ void main() {
       expect(layout.verticalDirection, VerticalDirection.up);
     },
   );
+
+  testWidgets('workspace editor follows the workspace toolbar position', (
+    tester,
+  ) async {
+    final previous = stows.workspaceToolbarAlignment.value;
+    stows.workspaceToolbarAlignment.value = AxisDirection.right;
+    addTearDown(() => stows.workspaceToolbarAlignment.value = previous);
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          home: Editor(
+            path: '/workspace-right',
+            onSaveSnapshot: (_, _) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final layout = tester.widget<Flex>(
+      find
+          .descendant(of: find.byType(Toolbar), matching: find.byType(Flex))
+          .first,
+    );
+    expect(layout.direction, Axis.horizontal);
+    expect(
+      tester.widget<ToolbarDock>(find.byType(ToolbarDock)).alignment,
+      AxisDirection.right,
+    );
+    expect(find.byKey(const ValueKey('toolbar-dock-handle')), findsOneWidget);
+  });
+
+  testWidgets('toolbar settings sheet moves the workspace toolbar', (
+    tester,
+  ) async {
+    final previous = stows.workspaceToolbarAlignment.value;
+    stows.workspaceToolbarAlignment.value = AxisDirection.up;
+    addTearDown(() => stows.workspaceToolbarAlignment.value = previous);
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          home: Editor(
+            path: '/workspace-settings',
+            onSaveSnapshot: (_, _) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('툴바 설정'));
+    await tester.pumpAndSettle();
+    expect(find.text('툴바 설정'), findsWidgets);
+    await tester.tap(find.text('오른쪽'));
+    await tester.pumpAndSettle();
+    expect(stows.workspaceToolbarAlignment.value, AxisDirection.right);
+    expect(
+      tester.widget<ToolbarDock>(find.byType(ToolbarDock)).alignment,
+      AxisDirection.right,
+    );
+  });
 
   testWidgets('standalone snapshot editor keeps its own title and back', (
     tester,
@@ -105,10 +168,10 @@ void main() {
 
       expect(find.text('Workspace note'), findsOneWidget);
       expect(find.byType(SaveIndicator), findsNothing);
-      expect(find.byTooltip(t.editor.pages), findsOneWidget);
+      expect(find.byTooltip('쪽 관리'), findsOneWidget);
       final editor = tester.state<EditorState>(find.byType(Editor));
       final count = editor.coreInfo.pages.length;
-      await tester.tap(find.byTooltip(t.editor.menu.insertPage));
+      await tester.tap(find.byTooltip('쪽 추가'));
       expect(editor.coreInfo.pages.length, count + 1);
       await tester.pumpAndSettle();
       await tester.tap(find.byType(BackButton));

@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 from prepare_engine import patch_activity, ROOT
+from test_cell_reply import JSON_JAR
 
 
 def method(text, signature):
@@ -54,11 +55,14 @@ class LifecycleTests(unittest.TestCase):
             "protected void finishWithProgress()",
             "protected void onDestroy()",
             "public void postMobileMessage(String message)",
+            "protected final void holdEmbeddedWatchdog()",
+            "protected final void resumeEmbeddedWatchdog()",
         ])
         ready_case = method(self.generated, 'case "hideProgressbar":')
         editor = (Path(__file__).parent / 'src/main/java/io/github/canele452/personalinkvault/office/OfficeEditorActivity.java').read_text(encoding='utf-8')
         preview_callbacks = '\n'.join(method(editor, signature) for signature in [
             'protected boolean onEmbeddedNativeMessage(byte[] message)',
+            'private static String previewQuestion(byte[] message)',
             'private static String previewLoadFailure(byte[] message)',
             'private void cancelPreview()',
             'private void deliverPreviewResult(int code, Intent result)',
@@ -71,6 +75,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CountDownLatch;
 import java.nio.charset.StandardCharsets;
+import org.json.JSONObject;
 import android.app.Activity;
 import android.content.Intent;
 import io.github.canele452.personalinkvault.office.OfficeEngineBridge;
@@ -334,6 +339,25 @@ __METHODS__
     require(deadline!=null, "native loading must have a deadline");
     watchdog.postMobileMessage("hideProgressbar"); watchdog.drainUi();
     require(watchdog.mainHandler.delayed==deadline, "a WebView dialog cannot cancel the preview load deadline");
+    watchdog.holdEmbeddedWatchdog(); watchdog.drainUi();
+    require(watchdog.mainHandler.delayed==null, "an engine question waiting for the user holds the load deadline");
+    watchdog.resumeEmbeddedWatchdog(); watchdog.drainUi();
+    require(watchdog.mainHandler.delayed!=null && watchdog.mainHandler.delayed!=deadline,
+        "the answer starts a fresh load deadline");
+    PreviewEditor asked = new PreviewEditor();
+    byte[] question = "jsdialog: {\"jsontype\":\"dialog\",\"type\":\"messagebox\",\"id\":\"1\",\"children\":[{\"id\":\"no\",\"action\":\"x\"}]}".getBytes(StandardCharsets.UTF_8);
+    require(!asked.onEmbeddedNativeMessage(question) && asked.questions.equals(List.of("shown open:messagebox")),
+        "an engine question still reaches Collabora and replaces the progress screen");
+    require(!asked.onEmbeddedNativeMessage("jsdialog: {\"jsontype\":\"dialog\",\"action\":\"update\",\"id\":\"1\"}".getBytes(StandardCharsets.UTF_8))
+        && asked.questions.size()==1, "a dialog update does not toggle the progress screen");
+    require(!asked.onEmbeddedNativeMessage("jsdialog: {\"jsontype\":\"sidebar\",\"id\":\"2\"}".getBytes(StandardCharsets.UTF_8))
+        && asked.questions.size()==1, "sidebar messages are not questions");
+    require(!asked.onEmbeddedNativeMessage("jsdialog: not json".getBytes(StandardCharsets.UTF_8))
+        && asked.questions.size()==1, "an unreadable dialog message is passed on unchanged");
+    require(!asked.onEmbeddedNativeMessage("jsdialog: {\"jsontype\":\"dialog\",\"action\":\"close\",\"id\":\"1\"}".getBytes(StandardCharsets.UTF_8))
+        && asked.questions.get(1).equals("closed"), "closing the question restores the progress screen");
+    asked.onEmbeddedNativeMessage(status);
+    require(asked.exports==1, "after the answer the loaded document still exports");
     System.out.println("native preview readiness scenarios passed");
   }
 }
@@ -361,6 +385,8 @@ class PreviewEditor extends PreviewParent {
   void receiveResult(int code, Intent value) { deliverPreviewResult(code,value); }
   void finishWithProgress() { closes++; if (ready) exports++; }
   void runOnUiThread(Runnable action) { action.run(); }
+  final List<String> questions = new ArrayList<>();
+  void showPreviewQuestion(boolean shown, String detail) { questions.add(shown ? "shown " + detail : "closed"); }
 __PREVIEW_CALLBACKS__
 }
 '''.replace("__METHODS__", bodies).replace("__READY_CASE__", ready_case).replace("__PREVIEW_CALLBACKS__", preview_callbacks)
@@ -379,21 +405,22 @@ __PREVIEW_CALLBACKS__
             bridge = path / "OfficeEngineBridge.java"
             declarations = '\n'.join('public ' + line.strip() for line in re.findall(r'^    static final String PREVIEW_.*;$', health.with_name('OfficeEngineBridge.java').read_text(encoding='utf-8'), re.MULTILINE))
             bridge.write_text('package io.github.canele452.personalinkvault.office;\npublic class OfficeEngineBridge {\n' + declarations + '\n}\n', encoding='utf-8')
-            compiled = subprocess.run([javac, "-encoding", "UTF-8", "-d", folder, str(path / "Harness.java"), str(path / "android/content/Intent.java"), str(path / "android/app/Activity.java"), str(health), str(bridge)], capture_output=True, text=True, timeout=30)
+            compiled = subprocess.run([javac, "-encoding", "UTF-8", "-cp", str(JSON_JAR), "-d", folder, str(path / "Harness.java"), str(path / "android/content/Intent.java"), str(path / "android/app/Activity.java"), str(health), str(bridge)], capture_output=True, text=True, timeout=30)
             self.assertEqual(compiled.returncode, 0, compiled.stderr)
-            result = subprocess.run([java, "-cp", folder, "Harness"], capture_output=True, text=True, timeout=10)
+            classpath = folder + os.pathsep + str(JSON_JAR)
+            result = subprocess.run([java, "-cp", classpath, "Harness"], capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("scenarios passed", result.stdout)
-            watchdog = subprocess.run([java, "-cp", folder, "Harness", "watchdog"], capture_output=True, text=True, timeout=10)
+            watchdog = subprocess.run([java, "-cp", classpath, "Harness", "watchdog"], capture_output=True, text=True, timeout=10)
             self.assertEqual(watchdog.returncode, 0, watchdog.stderr)
             self.assertIn("watchdog scenarios passed", watchdog.stdout)
-            queued = subprocess.run([java, "-cp", folder, "Harness", "queued-close"], capture_output=True, text=True, timeout=10)
+            queued = subprocess.run([java, "-cp", classpath, "Harness", "queued-close"], capture_output=True, text=True, timeout=10)
             self.assertEqual(queued.returncode, 0, queued.stderr)
             self.assertIn("queued-close scenarios passed", queued.stdout)
-            preview = subprocess.run([java, "-cp", folder, "Harness", "preview"], capture_output=True, text=True, timeout=10)
+            preview = subprocess.run([java, "-cp", classpath, "Harness", "preview"], capture_output=True, text=True, timeout=10)
             self.assertEqual(preview.returncode, 0, preview.stderr)
             self.assertIn("native preview readiness scenarios passed", preview.stdout)
-            preview_close = subprocess.run([java, "-cp", folder, "Harness", "preview-close"], capture_output=True, text=True, timeout=10)
+            preview_close = subprocess.run([java, "-cp", classpath, "Harness", "preview-close"], capture_output=True, text=True, timeout=10)
             self.assertEqual(preview_close.returncode, 0, preview_close.stderr)
             self.assertIn("preview close watchdog scenarios passed", preview_close.stdout)
 
