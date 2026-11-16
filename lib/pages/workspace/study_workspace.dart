@@ -166,6 +166,23 @@ class _DocumentNameDialogState extends State<_DocumentNameDialog> {
 
 enum _OfficeImportMode { pdf, office }
 
+/// An Office·한글 document's editor driven by an OfficeWorkspace the app does not draw
+/// (Android): the screen the user is on stays while the editor opens, waits behind it and closes.
+class _EditorHost {
+  new(this.note);
+
+  VaultNote note;
+  final key = GlobalKey<OfficeWorkspaceState>();
+  OfficeOpenRequest? request;
+
+  /// From an edit request until its editor starts, it is declined, or it fails.
+  var launching = false;
+
+  /// Preparing the editor or saving its result as a version.
+  var busy = false;
+  Timer? launchTimeout;
+}
+
 /// The open note's two views in the note bar's switch.
 enum _NoteView { note, markdown }
 
@@ -243,10 +260,13 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   ({NoteSession session, OfficePageLinkRequest request})? _officePageLink;
   // What the library asked the Office document it opened to do first.
   ({NoteSession session, OfficeOpenRequest request})? _officeOpenRequest;
-  StreamSubscription<String>? _editorLeft;
   StreamSubscription<({String sessionId, String status})>? _editorFinishedEvents;
-  // Where each document's editor returns the user once it closes.
-  final _editorReturns = <String, OfficeEditorReturn>{};
+  // Android: each Office·한글 document whose editor is open or opening has a host the app does
+  // not draw, so opening, leaving and closing the editor never change the screen behind it.
+  final _editorHosts = <String, _EditorHost>{};
+  NoteRepository? _editorHostRepository;
+  // Work that arrived while the workspace was busy; it runs once the current work is done.
+  final _whenIdle = <Future<void> Function()>[];
   // 닫고 열기 waits here for how the editor it asked to close ended (null: left for the tabs).
   final _closeWaits = <String, Completer<OfficeEditorOutcome?>>{};
   NoteSession? _rememberedPageSession;
@@ -291,7 +311,6 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       unawaited(windowManager.setPreventClose(true));
     }
     StudyWorkspace.pendingDocumentImport.addListener(_sharedDocument);
-    _editorLeft = OfficeEditorEvents.instance.editorLeft.listen(_onEditorLeft);
     _editorFinishedEvents = OfficeEditorEvents.instance.editorFinished.listen(
       _onLateEditorResult,
     );
@@ -308,6 +327,20 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     try {
       final value =
           widget.controller ?? await WorkspaceController.openDefault();
+      // A restored Office·한글 document is not a screen on Android: its editor opens from a tap.
+      // Start-up waits only when there is such a location to leave (the check reads nothing);
+      // otherwise the first screen is drawn at once.
+      if (_hostsEditors) {
+        value.officeOpensInEditor = true;
+        if (value.remembersOfficeLocation) {
+          try {
+            await value.leaveOfficeDocument();
+            await value.forgetOfficeVisits();
+          } catch (_) {
+            // The restored screen stays as it was; the app still opens.
+          }
+        }
+      }
       if (!mounted) {
         if (widget.controller == null) value.dispose();
         return;
@@ -413,6 +446,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           when !identical(c?.activeSession, pending.session)) {
         _officeOpenRequest = null;
       }
+      _settleEditorHosts(c);
       if (_automation != null &&
           !identical(_automationRepository, c?.repository)) {
         _automationRepository = c?.repository;
@@ -949,7 +983,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       ));
       await requireCurrent();
       if (prior != null) {
-        if (!prior.trashed) await c.openNote(prior);
+        if (_opensInEditor(prior)) {
+          await _openInEditor(c, prior);
+        } else if (!prior.trashed) {
+          await c.openNote(prior);
+        }
         _finishOfficeImport(c, repository, prior);
         return;
       }
@@ -1022,7 +1060,13 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       );
       if (!note.trashed && isCurrent()) {
         await _makeOfficeCover(repository, note, fileName: fileName, bytes: bytes);
-        if (await _settledAfterExternalScreen(isCurrent)) await c.openNote(note);
+        if (await _settledAfterExternalScreen(isCurrent)) {
+          if (_opensInEditor(note)) {
+            await _openInEditor(c, note);
+          } else {
+            await c.openNote(note);
+          }
+        }
       }
     }
     _finishOfficeImport(c, repository, note);
@@ -1228,7 +1272,19 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   void _finishBusy() {
     if (!mounted) return;
     setState(() => busy = false);
+    if (_whenIdle.isNotEmpty) {
+      unawaited(_run(_whenIdle.removeAt(0)));
+      return;
+    }
     _sharedDocument();
+  }
+
+  /// Runs [operation] now, or after the work the workspace is busy with (an editor that
+  /// finishes while the user is doing something else must still close its tab).
+  Future<void> _runWhenIdle(Future<void> Function() operation) {
+    if (!busy) return _run(operation);
+    _whenIdle.add(operation);
+    return Future.value();
   }
 
   Widget? _sharedDocumentBanner(WorkspaceController c) {
@@ -1397,7 +1453,6 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       }
       await left.cancel();
     }
-    if (outcome != null) _editorReturns.remove(blocking.noteId);
     if (outcome == null ||
         outcome == OfficeEditorOutcome.failed ||
         !mounted ||
@@ -1411,105 +1466,169 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     await then();
   }
 
-  /// Brings the document's tab forward and asks its open editor to close; the tab closes when
-  /// the editor reports back. False when the document could not be brought forward.
+  /// Asks [noteId]'s open editor to close through its host: the editor comes to the front and
+  /// asks before it closes, and the tab closes when it reports back. False when the document is
+  /// gone.
   Future<bool> _requestEditorClose(WorkspaceController c, String noteId) async {
-    if (c.activeSession?.note.id != noteId) {
-      if (c.navigation.tabs.any((tab) => tab.noteId == noteId)) {
-        await _changeDocumentTab(c, () => c.activateDocumentTab(noteId));
-      } else {
-        final note = (await c.store.list())
-            .where((note) => note.id == noteId)
-            .firstOrNull;
-        if (note == null || !mounted) return false;
-        await c.openNote(note);
-      }
-    }
-    final session = c.activeSession;
-    if (!mounted || session == null || session.note.id != noteId) return false;
-    setState(() {
-      _officeOpenRequest = (
-        session: session,
-        request: OfficeOpenRequest(OfficeOpenAction.close),
-      );
-    });
+    final note = (await c.store.list())
+        .where((note) => note.id == noteId)
+        .firstOrNull;
+    if (note == null || !mounted || !identical(c, controller)) return false;
+    _requestHost(c, note, OfficeOpenRequest(OfficeOpenAction.close));
     return true;
   }
 
-  /// A tab tap on an Office·한글 document: its editor opens or comes back. [from] is where it
-  /// returns; null keeps the place it already had.
-  Future<void> _requestOfficeEdit(
-    WorkspaceController c,
-    NoteSession session,
-    OfficeEditorReturn? from,
-  ) async {
-    final blocking = await _blockingEditor(c, session.note, OfficeOpenAction.edit);
-    if (!mounted || !identical(c.activeSession, session)) return;
+  /// Android: an Office·한글 document opens in its editor, never as a screen of the app.
+  bool get _hostsEditors => defaultTargetPlatform == TargetPlatform.android;
+
+  bool _opensInEditor(VaultNote note, {bool markdown = false}) =>
+      _hostsEditors &&
+      note.documentKind == VaultDocumentKind.office &&
+      !markdown &&
+      !note.trashed &&
+      !note.deletionConflict;
+
+  /// Opens [note]'s editor, or brings it back, over the current screen, which stays as it is.
+  /// The document keeps a tab (marked 편집 중) without becoming the open document.
+  Future<void> _openInEditor(WorkspaceController c, VaultNote note) async {
+    // One editor opening at a time: two of one kind cannot be told apart by the engine.
+    if (_editorHosts.values.any((host) => host.launching)) return;
+    if (_editorHosts[note.id]?.busy ?? false) return;
+    final blocking = await _blockingEditor(c, note, OfficeOpenAction.edit);
+    if (!mounted || !identical(c, controller)) return;
     if (blocking != null) {
-      return _askToCloseFirst(
-        c,
-        blocking,
-        () => _open(session.note, officeAction: OfficeOpenAction.edit),
-      );
+      return _askToCloseFirst(c, blocking, () => _openInEditor(c, note));
     }
-    if (from != null) _editorReturns[session.note.id] = from;
-    setState(() {
-      _officeOpenRequest = (
-        session: session,
-        request: OfficeOpenRequest(OfficeOpenAction.edit, returnTo: from),
-      );
-    });
+    await c.keepDocumentTab(note);
+    if (!mounted || !identical(c, controller)) return;
+    _requestHost(c, note, OfficeOpenRequest(OfficeOpenAction.edit));
   }
 
-  /// The screen an editor returns the user to: its document tab, or the library at its folder.
-  Future<void> _goTo(WorkspaceController c, OfficeEditorReturn to) async {
-    final noteId = to.noteId;
-    if (noteId != null && c.navigation.tabs.any((tab) => tab.noteId == noteId)) {
-      if (c.activeSession?.note.id != noteId) {
-        await _changeDocumentTab(c, () => c.activateDocumentTab(noteId));
-      }
+  void _requestHost(
+    WorkspaceController c,
+    VaultNote note,
+    OfficeOpenRequest request,
+  ) {
+    if (!identical(_editorHostRepository, c.repository)) {
+      _dropEditorHosts();
+      _editorHostRepository = c.repository;
+    }
+    final host = _editorHosts.putIfAbsent(note.id, () => _EditorHost(note));
+    host.launchTimeout?.cancel();
+    host.launchTimeout = null;
+    setState(() {
+      host.note = note;
+      host.request = request;
+      host.launching = request.action == OfficeOpenAction.edit;
+    });
+    if (host.launching) {
+      // A host that never reports back must not keep every other document from opening.
+      host.launchTimeout = Timer(
+        const Duration(seconds: 30),
+        () => _hostSettled(host),
+      );
+    }
+  }
+
+  void _dropEditorHosts() {
+    for (final host in _editorHosts.values) {
+      host.launchTimeout?.cancel();
+    }
+    _editorHosts.clear();
+  }
+
+  Widget _editorHostView(WorkspaceController c, _EditorHost host) =>
+      OfficeWorkspace(
+        key: host.key,
+        hosted: true,
+        showBackButton: false,
+        repository: c.repository,
+        note: host.note,
+        engine: widget.officeEngine,
+        previewEngine: widget.officePreviewEngine,
+        openRequest: host.request,
+        onOpenRequestHandled: (request) {
+          if (identical(host.request, request)) host.request = null;
+        },
+        openEdits: c.officeOpenEdits,
+        onEditorStarted: () => _hostSettled(host),
+        onEditDeclined: () => unawaited(_hostDeclined(c, host)),
+        onHostError: (message) => _hostError(c, host, message),
+        onEditorFinished: (outcome) => _hostFinished(c, host, outcome),
+        onBusyChanged: (value) {
+          if (mounted && host.busy != value) setState(() => host.busy = value);
+        },
+        onBack: () {},
+      );
+
+  void _hostSettled(_EditorHost host) {
+    host.launchTimeout?.cancel();
+    host.launchTimeout = null;
+    if (mounted && host.launching) setState(() => host.launching = false);
+  }
+
+  /// No editor could open (no engine, a format this device cannot edit, two versions to choose
+  /// from): the Office screen opens instead, as before.
+  Future<void> _hostDeclined(WorkspaceController c, _EditorHost host) async {
+    _removeHost(host);
+    if (!mounted || !identical(c, controller)) return;
+    await _runWhenIdle(() => _open(host.note, officeScreen: true));
+  }
+
+  void _hostError(WorkspaceController c, _EditorHost host, String message) {
+    _hostSettled(host);
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+    if (c.officeOpenEdits.forNote(host.note.id) == null) _removeHost(host);
+  }
+
+  /// The host's editor closed. 닫고 열기 takes the outcome; otherwise a save, 저장 안 함 or
+  /// nothing changed closes the document's tab, unless the user is looking at that document
+  /// (기록·도구). An error keeps the tab: tapping it tries again.
+  void _hostFinished(
+    WorkspaceController c,
+    _EditorHost host,
+    OfficeEditorOutcome outcome,
+  ) {
+    final noteId = host.note.id;
+    _removeHost(host);
+    final waiting = _closeWaits.remove(noteId);
+    if (waiting != null) {
+      if (!waiting.isCompleted) waiting.complete(outcome);
       return;
     }
-    final session = c.activeSession;
-    if (session != null) {
-      await _save();
-      if (!mounted || !identical(c.activeSession, session)) return;
-      await c.closeNote(session: session);
-    }
-    if (c.currentFolderId != to.folderId) await c.openFolder(to.folderId);
-  }
-
-  /// An editor closed: saved, 저장 안 함 or nothing changed closes its tab and returns to where
-  /// it was opened from. An error keeps the tab with its message and kept work.
-  Future<void> _onEditorFinished(
-    WorkspaceController c,
-    NoteSession session,
-    OfficeEditorOutcome outcome,
-  ) async {
-    final noteId = session.note.id;
-    final returnTo =
-        _editorReturns.remove(noteId) ??
-        OfficeEditorReturn(folderId: c.currentFolderId);
     if (outcome == OfficeEditorOutcome.failed ||
         !mounted ||
         !identical(c, controller)) {
       return;
     }
-    if (c.navigation.tabs.any((tab) => tab.noteId == noteId)) {
-      await _changeDocumentTab(c, () => c.closeDocumentTab(noteId));
-    }
-    await _goTo(c, returnTo);
+    unawaited(
+      _runWhenIdle(() async {
+        if (!identical(c, controller) ||
+            c.activeSession?.note.id == noteId ||
+            !c.navigation.tabs.any((tab) => tab.noteId == noteId)) {
+          return;
+        }
+        await c.closeDocumentTab(noteId);
+      }),
+    );
   }
 
-  /// The user went back to the tabs from an editor: it stays open behind them.
-  void _onEditorLeft(String sessionId) {
-    final c = controller;
-    if (c == null || !mounted) return;
-    final open = c.officeOpenEdits.entries
-        .where((edit) => edit.sessionId == sessionId)
-        .firstOrNull;
-    if (open == null || c.activeSession?.note.id != open.noteId) return;
-    unawaited(_run(() => _goTo(c, open.returnTo)));
+  void _removeHost(_EditorHost host) {
+    host.launchTimeout?.cancel();
+    if (!mounted || !identical(_editorHosts[host.note.id], host)) return;
+    setState(() => _editorHosts.remove(host.note.id));
+  }
+
+  /// A vault switch drops every host. Otherwise a host leaves only through its own report (its
+  /// editor finished, no editor could open, or an error): only it knows when its work is done.
+  void _settleEditorHosts(WorkspaceController? c) {
+    if (_editorHosts.isEmpty) return;
+    if (c == null || !identical(_editorHostRepository, c.repository)) {
+      _dropEditorHosts();
+    }
   }
 
   /// An editor finished while no call waited for it (after an app restart): its result is in the
@@ -1559,19 +1678,23 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   }
 
   /// [officeAction] is what an Office·한글 document does as soon as it is
-  /// open (the library card's tap and ⋮ menu).
+  /// open (the library card's tap and ⋮ menu). On Android an Office·한글 document opens in its
+  /// editor over the current screen; [officeScreen] (기록·도구 and the fallback when no editor
+  /// can open) shows the Office screen instead.
   Future<void> _open(
     VaultNote note, {
     KnowledgeBodyMatch? bodyMatch,
     OfficeOpenAction? officeAction,
+    bool officeScreen = false,
   }) async {
     final c = controller!;
     final repository = c.repository;
-    // Leaving or closing this document's editor returns to the screen the tap came from.
-    final returnTo = OfficeEditorReturn(
-      noteId: c.activeSession?.note.id,
-      folderId: c.currentFolderId,
-    );
+    if (!officeScreen &&
+        bodyMatch == null &&
+        (officeAction == null || officeAction == OfficeOpenAction.edit) &&
+        _opensInEditor(note)) {
+      return _openInEditor(c, note);
+    }
     if (officeAction != null &&
         note.documentKind == VaultDocumentKind.office) {
       final blocking = await _blockingEditor(c, note, officeAction);
@@ -1603,13 +1726,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         session != null &&
         session.note.id == note.id &&
         session.note.documentKind == VaultDocumentKind.office) {
-      if (officeAction == OfficeOpenAction.edit) {
-        _editorReturns[note.id] = returnTo;
-      }
       setState(() {
         _officeOpenRequest = (
           session: session,
-          request: OfficeOpenRequest(officeAction, returnTo: returnTo),
+          request: OfficeOpenRequest(officeAction),
         );
       });
     }
@@ -1736,6 +1856,17 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           activeId: outgoing?.note.id,
         );
         if (id == null || id == outgoing?.note.id || !current()) return;
+        final chosen = notes[id];
+        final chosenTab = c.navigation.tabs
+            .where((tab) => tab.noteId == id)
+            .singleOrNull;
+        if (chosen != null &&
+            _opensInEditor(
+              chosen,
+              markdown: chosenTab?.location?.markdown ?? false,
+            )) {
+          return _openInEditor(c, chosen);
+        }
         await _changeDocumentTab(c, () async {
           if (!current()) return;
           final generation = c.repositoryGeneration;
@@ -1954,26 +2085,29 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       final active = c.activeSession;
       if (active?.note.id == id) {
         // The open document's editor is behind the app: bring it back.
-        if (active != null && c.officeOpenEdits.forNote(id) != null) {
-          unawaited(_run(() => _requestOfficeEdit(c, active, null)));
+        if (active != null &&
+            c.officeOpenEdits.forNote(id) != null &&
+            _hostsEditors) {
+          unawaited(_run(() => _openInEditor(c, active.note)));
         }
         return;
       }
-      final from = OfficeEditorReturn(
-        noteId: active?.note.id,
-        folderId: c.currentFolderId,
-      );
       unawaited(
         _run(() async {
-          await _changeDocumentTab(c, () => c.activateDocumentTab(id));
-          final session = c.activeSession;
-          // An Office·한글 tab opens its editor unless it was left on its Markdown memo.
-          if (session != null &&
-              session.note.id == id &&
-              session.note.documentKind == VaultDocumentKind.office &&
-              !c.navigation.current.markdown) {
-            await _requestOfficeEdit(c, session, from);
+          // An Office·한글 tab opens its editor over this screen unless it was left on its memo.
+          final tab = c.navigation.tabs
+              .where((tab) => tab.noteId == id)
+              .firstOrNull;
+          if (_hostsEditors && !(tab?.location?.markdown ?? false)) {
+            final note = (await c.store.list())
+                .where((note) => note.id == id)
+                .firstOrNull;
+            if (!identical(controller, c)) return;
+            if (note != null && _opensInEditor(note)) {
+              return _openInEditor(c, note);
+            }
           }
+          await _changeDocumentTab(c, () => c.activateDocumentTab(id));
         }),
       );
     }
@@ -2425,7 +2559,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       _pendingPdf = null;
       _targetPage = null;
       markdownTab = false;
-      await c.openNote(note);
+      if (_opensInEditor(note)) {
+        await _openInEditor(c, note);
+      } else {
+        await c.openNote(note);
+      }
       _scaffold.currentState?.closeDrawer();
       return;
     }
@@ -2724,7 +2862,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       case LibraryNoteAction.pdf:
         return _open(note, officeAction: OfficeOpenAction.pdf);
       case LibraryNoteAction.tools:
-        return _open(note);
+        return _open(note, officeScreen: true);
     }
     final change = operation;
     if (change == null) {
@@ -3058,6 +3196,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               (link?.isMarkdown ?? false) ||
               note.documentKind == VaultDocumentKind.markdown ||
               anchor != null);
+      // A link to an Office·한글 document (not to one of its pages) opens its editor.
+      if (!showMarkdown && link?.pageId == null && _opensInEditor(note)) {
+        await _openInEditor(c, note);
+        return;
+      }
       await c.openNote(
         note,
         markdownView: showMarkdown,
@@ -5503,14 +5646,13 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                 }
               },
               openEdits: c.officeOpenEdits,
+              // An editor this screen opened (기록·도구 → 원본 편집) closed: the screen stays. 닫고 열기
+              // asked it to close: it closes the tab and goes on itself.
               onEditorFinished: (outcome) {
-                // 닫고 열기 asked this editor to close: it closes the tab and goes on itself.
                 final waiting = _closeWaits.remove(session.note.id);
-                if (waiting != null) {
-                  if (!waiting.isCompleted) waiting.complete(outcome);
-                  return;
+                if (waiting != null && !waiting.isCompleted) {
+                  waiting.complete(outcome);
                 }
-                unawaited(_run(() => _onEditorFinished(c, session, outcome)));
               },
               onDirtyChanged: (value) => c.setInkDirty(value, session: session),
               onBusyChanged: (value) => c.setInkBusy(value, session: session),
@@ -5828,7 +5970,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                       _documentTabs(c),
                     if (busy ||
                         c.externalBusy ||
-                        StudyWorkspace.pendingDocumentImport.processing)
+                        StudyWorkspace.pendingDocumentImport.processing ||
+                        _editorHosts.values.any(
+                          (host) => host.launching || host.busy,
+                        ))
                       const LinearProgressIndicator(),
                     if (c.externalBusy)
                       const Padding(
@@ -5915,7 +6060,26 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         const SingleActivator(LogicalKeyboardKey.keyO, control: true):
             _quickSwitch,
       },
-      child: Focus(autofocus: true, child: workspace),
+      child: Focus(
+        autofocus: true,
+        // The editor hosts sit beside the screen without drawing it, so they outlive any change
+        // of the document shown.
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            workspace,
+            Offstage(
+              key: const ValueKey('office-editor-hosts'),
+              child: Column(
+                children: [
+                  for (final host in _editorHosts.values)
+                    _editorHostView(c, host),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -6045,7 +6209,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isWindows) windowManager.removeListener(this);
     StudyWorkspace.pendingDocumentImport.removeListener(_sharedDocument);
-    unawaited(_editorLeft?.cancel());
+    _dropEditorHosts();
     unawaited(_editorFinishedEvents?.cancel());
     final workspace = controller;
     workspace?.removeListener(_changed);

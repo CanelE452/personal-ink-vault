@@ -207,4 +207,37 @@ void main() {
       expect(nav.backLength, lessThanOrEqualTo(100));
     },
   );
+
+  test('keepTab adds a tab without visiting the document', () {
+    final nav = WorkspaceNavigation();
+    final folder = newId(), a = newId(), b = newId();
+    nav.openDocument(a, 'A', folderId: folder);
+    final back = nav.peekBack;
+    nav.keepTab(b, 'B', folderId: folder);
+    nav.keepTab(b, 'B', folderId: folder);
+    expect(nav.tabs.map((tab) => tab.noteId), [a, b]);
+    expect(nav.tabs.last.location?.folderId, folder);
+    expect(nav.current.noteId, a);
+    expect(nav.peekBack?.sameAs(back!), isTrue);
+    expect(nav.backLength, 1);
+  });
+
+  test('forgetVisits drops a document from back and forward but keeps its tab', () {
+    final nav = WorkspaceNavigation();
+    final a = newId(), b = newId(), c = newId();
+    nav.openDocument(a, 'A');
+    nav.openDocument(b, 'B');
+    nav.openDocument(c, 'C');
+    nav.openDocument(b, 'B');
+    nav.goBack();
+    expect(nav.forgetVisits({b}), isTrue);
+    expect(nav.current.noteId, c);
+    nav.goBack();
+    expect(nav.current.noteId, a);
+    nav.goForward();
+    expect(nav.current.noteId, c);
+    expect(nav.peekForward, isNull);
+    expect(nav.tabs.map((tab) => tab.noteId), containsAll([a, b, c]));
+    expect(nav.forgetVisits({b}), isFalse);
+  });
 }

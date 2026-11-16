@@ -932,10 +932,10 @@ class WorkspaceController extends ChangeNotifier {
     if (index < 0) return;
     if (session?.note.id == id) {
       final remaining = tabs.where((tab) => tab.noteId != id).toList();
-      if (remaining.isEmpty) {
+      final replacement = await _replacementTab(remaining, index);
+      if (replacement == null) {
         await closeNote(session: session!);
       } else {
-        final replacement = remaining[index.clamp(0, remaining.length - 1)];
         await _activateDocumentTab(replacement.noteId);
       }
     }
@@ -946,6 +946,76 @@ class WorkspaceController extends ChangeNotifier {
     state.closeTab(id);
     await _persistNavigation();
     if (!_disposed) notifyListeners();
+  }
+
+  /// On Android an Office·한글 document opens in its editor, never as a screen of the app.
+  var officeOpensInEditor = false;
+
+  /// The tab that takes a closed open tab's place: its neighbour, or, while Office·한글 documents
+  /// open in their editors, the nearest tab that is not one of them. Null: the library.
+  Future<WorkspaceDocumentTab?> _replacementTab(
+    List<WorkspaceDocumentTab> remaining,
+    int index,
+  ) async {
+    if (remaining.isEmpty) return null;
+    final start = index.clamp(0, remaining.length - 1);
+    if (!officeOpensInEditor) return remaining[start];
+    final office = {
+      for (final note in await store.list(includeDeleted: true))
+        if (note.documentKind == VaultDocumentKind.office) note.id,
+    };
+    for (var distance = 0; distance < remaining.length; distance++) {
+      for (final i in [start + distance, start - distance]) {
+        if (i >= 0 &&
+            i < remaining.length &&
+            !office.contains(remaining[i].noteId)) {
+          return remaining[i];
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Keeps [note]'s tab without opening it: its editor opened over the current screen.
+  Future<void> keepDocumentTab(VaultNote note) async {
+    navigation.keepTab(note.id, note.title, folderId: note.folderId);
+    await _persistNavigation();
+    if (!_disposed) notifyListeners();
+  }
+
+  /// Whether start-up on Android has an Office·한글 location to leave: a restored document shown
+  /// as a screen (not its memo) or a visit in the back and forward history. It reads nothing, so
+  /// a start-up without one draws its first screen at once.
+  bool get remembersOfficeLocation =>
+      _showsOfficeDocument || navigation.visitsAny(_listedOfficeIds);
+
+  bool get _showsOfficeDocument {
+    final session = activeSession;
+    return session != null &&
+        session.note.documentKind == VaultDocumentKind.office &&
+        !navigation.current.markdown;
+  }
+
+  /// The Office·한글 documents among the listed ones ([notes], read when the library opened). The
+  /// vault is not read again: a read would wait in the vault's single line with whatever runs next.
+  Set<String> get _listedOfficeIds => {
+    for (final note in notes)
+      if (note.documentKind == VaultDocumentKind.office) note.id,
+  };
+
+  /// On Android an Office·한글 document opens in its editor, never as a screen of the app: a
+  /// restored one (not its memo) closes. True when it closed one; nothing is read otherwise.
+  Future<bool> leaveOfficeDocument() async {
+    final session = activeSession;
+    if (session == null || !_showsOfficeDocument) return false;
+    await closeNote(session: session);
+    return true;
+  }
+
+  /// Takes the listed Office·한글 documents out of the back and forward history, so 이전/다음 위치
+  /// never opens one as a screen.
+  Future<void> forgetOfficeVisits() async {
+    if (navigation.forgetVisits(_listedOfficeIds)) await _persistNavigation();
   }
 
   Future<void> rememberView({

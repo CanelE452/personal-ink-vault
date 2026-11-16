@@ -2400,6 +2400,10 @@ void main() {
     ValueChanged<OfficeOpenRequest>? onOpenRequestHandled,
     OfficeOpenEdits? openEdits,
     ValueChanged<OfficeEditorOutcome>? onEditorFinished,
+    bool hosted = false,
+    VoidCallback? onEditorStarted,
+    VoidCallback? onEditDeclined,
+    ValueChanged<String>? onHostError,
     bool expandTools = true,
   }) async {
     final key = GlobalKey<OfficeWorkspaceState>();
@@ -2447,6 +2451,10 @@ void main() {
               onOpenRequestHandled: onOpenRequestHandled,
               openEdits: openEdits,
               onEditorFinished: onEditorFinished,
+              hosted: hosted,
+              onEditorStarted: onEditorStarted,
+              onEditDeclined: onEditDeclined,
+              onHostError: onHostError,
               onBack: () {},
             ),
           ),
@@ -5223,7 +5231,7 @@ void main() {
   );
 
   testWidgets(
-    'an editor that closed while the call that opened it still waits shows 저장하는 중… and its save lands here',
+    'an editor that closed while the call that opened it still waits shows 저장하는 중… in a banner and its save lands here',
     (tester) async {
       // The screen that opened the editor is gone; its edit call returned and is recording the save.
       late String saved;
@@ -5288,6 +5296,8 @@ void main() {
       await drain(tester);
       expect(find.text('저장하는 중…'), findsOneWidget);
       expect(find.text('편집기로 돌아가기'), findsNothing);
+      // A banner over the Office screen, not a page in its place.
+      expect(find.byKey(const ValueKey('office-edition-selector')), findsOneWidget);
       await withPumping(
         tester,
         () => edits.remove(note.id, outcome: OfficeEditorOutcome.saved),
@@ -5297,6 +5307,366 @@ void main() {
       }
       expect(outcomes, [OfficeEditorOutcome.saved]);
       expect(await withPumping(tester, () => store.readEditions(note)), hasLength(2));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  const unchangedClose = AndroidOfficeEditResult(
+    status: AndroidOfficeEditStatus.cancelled,
+    engineVersion: 'fixture-engine',
+    closeReason: 'unchanged',
+  );
+
+  testWidgets('a hosted screen draws nothing and says when its editor starts', (
+    tester,
+  ) async {
+    late OfficeOpenEdits edits;
+    await tester.runAsync(() async => edits = await openEditsWith(null));
+    final editing = Completer<AndroidOfficeEditResult>();
+    final sessions = <String>[];
+    var started = 0, declined = 0;
+    await mount(
+      tester,
+      FixtureOfficeEngine(
+        onEdit: (path, id) {
+          sessions.add(id);
+          return editing.future;
+        },
+      ),
+      hosted: true,
+      openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+      openEdits: edits,
+      onEditorStarted: () => started++,
+      onEditDeclined: () => declined++,
+      expandTools: false,
+    );
+    for (var i = 0; i < 20 && sessions.isEmpty; i++) {
+      await drain(tester);
+    }
+    expect(sessions, hasLength(1));
+    expect(started, 1);
+    expect(declined, 0);
+    expect(find.byKey(const ValueKey('office-edition-selector')), findsNothing);
+    expect(find.text('편집기에서 열려 있습니다'), findsNothing);
+    editing.complete(unchangedClose);
+    for (var i = 0; i < 20 && edits.entries.isNotEmpty; i++) {
+      await drain(tester);
+    }
+    expect(edits.entries, isEmpty);
+    expect(declined, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a hosted edit request that cannot open an editor is declined', (
+    tester,
+  ) async {
+    late OfficeOpenEdits edits;
+    await tester.runAsync(() async => edits = await openEditsWith(null));
+    var started = 0, declined = 0;
+    await mount(
+      tester,
+      FixtureOfficeEngine(available: false),
+      hosted: true,
+      openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+      openEdits: edits,
+      onEditorStarted: () => started++,
+      onEditDeclined: () => declined++,
+      expandTools: false,
+    );
+    for (var i = 0; i < 20 && declined == 0; i++) {
+      await drain(tester);
+    }
+    expect(declined, 1);
+    expect(started, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a hosted screen hands its error to the app', (tester) async {
+    late OfficeOpenEdits edits;
+    await tester.runAsync(() async => edits = await openEditsWith(null));
+    final errors = <String>[];
+    final outcomes = <OfficeEditorOutcome>[];
+    var declined = 0;
+    await mount(
+      tester,
+      FixtureOfficeEngine(
+        onEdit: (path, id) async =>
+            throw PlatformException(code: 'office_engine_failed', message: '엔진 오류'),
+      ),
+      hosted: true,
+      openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+      openEdits: edits,
+      onEditorFinished: outcomes.add,
+      onEditDeclined: () => declined++,
+      onHostError: errors.add,
+      expandTools: false,
+    );
+    for (var i = 0; i < 20 && errors.isEmpty; i++) {
+      await drain(tester);
+    }
+    expect(errors, hasLength(1));
+    expect(outcomes, [OfficeEditorOutcome.failed]);
+    expect(declined, 0);
+    expect(edits.entries, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'the screen that opened an editor keeps showing, with a banner instead of a page in its place',
+    (tester) async {
+      late OfficeOpenEdits edits;
+      await tester.runAsync(() async => edits = await openEditsWith(null));
+      final editing = Completer<AndroidOfficeEditResult>();
+      final sessions = <String>[];
+      await mount(
+        tester,
+        FixtureOfficeEngine(
+          onEdit: (path, id) {
+            sessions.add(id);
+            return editing.future;
+          },
+        ),
+        openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+        openEdits: edits,
+        expandTools: false,
+      );
+      for (var i = 0; i < 20 && sessions.isEmpty; i++) {
+        await drain(tester);
+      }
+      await drain(tester);
+      expect(sessions, hasLength(1));
+      expect(find.byKey(const ValueKey('office-edition-selector')), findsOneWidget);
+      expect(find.text('편집기에서 열려 있습니다'), findsOneWidget);
+      expect(find.text('편집기로 돌아가기'), findsOneWidget);
+      editing.complete(unchangedClose);
+      for (var i = 0; i < 20 && edits.entries.isNotEmpty; i++) {
+        await drain(tester);
+      }
+      expect(find.text('편집기에서 열려 있습니다'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a hosted screen ignores a remembered PDF handwriting view and opens the editor',
+    (tester) async {
+      await withPumping(tester, () async {
+        final document = pw.Document()
+          ..addPage(pw.Page(build: (_) => pw.Text('Remembered PDF page')));
+        final edition = await store.commitEdited(
+          await store.beginEdit(note),
+          originalBytes: importedOriginal,
+          pdfBytes: await document.save(),
+          engineVersion: 'remembered-pdf-fixture',
+          pageCount: 1,
+        );
+        final annotation = await OfficeAnnotationStore(repository).open(
+          note,
+          edition,
+        );
+        final core = EditorCoreInfo(filePath: annotation.workingPath)
+          ..pages = [EditorPage()];
+        try {
+          await annotation.saveSnapshot(core, 0);
+          await OfficeViewStore(repository, note.id).save(
+            OfficeViewState(
+              vaultId: repository.vaultId,
+              noteId: note.id,
+              sourceRevisionId: edition.revision.revisionId,
+              bindingId: edition.bindingId,
+              pdfMode: true,
+              pageId: core.pages.first.pageId,
+            ),
+          );
+        } finally {
+          core.dispose();
+        }
+      });
+      late OfficeOpenEdits edits;
+      await tester.runAsync(() async => edits = await openEditsWith(null));
+      final editing = Completer<AndroidOfficeEditResult>();
+      final sessions = <String>[];
+      var started = 0;
+      addTearDown(() {
+        if (!editing.isCompleted) editing.complete(unchangedClose);
+      });
+      await mount(
+        tester,
+        FixtureOfficeEngine(
+          onEdit: (path, id) {
+            sessions.add(id);
+            return editing.future;
+          },
+        ),
+        hosted: true,
+        openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+        openEdits: edits,
+        onEditorStarted: () => started++,
+        expandTools: false,
+      );
+      for (var i = 0; i < 20 && sessions.isEmpty; i++) {
+        await drain(tester);
+      }
+      expect(sessions, hasLength(1));
+      expect(started, 1);
+      editing.complete(unchangedClose);
+      for (var i = 0; i < 20 && edits.entries.isNotEmpty; i++) {
+        await drain(tester);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a hosted edit starts from the current version, not the one 기록·도구 last showed',
+    (tester) async {
+      final newer = annotationOfficeFile('newer');
+      await withPumping(tester, () async {
+        final older = await store.readLatest(note);
+        await store.commitEdited(
+          await store.beginEdit(note),
+          originalBytes: newer,
+          pdfBytes: annotationPdf('newer'),
+          engineVersion: 'fixture-engine',
+          pageCount: 1,
+        );
+        await OfficeViewStore(repository, note.id).save(
+          OfficeViewState(
+            vaultId: repository.vaultId,
+            noteId: note.id,
+            sourceRevisionId: older.revision.revisionId,
+            bindingId: older.bindingId,
+            pdfMode: false,
+            pageId: null,
+          ),
+        );
+      });
+      late OfficeOpenEdits edits;
+      await tester.runAsync(() async => edits = await openEditsWith(null));
+      final editing = Completer<AndroidOfficeEditResult>();
+      final opened = <List<int>>[];
+      addTearDown(() {
+        if (!editing.isCompleted) editing.complete(unchangedClose);
+      });
+      await mount(
+        tester,
+        FixtureOfficeEngine(
+          onEdit: (path, id) async {
+            opened.add(await File(path).readAsBytes());
+            return editing.future;
+          },
+        ),
+        hosted: true,
+        openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+        openEdits: edits,
+        expandTools: false,
+      );
+      for (var i = 0; i < 20 && opened.isEmpty; i++) {
+        await drain(tester);
+      }
+      expect(opened, hasLength(1));
+      expect(opened.single, newer);
+      editing.complete(unchangedClose);
+      for (var i = 0; i < 20 && edits.entries.isNotEmpty; i++) {
+        await drain(tester);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a hosted screen whose listed editor is gone publishes its save and opens a new editor',
+    (tester) async {
+      late OfficeOpenEdits edits;
+      await tester.runAsync(() async {
+        final captured = await store.beginEdit(note);
+        final saved = newId();
+        final working = File('${temp.path}/gone/original.docx');
+        await working.parent.create(recursive: true);
+        await working.writeAsBytes(captured.originalBytes, flush: true);
+        final recovery = OfficeEditRecoveryStore(repository);
+        await recovery.start(captured, sessionId: saved, workingPath: working.path);
+        final result = await savedResult(working.path, saved);
+        await recovery.recordNativeSaved(
+          note,
+          saved,
+          AndroidOfficeEditResult(
+            status: result.status,
+            engineVersion: result.engineVersion,
+            sessionId: saved,
+            sourcePath: result.sourcePath,
+            pdfPath: result.pdfPath,
+            sourceSha256: result.sourceSha256,
+            pdfSha256: result.pdfSha256,
+            pdfPageCount: result.pdfPageCount,
+            inputSourceSha256: sha256.convert(importedOriginal).toString(),
+          ),
+        );
+        edits = await openEditsWith(null);
+        await edits.put(
+          OfficeOpenEdit(
+            noteId: note.id,
+            title: note.title,
+            sessionId: saved,
+            kind: OfficeEditorKind.office,
+            workingPath: working.path,
+            inputSourceSha256: sha256.convert(importedOriginal).toString(),
+          ),
+        );
+      });
+      final engine = _ClosedOfficeEngine();
+      var declined = 0;
+      await mount(
+        tester,
+        engine,
+        hosted: true,
+        openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+        openEdits: edits,
+        onEditDeclined: () => declined++,
+        expandTools: false,
+      );
+      for (var i = 0; i < 40 && engine.edits == 0; i++) {
+        await drain(tester);
+      }
+      expect(engine.shows, 1);
+      expect(
+        await withPumping(tester, () => store.readEditions(note)),
+        hasLength(2),
+      );
+      expect(engine.edits, 1, reason: 'The tap asked for the editor.');
+      expect(declined, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'an editor a host brought back that closed elsewhere is reported finished',
+    (tester) async {
+      late OfficeOpenEdits edits;
+      await tester.runAsync(
+        () async => edits = await openEditsWith(OfficeEditorKind.office),
+      );
+      final engine = _ShowingOfficeEngine();
+      final outcomes = <OfficeEditorOutcome>[];
+      await mount(
+        tester,
+        engine,
+        hosted: true,
+        openRequest: OfficeOpenRequest(OfficeOpenAction.edit),
+        openEdits: edits,
+        onEditorFinished: outcomes.add,
+        expandTools: false,
+      );
+      for (var i = 0; i < 10 && engine.shown.isEmpty; i++) {
+        await drain(tester);
+      }
+      expect(engine.shown, ['open-session']);
+      // Its result reached the app with no call waiting (after a restart): the list drops it.
+      await withPumping(tester, () => edits.remove(note.id));
+      for (var i = 0; i < 20 && outcomes.isEmpty; i++) {
+        await drain(tester);
+      }
+      expect(outcomes, hasLength(1));
       expect(tester.takeException(), isNull);
     },
   );

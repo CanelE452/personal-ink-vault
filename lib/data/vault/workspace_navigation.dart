@@ -155,6 +155,30 @@ class WorkspaceNavigation {
   void closeTab(String noteId) =>
       _tabs.removeWhere((tab) => tab.noteId == noteId);
 
+  /// A tab for a document whose editor opened over the current screen (Office·한글 on
+  /// Android): the current place and the history stay as they were.
+  void keepTab(String noteId, String title, {String? folderId}) {
+    final location = WorkspaceLocation.fromJson(
+      WorkspaceLocation(noteId: noteId, folderId: folderId).toJson(),
+    );
+    if (_tabs.any((tab) => tab.noteId == noteId)) return;
+    _tabs.add(WorkspaceDocumentTab(noteId, title, location: location));
+  }
+
+  /// Whether the back or forward history visits one of these documents.
+  bool visitsAny(Set<String> noteIds) =>
+      _back.any((location) => noteIds.contains(location.noteId)) ||
+      _forward.any((location) => noteIds.contains(location.noteId));
+
+  /// Takes these documents out of the back and forward history; their tabs stay and the
+  /// current place is the caller's. True when something changed.
+  bool forgetVisits(Set<String> noteIds) {
+    final count = _back.length + _forward.length;
+    _back.removeWhere((location) => noteIds.contains(location.noteId));
+    _forward.removeWhere((location) => noteIds.contains(location.noteId));
+    return count != _back.length + _forward.length;
+  }
+
   bool pruneDeletedDocuments(Set<String> noteIds) {
     if (noteIds.isEmpty) return false;
     final count =

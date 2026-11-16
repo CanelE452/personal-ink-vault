@@ -50,7 +50,20 @@ void main() {
     await controller.flush();
     controller.dispose();
     await controller.repository.close();
-    await temp.delete(recursive: true);
+    // A screen closed a moment ago can still hold a file on Windows (as in library_flow_test).
+    for (var attempt = 0; ; attempt++) {
+      try {
+        await temp.delete(recursive: true);
+        break;
+      } on PathAccessException catch (error) {
+        if (!Platform.isWindows ||
+            error.osError?.errorCode != 32 ||
+            attempt == 19) {
+          rethrow;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
     fixtureClosed = true;
   }
 
@@ -70,6 +83,34 @@ void main() {
       });
     }
     expect(ready(), isTrue, reason: message);
+  }
+
+  /// Reads beside the running app: the paused test clock keeps turning while the read runs, so
+  /// work the app started a moment ago can finish instead of holding the read up.
+  Future<T> readWhilePumping<T>(
+    WidgetTester tester,
+    Future<T> Function() read,
+  ) async {
+    var done = false;
+    T? value;
+    Object? failure;
+    StackTrace? trace;
+    await tester.runAsync(() async {
+      read().then(
+        (result) {
+          value = result;
+          done = true;
+        },
+        onError: (Object error, StackTrace stack) {
+          failure = error;
+          trace = stack;
+          done = true;
+        },
+      );
+    });
+    await pumpUntil(tester, () => done, 'The read must finish.');
+    if (failure != null) Error.throwWithStackTrace(failure!, trace!);
+    return value as T;
   }
 
   // The library's link and AI dialogs are in its settings, in the side bar
@@ -226,13 +267,28 @@ void main() {
           'The shared source must finish importing.',
         );
         expect(inbox.pending.firstOrNull?.failure, isNull);
-        final note = (await tester.runAsync(controller.store.list))!.single;
+        // On Android an imported Office file opens in its editor; this machine has none, so it
+        // falls back to the Office screen just after the import. The reads below keep the test
+        // clock turning, since that screen may still be loading.
+        await pumpUntil(
+          tester,
+          () =>
+              controller.activeSession?.note.id == requestId &&
+              find
+                  .byKey(const ValueKey('office-edition-selector'))
+                  .evaluate()
+                  .isNotEmpty,
+          'Without an editor the imported document opens on the Office screen.',
+        );
+        final note = (await readWhilePumping(tester, controller.store.list))
+            .single;
         expect(note.id, requestId);
         expect(note.documentKind, VaultDocumentKind.office);
         expect(controller.activeSession?.note.id, note.id);
-        final opened = (await tester.runAsync(
+        final opened = await readWhilePumping(
+          tester,
           () => OfficeDocumentStore(repository).readLatest(note),
-        ))!;
+        );
         expect(opened.originalFileName, starter.fileName);
         expect(opened.originalBytes, starter.bytes);
         expect(repository.pendingRevisionCount, 1);

@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136227,
+  "versionCode": 136228,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,7 +17,7 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "1f7affabd729b7152c9186a0c4a8584fdd821974a4e3a5188a211fe6c019bd85",
+      "sha256": "ef889dbf2778f5cccb370b59f1999f8e9de368df3c61de37d911f51af05f7ffa",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
@@ -876,10 +876,6 @@
       "sha256": "d61accdfa6f1cbf5649cc20a6cceeeceee082eb80136908310f94431bc160285",
       "mode": "100644"
     },
-    "lib/components/toolbar/export_bar.dart": {
-      "sha256": "060bda98c5a6ce6c1e5d95f9e0b4d8f6002373b75d82deb8aa66c6c29f31877a",
-      "mode": "100644"
-    },
     "lib/components/toolbar/export_dialog.dart": {
       "sha256": "8a6d58552f09066beb355f08b0fbe62b4a1f767e1f2e9a575c7d99c1aa1db4a4",
       "mode": "100644"
@@ -1585,7 +1581,7 @@
       "mode": "100644"
     },
     "lib/data/vault/workspace_navigation.dart": {
-      "sha256": "5d4febc66167c6f18a216858f20c185b1e69b9064ef7833cc2febbc008bb19df",
+      "sha256": "4c482adc91225cf760845ff829c7dde601862a981217b165fb01c348a08a95b8",
       "mode": "100644"
     },
     "lib/data/vault/workspace_store.dart": {
@@ -1889,7 +1885,7 @@
       "mode": "100644"
     },
     "lib/pages/office/office_workspace.dart": {
-      "sha256": "497c9b17ecc06d38fcacf420205894e60dea6f2f61b47eaf2bb514f67da05863",
+      "sha256": "6366316bfdf5f17e74557c8c329db350a83b79936d78c79c840f22e91b23d343",
       "mode": "100644"
     },
     "lib/pages/office/pptx_find_replace_dialog.dart": {
@@ -2069,7 +2065,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/study_workspace.dart": {
-      "sha256": "f0af45e425f9d6c537c657a5efba92be7c82a586f8d63a0c63dedcd5187f2a78",
+      "sha256": "fca591c8a9b91e29e903724e5845dd6d0c71c809c8a8c839bdcb9bd2cee9dbbe",
       "mode": "100644"
     },
     "lib/pages/workspace/synced_block_view.dart": {
@@ -2081,7 +2077,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_controller.dart": {
-      "sha256": "d0377a1645261717ef62f276e4fe695d63df02356e282831144c2cd665cc684b",
+      "sha256": "42b2ae3fc5c522dbdc64ddd6c7d9f8e26970746e63d90347ed7f45100ca5b2a4",
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_quick_switcher.dart": {
@@ -2684,8 +2680,8 @@
       "sha256": "ca46113c51d38e8bbc033590acab2959030179ff401585105b183a848e32c623",
       "mode": "100644"
     },
-    "scripts/build-android-227.sh": {
-      "sha256": "0a0c018c8300b1e2227a80a5675960c292f8d6b74ecd210b4acff0a978507213",
+    "scripts/build-android-228.sh": {
+      "sha256": "537924a2973ae0a7991177f3f1a28293b10209aa08b1e0f9b3bf8d3f98b20aec",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {

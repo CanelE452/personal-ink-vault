@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
+import 'package:saber/data/office/office_document_store.dart';
+import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/vault/infinite_document.dart';
 import 'package:saber/data/vault/workspace_navigation.dart';
 import 'package:saber/data/vault/workspace_store.dart';
@@ -295,4 +297,104 @@ void main() {
       await root.delete(recursive: true);
     }
   });
+
+  test(
+    'closing the open tab never opens an Office document beside it when those open in their editors',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'workspace-office-tab-close-',
+      );
+      final c = WorkspaceController(
+        await NoteRepository.open(root, createFormatVersion: 2),
+        directoryProvider: () async => Directory('${root.path}/support'),
+      );
+      try {
+        c.officeOpensInEditor = true;
+        final starter = OfficeTemplates.create(
+          OfficeTemplateKind.document,
+          title: 'Deck',
+        );
+        final office = await OfficeDocumentStore(c.repository).importDocument(
+          title: 'Deck',
+          fileName: starter.fileName,
+          bytes: starter.bytes,
+        );
+        final first = await c.createNote(
+          'First',
+          documentKind: VaultDocumentKind.markdown,
+        );
+        await c.keepDocumentTab(office);
+        final second = await c.createNote(
+          'Second',
+          documentKind: VaultDocumentKind.markdown,
+        );
+        expect(c.navigation.tabs.map((tab) => tab.noteId), [
+          first.id,
+          office.id,
+          second.id,
+        ]);
+        // The neighbour of the closed tab is the Word document: the memo beyond it opens.
+        await c.closeDocumentTab(second.id);
+        expect(c.activeSession?.note.id, first.id);
+        // Only the Word document is left: the library shows.
+        await c.closeDocumentTab(first.id);
+        expect(c.activeSession, isNull);
+        expect(c.navigation.tabs.map((tab) => tab.noteId), [office.id]);
+      } finally {
+        await c.flush();
+        c.dispose();
+        await c.repository.close();
+        await root.delete(recursive: true);
+      }
+    },
+  );
+
+  test(
+    'Office visits leave the history from the listed documents without reading the vault',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'workspace-office-visits-',
+      );
+      final c = WorkspaceController(
+        await NoteRepository.open(root, createFormatVersion: 2),
+        directoryProvider: () async => Directory('${root.path}/support'),
+      );
+      var closed = false;
+      try {
+        final starter = OfficeTemplates.create(
+          OfficeTemplateKind.document,
+          title: 'Deck',
+        );
+        final office = await OfficeDocumentStore(c.repository).importDocument(
+          title: 'Deck',
+          fileName: starter.fileName,
+          bytes: starter.bytes,
+        );
+        await c.refresh();
+        await c.openNote(office);
+        final memo = await c.createNote(
+          'Memo',
+          documentKind: VaultDocumentKind.markdown,
+        );
+        expect(c.navigation.peekBack?.noteId, office.id);
+        // Every vault operation waits in one line behind the others; cleaning the history at
+        // start-up must not join it (the closed vault refuses any read).
+        await c.flush();
+        await c.repository.close();
+        closed = true;
+        await c.forgetOfficeVisits();
+        expect(c.navigation.peekBack?.noteId, isNot(office.id));
+        expect(c.activeSession?.note.id, memo.id);
+        final saved = await WorkspaceNavigation.load(
+          File('${root.path}/.workspace/navigation.json'),
+        );
+        expect(saved.peekBack?.noteId, isNot(office.id));
+      } finally {
+        if (!closed) await c.flush();
+        c.dispose();
+        if (!closed) await c.repository.close();
+        await root.delete(recursive: true);
+      }
+    },
+  );
 }

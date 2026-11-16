@@ -185,12 +185,9 @@ enum OfficeOpenAction { edit, preview, pdf, close }
 /// One [OfficeOpenAction] request; each request is a new object, so the
 /// screen runs it once.
 class OfficeOpenRequest {
-  new(this.action, {this.returnTo});
+  new(this.action);
 
   final OfficeOpenAction action;
-
-  /// Where the app goes when the user leaves the editor or it closes.
-  final OfficeEditorReturn? returnTo;
 }
 
 class OfficeWorkspace extends StatefulWidget {
@@ -215,6 +212,20 @@ class OfficeWorkspace extends StatefulWidget {
 
   /// How an editor this screen opened or brought back closed.
   final ValueChanged<OfficeEditorOutcome>? onEditorFinished;
+
+  /// Drives the document's editor without drawing anything (Android): the app keeps showing the
+  /// screen the user was on while the editor opens, stays open behind it, and closes.
+  final bool hosted;
+
+  /// An editor opened or came back for this screen's request.
+  final VoidCallback? onEditorStarted;
+
+  /// A hosted edit request ended without an editor (no engine, a format this device cannot
+  /// edit, two versions to choose from): the app shows the Office screen instead.
+  final VoidCallback? onEditDeclined;
+
+  /// What went wrong on a hosted screen, which has no place to show it.
+  final ValueChanged<String>? onHostError;
   final AndroidOfficeEngine? engine;
   final WindowsOfficeEngine? windowsEngine;
   final HwpStructuredOfficeEngine? hwpEngine;
@@ -262,6 +273,10 @@ class OfficeWorkspace extends StatefulWidget {
     this.onOpenRequestHandled,
     this.openEdits,
     this.onEditorFinished,
+    this.hosted = false,
+    this.onEditorStarted,
+    this.onEditDeclined,
+    this.onHostError,
     this.engine,
     this.windowsEngine,
     this.hwpEngine,
@@ -441,11 +456,15 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   var _pageLinkScheduled = false;
   OfficeOpenRequest? _handledOpenRequest;
   var _openRequestScheduled = false;
-  OfficeEditorReturn? _editReturn;
   String? _keptNotice;
 
   /// This screen brought back an editor that another screen of this document opened.
   var _showingOpenEditor = false;
+
+  /// Editors opened or brought back, and errors, so a hosted edit request knows whether it
+  /// ended without either.
+  var _editorStarts = 0;
+  var _hostErrors = 0;
   OfficeOpenEdits? _listenedEdits;
   ({OfficePageLinkRequest request, OfficeAnnotationSession annotation})?
   _pageLinkReveal;
@@ -663,8 +682,8 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       case OfficeOpenAction.edit:
         // The Windows app keeps this screen and its own edit tools (LibreOffice asks before
         // closing there). On Android both editors report a close without changes now.
-        if (!_androidEditor) return;
-        _editReturn = request.returnTo;
+        if (!_androidEditor) return _declineEdit();
+        final starts = _editorStarts, errors = _hostErrors;
         final open = widget.openEdits?.forNote(widget.note.id);
         if (open != null) {
           // This screen's own call may be the one waiting for it: the editor still comes back.
@@ -672,14 +691,33 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
               (_nativeOperation == null && _recoveryOperation == null)) {
             await _run(() => _showOpenEditor(open));
           }
+        } else if (_canEdit) {
+          await _run(_editOrResume);
+        }
+        if (!widget.hosted ||
+            !mounted ||
+            starts != _editorStarts ||
+            errors != _hostErrors) {
           return;
         }
-        if (_canEdit) await _run(_editOrResume);
+        // Still listed: this screen is busy with that editor, and the app need not wait for it.
+        if (widget.openEdits?.forNote(widget.note.id) != null) {
+          return _editorStarted();
+        }
+        // A save made while the app was away became a version instead; the tap asked for the
+        // editor, so it opens on the current version.
+        if (_canEditCurrentSource && _pendingNative == null) {
+          await _run(_launchEdit);
+        }
+        if (starts == _editorStarts && errors == _hostErrors) _declineEdit();
       case OfficeOpenAction.close:
         // The tab's × on a document whose editor is open: that editor asks before it closes.
         final open = widget.openEdits?.forNote(widget.note.id);
         if (open != null && _androidEditor) {
           await _run(() => _requestCloseOpenEditor(open));
+        } else if (widget.hosted && mounted) {
+          // Nothing is open to close any more: the tab may close.
+          widget.onEditorFinished?.call(OfficeEditorOutcome.unchanged);
         }
       case OfficeOpenAction.preview:
         if (!_canPreview) return;
@@ -693,6 +731,11 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
           );
         }
     }
+  }
+
+  /// A hosted edit request that opened no editor: the app shows the Office screen instead.
+  void _declineEdit() {
+    if (widget.hosted && mounted) widget.onEditDeclined?.call();
   }
 
   void _schedulePageLink() {
@@ -984,7 +1027,9 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       OfficeViewState? view;
       String? notice;
       try {
-        view = await views.load();
+        // A hosted screen edits the current version: what 기록·도구 last showed (an older
+        // version, the PDF handwriting) is not restored.
+        if (!widget.hosted) view = await views.load();
       } catch (_) {
         notice = '이전 보기 상태를 복원하지 못했습니다. 원본 문서는 보존되어 있습니다.';
       }
@@ -1357,8 +1402,17 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
           _error = userErrorMessage(error);
           _errorDetails = userErrorDetails(error);
         });
+        if (widget.hosted) {
+          _hostErrors++;
+          widget.onHostError?.call(userErrorMessage(error));
+        }
       }
     }
+  }
+
+  void _editorStarted() {
+    _editorStarts++;
+    widget.onEditorStarted?.call();
   }
 
   Future<void> save() async {
@@ -1397,6 +1451,8 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   }
 
   Future<bool> _rememberView({String? successNotice}) async {
+    // 기록·도구 keeps its own view; a hosted screen never shows one.
+    if (widget.hosted) return true;
     final edition = _edition;
     if (!mounted || edition == null) return false;
     _captureViewPage();
@@ -4423,15 +4479,17 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
         kind: _useHwpEditor ? OfficeEditorKind.hwp : OfficeEditorKind.office,
         workingPath: workingPath,
         inputSourceSha256: inputHash,
-        returnTo: _editReturn ?? const OfficeEditorReturn(),
       ),
     );
+    if (_current(generation)) _editorStarted();
     var outcome = OfficeEditorOutcome.failed;
     try {
       final result = await _waitForListedEditor(edits, noteId, generation, open);
       outcome = await accept(result);
     } finally {
       final current = _current(generation);
+      // This screen's own call took the result: nothing is left to hear from elsewhere.
+      if (current) _showingOpenEditor = false;
       await edits?.remove(noteId, outcome: current ? null : outcome);
       final kept = _keptNotice;
       _keptNotice = null;
@@ -4523,9 +4581,6 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   /// not open it (the app restarted), it continues from its recovery record instead.
   Future<void> _showOpenEditor(OfficeOpenEdit open) async {
     final edits = widget.openEdits!;
-    final returnTo = _editReturn;
-    if (returnTo != null) await edits.put(open.withReturn(returnTo));
-    if (!mounted) return;
     setState(() => _showingOpenEditor = true);
     try {
       if (open.kind == OfficeEditorKind.hwp) {
@@ -4533,6 +4588,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       } else {
         await _engine.show(sessionId: open.sessionId);
       }
+      if (mounted) _editorStarted();
     } on PlatformException catch (error) {
       if (error.code != 'office_editor_not_open' &&
           error.code != 'hwp_editor_not_open') {
@@ -4541,9 +4597,10 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       // The editor just closed and the call that opened it in this app run is handling its
       // result: its outcome comes to this screen, nothing opens again.
       if (edits.waitsFor(open.noteId)) return;
+      // Not showing it any more before the list drops it: this screen opens it again below.
+      setState(() => _showingOpenEditor = false);
       await edits.remove(open.noteId);
       if (!mounted) return;
-      setState(() => _showingOpenEditor = false);
       final entry = _recoveries
           .where((entry) => entry.sessionId == open.sessionId)
           .singleOrNull;
@@ -4583,7 +4640,14 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     final outcome = edits.takeOutcome(widget.note.id);
     final showing = _showingOpenEditor;
     setState(() => _showingOpenEditor = false);
-    if (outcome != null && showing) unawaited(_run(() => _finishElsewhere(outcome)));
+    // An editor this screen brought back closed and no one handed its outcome here (its result
+    // reached the app with no call waiting, after a restart): a save becomes a version here,
+    // then the app hears that it ended.
+    if (showing) {
+      unawaited(
+        _run(() => _finishElsewhere(outcome ?? OfficeEditorOutcome.saved)),
+      );
+    }
   }
 
   /// The editor this screen brought back closed after the screen that opened it was gone: a save
@@ -4619,74 +4683,31 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
     if (mounted) widget.onEditorFinished?.call(result);
   }
 
-  /// While an editor is in front of the app (or on its way), the tab never shows the Office
-  /// screen's tools: only this. "저장하는 중…" while its save becomes a version.
-  Widget? _editorPlaceholder() {
-    final edits = widget.openEdits;
-    if (!_androidEditor || edits == null) return null;
-    final open = edits.forNote(widget.note.id);
-    final driving =
-        _nativeOperation != null ||
-        _recoveryOperation != null ||
-        _showingOpenEditor;
-    // The editor closed and its save is becoming a version (here, or by the call that opened it).
-    if ((open != null && edits.closing(widget.note.id)) ||
-        (_pendingNative != null && _commitOperation != null && driving)) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 12),
-            Text('저장하는 중…'),
-          ],
-        ),
-      );
-    }
-    if (open == null || !driving) return null;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('편집기에서 열려 있습니다'),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: [
-                FilledButton(
-                  onPressed: () => unawaited(_run(() => _showOpenEditor(open))),
-                  child: const Text('편집기로 돌아가기'),
-                ),
-                OutlinedButton(
-                  onPressed: () =>
-                      unawaited(_run(() => _requestCloseOpenEditor(open))),
-                  child: const Text('닫기'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  /// The document's editor is open behind the app's tabs, whichever screen opened it: this screen
+  /// views and annotates, and what changes the original stays locked.
+  bool get _editorListed =>
+      _androidEditor && widget.openEdits?.forNote(widget.note.id) != null;
 
+  /// Over the Office screen while its editor is open (never a page in its place); "저장하는 중…"
+  /// while the editor's save becomes a version.
   Widget _editorOpenBanner() {
-    final open = widget.openEdits!.forNote(widget.note.id)!;
+    final edits = widget.openEdits!;
+    final open = edits.forNote(widget.note.id)!;
+    final saving =
+        edits.closing(widget.note.id) ||
+        (_pendingNative != null && _commitOperation != null);
     return Material(
       color: Theme.of(context).colorScheme.secondaryContainer,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
-            const Expanded(child: Text('편집기에서 열려 있습니다')),
-            TextButton(
-              onPressed: () => unawaited(_run(() => _showOpenEditor(open))),
-              child: const Text('편집기로 돌아가기'),
-            ),
+            Expanded(child: Text(saving ? '저장하는 중…' : '편집기에서 열려 있습니다')),
+            if (!saving)
+              TextButton(
+                onPressed: () => unawaited(_run(() => _showOpenEditor(open))),
+                child: const Text('편집기로 돌아가기'),
+              ),
           ],
         ),
       ),
@@ -5968,7 +5989,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       const SizedBox(height: 8),
       OutlinedButton.icon(
         key: const ValueKey('office-edit-structured'),
-        onPressed: _canEdit && !_busy && _pendingNative == null
+        onPressed: _canEdit && !_busy && _pendingNative == null && !_editorListed
             ? () => unawaited(_run(_launchWindowsEdit))
             : null,
         icon: const Icon(Icons.edit_note_outlined),
@@ -6041,7 +6062,8 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
                   ),
                   FilledButton.tonalIcon(
                     key: const ValueKey('office-edit-original'),
-                    onPressed: _canEdit && !_busy && _pendingNative == null
+                    onPressed:
+                        _canEdit && !_busy && _pendingNative == null && !_editorListed
                         ? () => unawaited(_run(_launchEdit))
                         : null,
                     icon: const Icon(Icons.edit_outlined),
@@ -6492,7 +6514,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
                           !_liveNote ||
                           !entry.canResume ||
                           _pendingNative != null ||
-                          _editorOpenElsewhere
+                          _editorListed
                       ? null
                       : () => unawaited(
                           _run(
@@ -6640,9 +6662,11 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
   }
 
   @override
-  Widget build(BuildContext context) => _editorPlaceholder() ?? Column(
+  Widget build(BuildContext context) => widget.hosted
+      ? const SizedBox.shrink()
+      : Column(
     children: [
-      if (_editorOpenElsewhere) _editorOpenBanner(),
+      if (_editorListed) _editorOpenBanner(),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: LayoutBuilder(

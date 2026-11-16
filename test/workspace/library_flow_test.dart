@@ -476,9 +476,16 @@ void main() {
       VaultDocumentKind.office,
     );
     expect(inbox.pending, isEmpty);
-    await tester.runAsync(
-      () => tester.tap(find.byKey(const ValueKey('workspace-back-to-library'))),
+    // No editor on this machine: the import falls back to the Office screen, one step later.
+    final back = find.byKey(const ValueKey('workspace-back-to-library'));
+    await officePreviewUntil(
+      tester,
+      () =>
+          back.evaluate().isNotEmpty &&
+          tester.widget<IconButton>(back.first).onPressed != null,
+      'Back is available once the imported Office document shows.',
     );
+    await tester.runAsync(() => tester.tap(back.first));
     await drain(tester);
     await tester.runAsync(
       () => tester.tap(
@@ -637,7 +644,8 @@ void main() {
             ),
             blobsByHash: {},
           );
-          await controller.openNote(note);
+          await controller.refresh();
+          await controller.openFolder(folder.id);
           return (
             note,
             await officePreviewPdf(PdfColors.red, second: PdfColors.blue),
@@ -653,8 +661,23 @@ void main() {
           Uint8List.fromList(utf8.encode('%PDF-1.7\nbroken\n%%EOF')),
         );
         final release = Completer<void>();
-        await mount(tester, office: converter);
+        await mount(
+          tester,
+          office: converter,
+          thumbnailCache: _NoCoverCache.new,
+        );
         try {
+          // On Android a card opens the editor; the Office screen is its menu's 기록·도구.
+          await tester.tap(
+            find
+                .byKey(
+                  ValueKey('library-note-menu-${original.revision.revisionId}'),
+                )
+                .first,
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.tap(find.text('기록·도구'));
           final action = find.text('PDF로 새 문서 만들기');
           await officePreviewUntil(
             tester,
@@ -1157,7 +1180,7 @@ void main() {
   });
 
   testWidgets(
-    'an Office card opens into its editor; its menu previews it or makes a PDF',
+    'an Office card the editor cannot open shows the Office screen; its menu previews it or makes a PDF',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1;
@@ -1228,8 +1251,14 @@ void main() {
         await tester.pump();
       }
 
+      // No editor on this machine: the card falls back to the Office screen and asks it nothing.
       await tester.tap(find.text('강의 원본'));
-      expect(await requested(), OfficeOpenAction.edit);
+      await officePreviewUntil(
+        tester,
+        () => find.byType(OfficeWorkspace).evaluate().isNotEmpty,
+        'Without an editor the card shows the Office screen.',
+      );
+      expect(await requested(), isNull);
       await backToLibrary();
       await fromMenu('미리보기');
       expect(await requested(), OfficeOpenAction.preview);
@@ -1267,18 +1296,6 @@ void main() {
     return null;
   }
 
-  Future<OfficeOpenRequest?> waitForRequest(WidgetTester tester) async {
-    for (var i = 0; i < 300; i++) {
-      final request = shownRequest(tester);
-      if (request != null) return request;
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 5)),
-      );
-      await tester.pump();
-    }
-    return null;
-  }
-
   Future<void> markOpen(WidgetTester tester, VaultNote note) =>
       readWhilePumping(
         tester,
@@ -1303,35 +1320,15 @@ void main() {
   }
 
   testWidgets(
-    'a card edit returns to the library; 기록·도구 opens the Office screen without a request',
+    '기록·도구 opens the Office screen without a request, even with an editor',
     (tester) async {
       largeView(tester);
       await importOffice(tester, '강의 원본');
       await mount(
         tester,
-        officeEditor: FixtureOfficeEngine(available: false),
+        officeEditor: _WaitingOfficeEngine(temp),
         thumbnailCache: _NoCoverCache.new,
       );
-      await tester.tap(find.text('강의 원본'));
-      final request = await waitForRequest(tester);
-      expect(request?.action, OfficeOpenAction.edit);
-      expect(request?.returnTo?.noteId, isNull);
-      expect(request?.returnTo?.folderId, isNull);
-      final back = find.byKey(const ValueKey('workspace-back-to-library'));
-      await officePreviewUntil(
-        tester,
-        () =>
-            back.evaluate().isNotEmpty &&
-            tester.widget<IconButton>(back.first).onPressed != null,
-        'Back is available once the Office document is open.',
-      );
-      await tester.runAsync(() => tester.tap(back.first));
-      await officePreviewUntil(
-        tester,
-        () => find.byType(OfficeWorkspace).evaluate().isEmpty,
-        'Back returns to the library.',
-      );
-      await drain(tester);
       await tester.tap(find.byTooltip('문서 메뉴'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -1344,72 +1341,6 @@ void main() {
       await drain(tester);
       expect(shownRequest(tester), isNull);
       expect(tester.takeException(), isNull);
-      await closeOfficeFlow(tester);
-    },
-  );
-
-  testWidgets(
-    'an open editor marks its tab, and × asks that editor instead of closing the tab',
-    (tester) async {
-      largeView(tester);
-      final note = await importOffice(tester, '강의 원본');
-      await mount(
-        tester,
-        officeEditor: FixtureOfficeEngine(available: false),
-        thumbnailCache: _NoCoverCache.new,
-      );
-      await tester.tap(find.text('강의 원본'));
-      expect((await waitForRequest(tester))?.action, OfficeOpenAction.edit);
-      await markOpen(tester, note);
-      await drain(tester);
-      expect(
-        find.byKey(ValueKey('document-tab-editing-${note.id}')),
-        findsOneWidget,
-      );
-      await tester.tap(find.byTooltip('강의 원본 탭 닫기'));
-      expect((await waitForRequest(tester))?.action, OfficeOpenAction.close);
-      await drain(tester);
-      expect(
-        controller.navigation.tabs.any((tab) => tab.noteId == note.id),
-        isTrue,
-      );
-      await closeOfficeFlow(tester);
-    },
-  );
-
-  testWidgets(
-    'leaving an editor for the tabs returns to the library and keeps the document open',
-    (tester) async {
-      largeView(tester);
-      final note = await importOffice(tester, '강의 원본');
-      await mount(
-        tester,
-        officeEditor: FixtureOfficeEngine(available: false),
-        thumbnailCache: _NoCoverCache.new,
-      );
-      await tester.tap(find.text('강의 원본'));
-      expect((await waitForRequest(tester))?.action, OfficeOpenAction.edit);
-      await markOpen(tester, note);
-      await drain(tester);
-      await tester.runAsync(
-        () => tester.binding.defaultBinaryMessenger.handlePlatformMessage(
-          'personal_ink_vault/office_editor_events',
-          const StandardMethodCodec().encodeMethodCall(
-            MethodCall('editorLeft', {'sessionId': 'open-${note.id}'}),
-          ),
-          (_) {},
-        ),
-      );
-      await officePreviewUntil(
-        tester,
-        () => find.byType(OfficeWorkspace).evaluate().isEmpty,
-        'The library shows again.',
-      );
-      expect(
-        controller.navigation.tabs.any((tab) => tab.noteId == note.id),
-        isTrue,
-      );
-      expect(controller.officeOpenEdits.forNote(note.id), isNotNull);
       await closeOfficeFlow(tester);
     },
   );
@@ -1514,6 +1445,221 @@ void main() {
   }
 
   testWidgets(
+    'a card opens its editor and ← 탭 leaves the library as it was, never drawing the Office screen',
+    (tester) async {
+      largeView(tester);
+      final note = await importOffice(tester, '강의 원본');
+      final engine = _WaitingOfficeEngine(temp);
+      await mount(
+        tester,
+        officeEditor: engine,
+        thumbnailCache: _NoCoverCache.new,
+      );
+      final folder = controller.currentFolderId;
+      Future<void> pumpShowingLibrary() async {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+        expect(find.byType(OfficeWorkspace), findsNothing);
+        expect(find.text('편집기에서 열려 있습니다'), findsNothing);
+        expect(controller.activeSession, isNull);
+        expect(controller.currentFolderId, folder);
+      }
+
+      await tester.tap(find.text('강의 원본'));
+      for (var i = 0; i < 400 && engine.calls.isEmpty; i++) {
+        await pumpShowingLibrary();
+      }
+      expect(engine.calls, hasLength(1));
+      expect(
+        controller.navigation.tabs.any((tab) => tab.noteId == note.id),
+        isTrue,
+      );
+      expect(controller.officeOpenEdits.forNote(note.id), isNotNull);
+      await sendEditorLeft(tester, engine.calls.keys.single);
+      for (var i = 0; i < 40; i++) {
+        await pumpShowingLibrary();
+      }
+      expect(controller.officeOpenEdits.forNote(note.id), isNotNull);
+      expect(tester.takeException(), isNull);
+      await closeOfficeFlow(tester);
+    },
+  );
+
+  testWidgets(
+    '× on a 편집 중 tab asks its editor to close; its save closes the tab and the memo stays',
+    (tester) async {
+      largeView(tester);
+      await tester.runAsync(
+        () => controller.store.createMarkdown(
+          '수업 메모장',
+          Uint8List.fromList(utf8.encode('본문')),
+        ),
+      );
+      final engine = _WaitingOfficeEngine(temp);
+      final (note, sessionId) = await leaveWaitingEditor(tester, engine);
+      await tester.tap(find.text('수업 메모장'));
+      final tab = find.byKey(ValueKey('document-tab-${note.id}'));
+      await officePreviewUntil(
+        tester,
+        () =>
+            controller.activeSession?.note.title == '수업 메모장' &&
+            tab.evaluate().isNotEmpty &&
+            tester.widget<InkWell>(tab).onTap != null,
+        'The memo opens beside the open editor, its tabs ready.',
+      );
+      await tester.tap(find.byTooltip('강의 원본 탭 닫기'));
+      await officePreviewUntil(
+        tester,
+        () => engine.closeRequests.isNotEmpty,
+        'The × asks the open editor to close.',
+      );
+      expect(engine.closeRequests, [sessionId]);
+      expect(
+        controller.navigation.tabs.any((tab) => tab.noteId == note.id),
+        isTrue,
+      );
+      await tester.runAsync(() => engine.save(sessionId));
+      await officePreviewUntil(
+        tester,
+        () => !controller.navigation.tabs.any((tab) => tab.noteId == note.id),
+        'The tab closes once the save is a version.',
+      );
+      final editions = await readWhilePumping(
+        tester,
+        () => OfficeDocumentStore(controller.repository).readEditions(note),
+      );
+      expect(editions, hasLength(2));
+      expect(controller.activeSession?.note.title, '수업 메모장');
+      expect(find.byType(OfficeWorkspace), findsNothing);
+      expect(tester.takeException(), isNull);
+      await closeOfficeFlow(tester);
+    },
+  );
+
+  testWidgets(
+    '× on a 편집 중 tab whose editor is gone after a restart reopens the editor to ask',
+    (tester) async {
+      largeView(tester);
+      await tester.runAsync(
+        () => controller.store.createMarkdown(
+          '수업 메모장',
+          Uint8List.fromList(utf8.encode('본문')),
+        ),
+      );
+      final note = await importOffice(tester, '강의 원본');
+      // Listed as open by the last app run; its editor did not survive the restart.
+      await markOpen(tester, note);
+      await readWhilePumping(tester, () => controller.keepDocumentTab(note));
+      final engine = _GoneWaitingOfficeEngine(temp);
+      await mount(
+        tester,
+        officeEditor: engine,
+        thumbnailCache: _NoCoverCache.new,
+      );
+      await tester.tap(find.text('수업 메모장'));
+      final tab = find.byKey(ValueKey('document-tab-${note.id}'));
+      await officePreviewUntil(
+        tester,
+        () =>
+            controller.activeSession?.note.title == '수업 메모장' &&
+            tab.evaluate().isNotEmpty &&
+            tester.widget<InkWell>(tab).onTap != null,
+        'The memo opens with the listed document beside it.',
+      );
+      await tester.tap(find.byTooltip('강의 원본 탭 닫기'));
+      await officePreviewUntil(
+        tester,
+        () => engine.calls.isNotEmpty,
+        'The gone editor opens again so it can ask before closing.',
+      );
+      expect(engine.closeRequests, ['open-${note.id}']);
+      expect(controller.activeSession?.note.title, '수업 메모장');
+      // It closes unchanged: the tab goes, the memo stays.
+      final call = engine.calls.values.single;
+      call.result.complete(
+        const AndroidOfficeEditResult(
+          status: AndroidOfficeEditStatus.cancelled,
+          engineVersion: 'fixture-engine',
+          closeReason: 'unchanged',
+        ),
+      );
+      await officePreviewUntil(
+        tester,
+        () => !controller.navigation.tabs.any((tab) => tab.noteId == note.id),
+        'The tab closes once the editor has closed.',
+      );
+      expect(controller.activeSession?.note.title, '수업 메모장');
+      expect(tester.takeException(), isNull);
+      await closeOfficeFlow(tester);
+    },
+  );
+
+  testWidgets('an Office document restored at start leaves for the library', (
+    tester,
+  ) async {
+    largeView(tester);
+    final note = await importOffice(tester, '강의 원본');
+    await readWhilePumping(tester, () => controller.openNote(note));
+    expect(controller.activeSession?.note.id, note.id);
+    await mount(
+      tester,
+      officeEditor: _WaitingOfficeEngine(temp),
+      thumbnailCache: _NoCoverCache.new,
+    );
+    // The library shows once start-up has closed the document and cleaned the history; no
+    // frame before it may draw the Office document.
+    final card = find.text('강의 원본');
+    for (var i = 0; i < 400 && card.evaluate().isEmpty; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(find.byType(OfficeWorkspace), findsNothing);
+    }
+    expect(card, findsWidgets, reason: 'The library shows its card.');
+    expect(controller.activeSession, isNull);
+    expect(find.byType(OfficeWorkspace), findsNothing);
+    expect(controller.navigation.peekBack?.noteId, isNot(note.id));
+    expect(
+      controller.navigation.tabs.any((tab) => tab.noteId == note.id),
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+    await closeOfficeFlow(tester);
+  });
+
+  testWidgets(
+    'Android draws the library in its first frame when no Office location is restored',
+    (tester) async {
+      await importOffice(tester, '강의 원본');
+      final folder = await readWhilePumping(
+        tester,
+        () => controller.createFolder('자료'),
+      );
+      // History without an Office visit: start-up has nothing to leave, so it waits for nothing.
+      await readWhilePumping(tester, () => controller.openFolder(folder.id));
+      expect(controller.navigation.backLength, 1);
+      await tester.pumpWidget(
+        TranslationProvider(
+          child: MaterialApp(
+            home: StudyWorkspace(
+              controller: controller,
+              thumbnailCacheFactory: _NoCoverCache.new,
+            ),
+          ),
+        ),
+      );
+      expect(
+        find.byKey(const ValueKey('library-create-button')),
+        findsOneWidget,
+      );
+      await closeOfficeFlow(tester);
+    },
+  );
+
+  testWidgets(
     'leaving an editor whose edit call still waits returns to the library; its card brings it back',
     (tester) async {
       largeView(tester);
@@ -1534,10 +1680,10 @@ void main() {
       );
       expect(engine.shown, [sessionId]);
       expect(engine.calls.keys, [sessionId]);
-      expect(
-        find.byKey(ValueKey('document-tab-editing-${note.id}')),
-        findsOneWidget,
-      );
+      // Bringing it back changes nothing behind it: the library stays.
+      await drain(tester);
+      expect(controller.activeSession, isNull);
+      expect(find.byType(OfficeWorkspace), findsNothing);
       expect(tester.takeException(), isNull);
       await closeOfficeFlow(tester);
     },
@@ -1577,6 +1723,10 @@ void main() {
       );
       expect(engine.shown, [sessionId]);
       expect(engine.calls.keys, [sessionId]);
+      // The memo stays the open document behind the editor.
+      await drain(tester);
+      expect(controller.activeSession?.note.title, '수업 메모장');
+      expect(find.byType(OfficeWorkspace), findsNothing);
       expect(tester.takeException(), isNull);
       await closeOfficeFlow(tester);
     },
@@ -2530,7 +2680,7 @@ void main() {
           () => controller.createFolder('자료'),
         ))!;
         await tester.runAsync(() => controller.openFolder(folder.id));
-        await mount(tester);
+        await mount(tester, thumbnailCache: _NoCoverCache.new);
         await tester.tap(find.byKey(const ValueKey('library-create-button')));
         await tester.pumpAndSettle();
         expect(find.text(label), findsOneWidget);
@@ -2839,6 +2989,24 @@ final class _WaitingOfficeEngine extends FixtureOfficeEngine {
         inputSourceSha256: sha256.convert(input).toString(),
       ),
     );
+  }
+}
+
+/// An Office engine after an app restart: the editor listed as open is gone, and a new edit call
+/// waits like [_WaitingOfficeEngine].
+final class _GoneWaitingOfficeEngine extends _WaitingOfficeEngine {
+  new(super.temp);
+
+  @override
+  Future<void> show({required String sessionId}) async {
+    shown.add(sessionId);
+    throw PlatformException(code: 'office_editor_not_open');
+  }
+
+  @override
+  Future<void> requestClose({required String sessionId}) async {
+    closeRequests.add(sessionId);
+    throw PlatformException(code: 'office_editor_not_open');
   }
 }
 
