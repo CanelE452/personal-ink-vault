@@ -18,7 +18,7 @@ import 'package:saber/data/prefs.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 
-import '../office/office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show
         officePreviewDocumentsClosed,
         officePreviewPdfiumAvailable,
@@ -219,7 +219,7 @@ void main() {
 }
 
 Future<void> _tapThumbnail(WidgetTester tester, int target) async {
-  await tester.tap(find.byTooltip('쪽 관리'));
+  await tester.tap(find.byTooltip('문서 개요'));
   await tester.pumpAndSettle();
   final manager = find.byType(EditorPageManager);
   final thumbnail = find.descendant(

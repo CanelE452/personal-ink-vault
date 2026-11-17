@@ -25,9 +25,7 @@ import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/office/office_original_preview.dart';
 import 'package:saber/pages/office/office_workspace.dart';
 
-import '../utils/test_mock_channel_handlers.dart';
-import 'annotation_store_test.dart' show annotationOfficeFile;
-import 'office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show
         OfficePreviewDocumentTracker,
         officePreviewDocumentsClosed,
@@ -36,6 +34,8 @@ import 'office_original_preview_test.dart'
         officePreviewRead,
         officePreviewUntil,
         withOfficePreviewPdfium;
+import '../utils/test_mock_channel_handlers.dart';
+import 'annotation_store_test.dart' show annotationOfficeFile;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

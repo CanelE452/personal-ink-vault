@@ -42,13 +42,13 @@ import 'package:saber/pages/workspace/study_workspace.dart';
 
 import '../office/annotation_store_test.dart'
     show annotationOfficeFile, annotationPdf;
-import '../office/office_original_preview_test.dart'
+import '../office/office_workspace_test.dart' show FixtureOfficeEngine;
+import '../utils/office_preview.dart'
     show
         officePreviewPdf,
         officePreviewPdfiumAvailable,
         officePreviewUntil,
         withOfficePreviewPdfium;
-import '../office/office_workspace_test.dart' show FixtureOfficeEngine;
 import '../utils/test_mock_channel_handlers.dart';
 
 void main() {
@@ -2292,15 +2292,22 @@ void main() {
     await tester.runAsync(
       () async => tester.tap(find.widgetWithText(ListTile, folder.title)),
     );
-    for (var i = 0; i < 12 && controller.currentFolderId != folder.id; i++) {
+    // The drawer closes after the folder opens and its place is saved, a moment after currentFolderId
+    // changes: wait until + can take the tap.
+    final create = find.byKey(const ValueKey('library-create-button'));
+    for (
+      var i = 0;
+      i < 12 &&
+          (controller.currentFolderId != folder.id ||
+              create.hitTestable().evaluate().isEmpty);
+      i++
+    ) {
       await drain(tester);
     }
     expect(controller.activeSession, isNull);
     expect(controller.currentFolderId, folder.id);
-    await tester.runAsync(
-      () async =>
-          tester.tap(find.byKey(const ValueKey('library-create-button'))),
-    );
+    expect(create.hitTestable(), findsOneWidget);
+    await tester.runAsync(() async => tester.tap(create));
     await drain(tester);
     final quick = find.widgetWithText(
       PopupMenuItem<LibraryCreateAction>,

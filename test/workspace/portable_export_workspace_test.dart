@@ -141,7 +141,11 @@ void main() {
   }
 
   Future<void> choose(WidgetTester tester, String label) async {
-    await tester.tap(find.byKey(const ValueKey('portable-export-menu')));
+    final menu = find.byKey(const ValueKey('portable-export-menu'));
+    // The shortcut bar's left part scrolls on a narrow screen, as StarNote's does.
+    await tester.ensureVisible(menu);
+    await tester.pump();
+    await tester.tap(menu);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(
@@ -295,10 +299,10 @@ void main() {
   );
 
   for (final (platform, width, menuKey) in const [
+    // An open note keeps the vault ZIP in its function row's 더 많은 기능 on every screen.
     (TargetPlatform.android, 360.0, 'workspace-more-actions'),
-    // An open note on Android keeps the vault ZIP in its note bar's menu at every width.
     (TargetPlatform.android, 1100.0, 'workspace-more-actions'),
-    (TargetPlatform.windows, 1100.0, 'portable-export-menu'),
+    (TargetPlatform.windows, 1100.0, 'workspace-more-actions'),
   ]) {
     testWidgets(
       'editor Obsidian vault ZIP includes active draft at ${width.toInt()}px',

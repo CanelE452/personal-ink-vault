@@ -11,13 +11,14 @@ import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/office/pdf_note_original.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/thumbnail_cache.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
-import '../office/office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show
         officePreviewPdf,
         officePreviewPdfiumAvailable,
@@ -110,6 +111,10 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
+      // The user put 새 엔진으로 PDF 다시 만들기 on the shortcut bar; it starts in 더 많은 기능.
+      final shortcuts = stows.noteShortcutLayout.value;
+      stows.noteShortcutLayout.value = const ['L:pdfRemake'];
+      addTearDown(() => stows.noteShortcutLayout.value = shortcuts);
       final inbox = StudyWorkspace.pendingDocumentImport;
       final starter = OfficeTemplates.create(
         OfficeTemplateKind.presentation,

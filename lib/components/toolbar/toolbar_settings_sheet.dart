@@ -42,7 +42,7 @@ Future<void> showToolbarEditor(
 );
 
 class _ToolbarSettings extends StatefulWidget {
-  const _ToolbarSettings({
+  const new({
     required this.alignment,
     required this.onAlignmentChanged,
     required this.editorOptions,
@@ -60,25 +60,101 @@ class _ToolbarSettings extends StatefulWidget {
   State<_ToolbarSettings> createState() => _ToolbarSettingsState();
 }
 
-class _ToolbarSettingsState extends State<_ToolbarSettings> {
-  late var _alignment = widget.alignment;
+/// The page editor's writing settings: the zoom and pan locks, the line and
+/// finger settings Saber kept on its own page (which the workspace no longer
+/// opens), and the shape preview delay. The toolbar settings sheet and the
+/// editor's "기타 설정" panel show it.
+class ToolbarWritingSettings extends StatelessWidget {
+  const new({super.key});
 
-  Widget _lockSwitch(
+  Widget _switch(
     PlainStow<bool> stow,
     String title,
     String subtitle, {
     Key? key,
   }) => ValueListenableBuilder(
-        valueListenable: stow,
-        builder: (context, value, _) => SwitchListTile(
-          key: key,
-          contentPadding: EdgeInsets.zero,
-          title: Text(title),
-          subtitle: Text(subtitle),
-          value: value,
-          onChanged: (next) => stow.value = next,
+    valueListenable: stow,
+    builder: (context, value, _) => SwitchListTile(
+      key: key,
+      contentPadding: EdgeInsets.zero,
+      title: Text(title),
+      subtitle: Text(subtitle),
+      value: value,
+      onChanged: (next) => stow.value = next,
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final text = TextTheme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _switch(
+          stows.lastZoomLock,
+          '확대 잠금',
+          '두 손가락으로 확대·축소하지 않습니다.',
+          key: const ValueKey('toolbar-zoom-lock'),
         ),
-      );
+        _switch(
+          stows.lastSingleFingerPanLock,
+          '한 손가락 이동 잠금',
+          '한 손가락으로는 화면이 움직이지 않습니다.',
+        ),
+        _switch(
+          stows.lastAxisAlignedPanLock,
+          '가로·세로로만 이동',
+          '화면을 비스듬히 움직이지 않습니다.',
+        ),
+        const SizedBox(height: 12),
+        Text('필기', style: text.labelLarge),
+        _switch(
+          stows.autoStraightenLines,
+          '거의 곧은 선을 직선으로',
+          '손으로 그은 선이 거의 곧으면 반듯하게 바꿉니다.',
+          key: const ValueKey('toolbar-auto-straighten'),
+        ),
+        _switch(
+          stows.autoDisableFingerDrawingWhenStylusDetected,
+          '펜이 닿으면 손가락 그리기 끄기',
+          '스타일러스를 쓰면 손가락으로는 화면만 움직입니다.',
+        ),
+        const SizedBox(height: 8),
+        Text('도형 미리보기', style: text.bodyMedium),
+        const SizedBox(height: 6),
+        ValueListenableBuilder(
+          valueListenable: stows.shapeRecognitionDelay,
+          builder: (context, delay, _) => SegmentedButton<int>(
+            key: const ValueKey('toolbar-shape-delay'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: 500, label: Text('0.5초')),
+              ButtonSegment(value: 1000, label: Text('1초')),
+              ButtonSegment(value: -1, label: Text('끄기')),
+            ],
+            selected: {delay},
+            onSelectionChanged: (selection) {
+              stows.shapeRecognitionDelay.value = selection.single;
+              // The shape pen keeps its own copy (Saber's settings page
+              // refreshed it the same way).
+              ShapePen.debounceDuration = ShapePen.getDebounceFromPref();
+            },
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '도형 펜으로 그리다 멈추면 이 시간 뒤에 반듯한 도형을 미리 보여 줍니다. '
+          '꺼도 펜을 떼면 도형으로 바뀝니다.',
+          style: text.bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
+class _ToolbarSettingsState extends State<_ToolbarSettings> {
+  late var _alignment = widget.alignment;
 
   @override
   Widget build(BuildContext context) {
@@ -131,65 +207,7 @@ class _ToolbarSettingsState extends State<_ToolbarSettings> {
             ],
             if (widget.editorOptions) ...[
               const SizedBox(height: 4),
-              _lockSwitch(
-                stows.lastZoomLock,
-                '확대 잠금',
-                '두 손가락으로 확대·축소하지 않습니다.',
-                key: const ValueKey('toolbar-zoom-lock'),
-              ),
-              _lockSwitch(
-                stows.lastSingleFingerPanLock,
-                '한 손가락 이동 잠금',
-                '한 손가락으로는 화면이 움직이지 않습니다.',
-              ),
-              _lockSwitch(
-                stows.lastAxisAlignedPanLock,
-                '가로·세로로만 이동',
-                '화면을 비스듬히 움직이지 않습니다.',
-              ),
-              // Saber kept these on its own settings page, which the workspace
-              // no longer opens.
-              const SizedBox(height: 12),
-              Text('필기', style: text.labelLarge),
-              _lockSwitch(
-                stows.autoStraightenLines,
-                '거의 곧은 선을 직선으로',
-                '손으로 그은 선이 거의 곧으면 반듯하게 바꿉니다.',
-                key: const ValueKey('toolbar-auto-straighten'),
-              ),
-              _lockSwitch(
-                stows.autoDisableFingerDrawingWhenStylusDetected,
-                '펜이 닿으면 손가락 그리기 끄기',
-                '스타일러스를 쓰면 손가락으로는 화면만 움직입니다.',
-              ),
-              const SizedBox(height: 8),
-              Text('도형 미리보기', style: text.bodyMedium),
-              const SizedBox(height: 6),
-              ValueListenableBuilder(
-                valueListenable: stows.shapeRecognitionDelay,
-                builder: (context, delay, _) => SegmentedButton<int>(
-                  key: const ValueKey('toolbar-shape-delay'),
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(value: 500, label: Text('0.5초')),
-                    ButtonSegment(value: 1000, label: Text('1초')),
-                    ButtonSegment(value: -1, label: Text('끄기')),
-                  ],
-                  selected: {delay},
-                  onSelectionChanged: (selection) {
-                    stows.shapeRecognitionDelay.value = selection.single;
-                    // The shape pen keeps its own copy (Saber's settings page
-                    // refreshed it the same way).
-                    ShapePen.debounceDuration = ShapePen.getDebounceFromPref();
-                  },
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '도형 펜으로 그리다 멈추면 이 시간 뒤에 반듯한 도형을 미리 보여 줍니다. '
-                '꺼도 펜을 떼면 도형으로 바뀝니다.',
-                style: text.bodySmall,
-              ),
+              const ToolbarWritingSettings(),
             ],
           ],
         ),
@@ -199,7 +217,7 @@ class _ToolbarSettingsState extends State<_ToolbarSettings> {
 }
 
 class _ToolbarEditor extends StatelessWidget {
-  const _ToolbarEditor({required this.items, required this.layout});
+  const new({required this.items, required this.layout});
 
   final List<ToolbarItem> items;
   final PlainStow<List<String>> layout;
@@ -239,7 +257,7 @@ class _ToolbarEditor extends StatelessWidget {
             child: ReorderableListView.builder(
               buildDefaultDragHandles: false,
               itemCount: current.items.length,
-              onReorder: (from, to) => _save(current.moved(from, to)),
+              onReorderItem: (from, to) => _save(current.moved(from, to)),
               itemBuilder: (context, index) {
                 final item = current.items[index];
                 final shown = current.shown.contains(item.id);

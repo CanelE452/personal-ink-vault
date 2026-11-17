@@ -3,7 +3,7 @@ import 'package:saber/data/user_error.dart';
 
 /// One plain sentence, with the original error behind "자세히".
 class UserErrorText extends StatefulWidget {
-  const UserErrorText({
+  const new({
     super.key,
     required this.message,
     this.details,
@@ -12,7 +12,7 @@ class UserErrorText extends StatefulWidget {
   });
 
   /// [prefix] says what failed, for example "문서를 열 수 없습니다".
-  factory UserErrorText.of(
+  factory of(
     Object error, {
     Key? key,
     String? prefix,

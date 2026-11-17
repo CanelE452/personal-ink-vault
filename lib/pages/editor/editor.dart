@@ -29,11 +29,16 @@ import 'package:saber/components/theming/saber_theme.dart';
 import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/components/toolbar/editor_bottom_sheet.dart';
 import 'package:saber/components/toolbar/editor_page_manager.dart';
+import 'package:saber/components/toolbar/export_dialog.dart';
+import 'package:saber/components/toolbar/note_function_row.dart';
+import 'package:saber/components/toolbar/other_settings_panel.dart';
+import 'package:saber/components/toolbar/shortcut_bar_editor.dart';
+import 'package:saber/components/toolbar/shortcut_layout.dart';
 import 'package:saber/components/toolbar/toolbar.dart';
+import 'package:saber/components/toolbar/toolbar_custom_dialog.dart';
 import 'package:saber/components/toolbar/toolbar_dock.dart';
 import 'package:saber/components/toolbar/toolbar_layout.dart';
 import 'package:saber/components/toolbar/toolbar_settings_sheet.dart';
-import 'package:saber/components/toolbar/toolbar_button.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
@@ -52,9 +57,11 @@ import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/i18n/strings.g.dart';
+import 'package:saber/pages/editor/editor_chrome.dart';
 import 'package:saber/pages/home/whiteboard.dart';
 import 'package:sbn/canvas_background_pattern.dart';
 import 'package:sbn/change.dart';
+import 'package:stow_plain/stow_plain.dart';
 
 typedef _PhotoInfo = ({Uint8List bytes, String extension});
 
@@ -74,7 +81,7 @@ class Editor extends StatefulWidget {
     this.onBack,
     this.showDocumentHeader = true,
     this.workspaceReadOnly = false,
-    this.pageActionsInToolbar = false,
+    this.chrome,
   }) : initialPath = path != null
            ? Future.value(path)
            : FileManager.newFilePath('/'),
@@ -96,9 +103,9 @@ class Editor extends StatefulWidget {
   final bool showDocumentHeader;
   final bool workspaceReadOnly;
 
-  /// Puts the page actions (page mode, insert page, pages, menu) at the end of the pen toolbar instead of their
-  /// own bar above it, so a host can keep its note screen to one row of tools. Read-only notes keep the bar.
-  final bool pageActionsInToolbar;
+  /// The host's view of the note's function row and "기타 설정" panel. Without
+  /// one, the editor draws them itself (the Office PDF ink view).
+  final EditorChromeController? chrome;
 
   /// The file extension used by the app.
   /// Files with this extension are
@@ -241,6 +248,16 @@ class EditorState extends State<Editor> {
     _assignKeybindings();
 
     super.initState();
+    widget.chrome?.attach(this);
+  }
+
+  @override
+  void didUpdateWidget(Editor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.chrome, widget.chrome)) {
+      oldWidget.chrome?.detach(this);
+      widget.chrome?.attach(this);
+    }
   }
 
   Future<void> _initAsync() async {
@@ -1597,26 +1614,11 @@ class EditorState extends State<Editor> {
   @override
   Widget build(BuildContext context) {
     final platform = Theme.of(context).platform;
-    // Workspace notes keep their own toolbar position (top by default);
-    // Saber's preference only moves the standalone editor's toolbar.
-    final alignmentStow = widget.onSaveSnapshot == null
-        ? stows.editorToolbarAlignment
-        : stows.workspaceToolbarAlignment;
-    final toolbarAlignment = alignmentStow.value;
-    void setToolbarAlignment(AxisDirection alignment) =>
-        setState(() => alignmentStow.value = alignment);
+    final toolbarAlignment = _alignmentStow.value;
+    _reportChrome();
     final isToolbarVertical =
         toolbarAlignment == AxisDirection.left ||
         toolbarAlignment == AxisDirection.right;
-    final showPageActions =
-        !coreInfo.readOnly &&
-        (!_initialImportPending || widget.initialPdfBaselinePageId == null);
-    final showPageMode =
-        !_loadingSnapshot &&
-        !_initialImportPending &&
-        coreInfo.pages.isNotEmpty;
-    final pageActionsInToolbar =
-        widget.pageActionsInToolbar && !coreInfo.readOnly;
 
     final Widget canvas = CanvasGestureDetector(
       key: _canvasGestureDetectorKey,
@@ -1831,10 +1833,7 @@ class EditorState extends State<Editor> {
           isUndoPossible: history.canUndo,
           redo: redo,
           isRedoPossible: history.canRedo,
-          toggleFingerDrawing: () {
-            stows.editorFingerDrawing.value = !stows.editorFingerDrawing.value;
-            lastSeenPointerCount = 0;
-          },
+          toggleFingerDrawing: _toggleFingerDrawing,
           pickPhoto: _pickPhotos,
           paste: paste,
           exportAsSba: exportAsSba,
@@ -1846,41 +1845,13 @@ class EditorState extends State<Editor> {
               axis: isToolbarVertical ? Axis.vertical : Axis.horizontal,
             ),
           ],
-          hostItems: pageActionsInToolbar
-              ? {
-                  for (final (id, button) in _pageActions(
-                    showPageMode: showPageMode,
-                    showPageActions: showPageActions,
-                    toolbar: true,
-                  ))
-                    id: button,
-                }
-              : const {},
-          trailing: [
-            ToolbarIconButton(
-              key: const ValueKey('toolbar-settings'),
-              tooltip: '툴바 설정',
-              onPressed: () => unawaited(
-                showToolbarSettings(
-                  context,
-                  alignment: toolbarAlignment,
-                  onAlignmentChanged: setToolbarAlignment,
-                  editorOptions: true,
-                  items: pageToolbarItems,
-                  layout: stows.pageToolbarLayout,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: const Icon(Icons.settings_outlined),
-            ),
-          ],
         ),
       ),
     );
 
     final Widget body = ToolbarDock(
       alignment: toolbarAlignment,
-      onAlignmentChanged: setToolbarAlignment,
+      onAlignmentChanged: _setToolbarAlignment,
       toolbar: toolbar,
       child: Column(
         children: [
@@ -1914,15 +1885,14 @@ class EditorState extends State<Editor> {
         );
       },
       child: Scaffold(
-        appBar:
-            DynamicMaterialApp.isFullscreen ||
-                (!widget.showDocumentHeader &&
-                    (pageActionsInToolbar ||
-                        !showPageActions && !showPageMode))
+        key: _scaffoldKey,
+        appBar: DynamicMaterialApp.isFullscreen || !widget.showDocumentHeader
             ? null
             : AppBar(
                 primary: widget.showDocumentHeader,
                 automaticallyImplyLeading: widget.showDocumentHeader,
+                // 기타 설정 opens from the function row, not from a button the end drawer would add here.
+                automaticallyImplyActions: false,
                 toolbarHeight: widget.showDocumentHeader ? kToolbarHeight : 48,
                 title: !widget.showDocumentHeader
                     ? null
@@ -1948,14 +1918,22 @@ class EditorState extends State<Editor> {
                         onBack: widget.onBack,
                       )
                     : null,
-                actions: _pageActionButtons(
-                  showPageMode: showPageMode,
-                  showPageActions: showPageActions,
-                  toolbar: false,
+              ),
+        // StarNote's "기타 설정" panel, when no host draws it.
+        endDrawer: widget.chrome != null
+            ? null
+            : Drawer(
+                width: 280,
+                child: OtherSettingsPanel(
+                  sections: otherSettingsSections(
+                    close: () => _scaffoldKey.currentState?.closeEndDrawer(),
+                  ),
                 ),
               ),
         body: Column(
           children: [
+            if (widget.chrome == null && !DynamicMaterialApp.isFullscreen)
+              _ownFunctionRow(),
             if (_snapshotError != null)
               MaterialBanner(
                 content: Text(_snapshotError!),
@@ -1990,9 +1968,11 @@ class EditorState extends State<Editor> {
             ),
           ],
         ),
+        // The way out of full screen whenever the toolbar (and its exit button) is folded away there.
         floatingActionButton:
             (DynamicMaterialApp.isFullscreen &&
-                !stows.editorToolbarShowInFullscreen.value)
+                (coreInfo.readOnly ||
+                    !stows.editorToolbarShowInFullscreen.value))
             ? FloatingActionButton(
                 shape: platform.isCupertino ? const CircleBorder() : null,
                 onPressed: () {
@@ -2005,103 +1985,304 @@ class EditorState extends State<Editor> {
     );
   }
 
-  /// The page actions, as the bar's icon buttons or (with [toolbar]) as pen toolbar buttons.
-  List<Widget> _pageActionButtons({
-    required bool showPageMode,
-    required bool showPageActions,
-    required bool toolbar,
-  }) => [
-    for (final (_, button) in _pageActions(
-      showPageMode: showPageMode,
-      showPageActions: showPageActions,
-      toolbar: toolbar,
-    ))
-      button,
-  ];
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  int? _chromeSignature;
 
-  /// [_pageActionButtons] with the toolbar item id of each (see pageToolbarItems).
-  List<(String, Widget)> _pageActions({
-    required bool showPageMode,
-    required bool showPageActions,
-    required bool toolbar,
-  }) {
-    Widget action({
-      Key? key,
-      required String tooltip,
-      required Widget icon,
-      required VoidCallback onPressed,
-    }) => toolbar
-        ? ToolbarIconButton(
-            key: key,
-            tooltip: tooltip,
-            onPressed: onPressed,
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: icon,
-          )
-        : IconButton(key: key, tooltip: tooltip, icon: icon, onPressed: onPressed);
+  /// Workspace notes keep their own toolbar position (top by default);
+  /// Saber's preference only moves the standalone editor's toolbar.
+  PlainStow<AxisDirection> get _alignmentStow => widget.onSaveSnapshot == null
+      ? stows.editorToolbarAlignment
+      : stows.workspaceToolbarAlignment;
 
+  void _setToolbarAlignment(AxisDirection alignment) =>
+      setState(() => _alignmentStow.value = alignment);
+
+  /// The note is loaded and its PDF import saved. The function row stays on
+  /// screen while the body shows the import's spinner, so its page actions
+  /// wait for this.
+  bool get _noteReady => !_loadingSnapshot && !_initialImportPending;
+
+  bool get _showPageActions => !coreInfo.readOnly && _noteReady;
+
+  bool get _showPageMode =>
+      !_loadingSnapshot && !_initialImportPending && coreInfo.pages.isNotEmpty;
+
+  /// Tells the host's controller that what the function row shows changed.
+  /// Not on every build: the editor rebuilds while drawing.
+  void _reportChrome() {
+    final chrome = widget.chrome;
+    if (chrome == null) return;
+    final signature = Object.hash(
+      coreInfo.readOnly,
+      _singlePageMode,
+      coreInfo.pages.length,
+      _loadingSnapshot,
+      _initialImportPending,
+      DynamicMaterialApp.isFullscreen,
+      stows.editorFingerDrawing.value,
+      _alignmentStow.value,
+    );
+    if (signature == _chromeSignature) return;
+    _chromeSignature = signature;
+    chrome.changed();
+  }
+
+  void _toggleFingerDrawing() {
+    stows.editorFingerDrawing.value = !stows.editorFingerDrawing.value;
+    lastSeenPointerCount = 0;
+  }
+
+  void _openExportDialog() {
+    if (coreInfo.readOnly) return;
+    unawaited(
+      showExportDialog(
+        context,
+        title: widget.customTitle ?? coreInfo.fileName,
+        pdf: exportAsPdf,
+        image: exportAsPng,
+        original: exportAsSba,
+      ),
+    );
+  }
+
+  void _insertPageAfterCurrent() => setState(() {
+    final currentPageIndex = this.currentPageIndex;
+    insertPageAfter(currentPageIndex);
+    _scrollToPage(currentPageIndex + 1);
+  });
+
+  /// StarNote's "문서 개요": the page thumbnails (the former 쪽 관리).
+  void _openOverview() => unawaited(
+    showDialog<void>(
+      context: context,
+      builder: (context) => AdaptiveAlertDialog(
+        title: const Text('문서 개요'),
+        content: pageManager(context),
+        actions: const [],
+      ),
+    ),
+  );
+
+  /// "템플릿 변경": the page sheet (paper, lines, background, imports and
+  /// clearing pages), the former 쪽 메뉴.
+  void _openPageMenu() => unawaited(
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => bottomSheet(context),
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: ColorScheme.of(context).surface,
+      constraints: const BoxConstraints(maxWidth: 500),
+    ),
+  );
+
+  void _openOtherSettings() {
+    final open = widget.chrome?.openOtherSettings;
+    if (open != null) return open();
+    _scaffoldKey.currentState?.openEndDrawer();
+  }
+
+  /// The editor's shortcuts for the note's function row (StarNote's shortcut
+  /// bar): the page actions and the screen toggles that were in the toolbar.
+  List<NoteShortcut> chromeShortcuts() {
+    final fullscreen = DynamicMaterialApp.isFullscreen;
     return [
-      if (showPageMode)
-        ('pageMode', action(
-          key: const ValueKey('editor-single-page-toggle'),
-          icon: Icon(
-            _singlePageMode
-                ? Icons.view_agenda_outlined
-                : Icons.description_outlined,
-          ),
-          tooltip: _singlePageMode ? '연속 스크롤' : '한 쪽씩 보기',
-          onPressed: _togglePageMode,
-        )),
-      if (showPageActions) ...[
-        ('insertPage', action(
-          icon: const AdaptiveIcon(
-            icon: Icons.insert_page_break,
-            cupertinoIcon: CupertinoIcons.add,
-          ),
-          tooltip: '쪽 추가',
-          onPressed: () => setState(() {
-            final currentPageIndex = this.currentPageIndex;
-            insertPageAfter(currentPageIndex);
-            _scrollToPage(currentPageIndex + 1);
-          }),
-        )),
-        ('pages', action(
-          icon: const AdaptiveIcon(
-            icon: Icons.grid_view,
-            cupertinoIcon: CupertinoIcons.rectangle_grid_2x2,
-          ),
-          tooltip: '쪽 관리',
-          onPressed: () {
-            showDialog(
-              context: context,
-              builder: (context) => AdaptiveAlertDialog(
-                title: const Text('쪽 관리'),
-                content: pageManager(context),
-                actions: const [],
-              ),
-            );
-          },
-        )),
-        ('pageMenu', action(
-          icon: const AdaptiveIcon(
-            icon: Icons.more_vert,
-            cupertinoIcon: CupertinoIcons.ellipsis_vertical,
-          ),
-          tooltip: '쪽 메뉴',
-          onPressed: () {
-            showModalBottomSheet(
-              context: context,
-              builder: (context) => bottomSheet(context),
-              isScrollControlled: true,
-              showDragHandle: true,
-              backgroundColor: ColorScheme.of(context).surface,
-              constraints: const BoxConstraints(maxWidth: 500),
-            );
-          },
-        )),
-      ],
+      NoteShortcut(
+        id: 'insertPage',
+        label: '페이지 추가',
+        icon: const AdaptiveIcon(
+          icon: Icons.insert_page_break,
+          cupertinoIcon: CupertinoIcons.add,
+        ),
+        onPressed: _showPageActions ? _insertPageAfterCurrent : null,
+      ),
+      NoteShortcut(
+        id: 'pageMode',
+        label: _singlePageMode ? '연속 스크롤' : '한 쪽씩 보기',
+        icon: Icon(
+          _singlePageMode
+              ? Icons.view_agenda_outlined
+              : Icons.description_outlined,
+        ),
+        buttonKey: const ValueKey('editor-single-page-toggle'),
+        onPressed: _showPageMode ? _togglePageMode : null,
+      ),
+      if (!stows.hideFingerDrawingToggle.value)
+        NoteShortcut(
+          id: 'finger',
+          label: '손가락 필기',
+          icon: const Icon(CupertinoIcons.hand_draw),
+          selected: stows.editorFingerDrawing.value,
+          onPressed: coreInfo.readOnly ? null : _toggleFingerDrawing,
+        ),
+      NoteShortcut(
+        id: 'fullscreen',
+        label: '전체 화면',
+        icon: AdaptiveIcon(
+          icon: fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+          cupertinoIcon: fullscreen
+              ? CupertinoIcons.fullscreen_exit
+              : CupertinoIcons.fullscreen,
+        ),
+        selected: fullscreen,
+        onPressed: () =>
+            DynamicMaterialApp.setFullscreen(!fullscreen, updateSystem: true),
+      ),
+      NoteShortcut(
+        id: 'export',
+        label: '파일 내보내기',
+        icon: const AdaptiveIcon(
+          icon: Icons.share,
+          cupertinoIcon: CupertinoIcons.share,
+        ),
+        onPressed: _showPageActions ? _openExportDialog : null,
+      ),
     ];
   }
+
+  /// StarNote's two shortcuts at the bar's right end.
+  List<NoteShortcut> chromeFixed() => [
+    NoteShortcut(
+      id: 'overview',
+      label: '문서 개요',
+      icon: const Icon(Icons.grid_view),
+      buttonKey: const ValueKey('note-overview'),
+      onPressed: _showPageActions ? _openOverview : null,
+    ),
+    NoteShortcut(
+      id: 'otherSettings',
+      label: '기타 설정',
+      icon: const Icon(Icons.tune),
+      buttonKey: const ValueKey('note-other-settings'),
+      onPressed: _noteReady ? _openOtherSettings : null,
+    ),
+  ];
+
+  /// The editor's sections of StarNote's "기타 설정" panel. [close] closes the
+  /// panel before a row opens something else.
+  List<Widget> otherSettingsSections({required VoidCallback close}) {
+    final pages = coreInfo.pages.length;
+    void then(VoidCallback action) {
+      close();
+      action();
+    }
+
+    return [
+      Padding(
+        key: const ValueKey('other-settings-title'),
+        padding: const EdgeInsets.only(top: 12),
+        child: Text(
+          widget.customTitle ?? coreInfo.fileName,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextTheme.of(context).titleSmall,
+        ),
+      ),
+      OtherSettingsSection(
+        title: '페이지 설정',
+        trailing: pages == 0 ? null : '${currentPageIndex + 1} / $pages',
+        children: [
+          OtherSettingsNavRow(
+            key: const ValueKey('other-settings-template'),
+            label: '템플릿 변경',
+            onTap: _showPageActions ? () => then(_openPageMenu) : null,
+          ),
+          _GoToPageRow(
+            pages: pages,
+            onGo: (page) => then(() => _scrollToPage(page - 1)),
+          ),
+          OtherSettingsNavRow(
+            key: const ValueKey('other-settings-overview'),
+            label: '문서 개요',
+            onTap: _showPageActions ? () => then(_openOverview) : null,
+          ),
+        ],
+      ),
+      OtherSettingsSection(
+        title: '문서 내보내기',
+        children: [
+          OtherSettingsNavRow(
+            key: const ValueKey('other-settings-export-image'),
+            label: '현재 페이지를 이미지로 내보내기',
+            onTap: _showPageActions ? () => then(_openExportDialog) : null,
+          ),
+          OtherSettingsNavRow(
+            key: const ValueKey('other-settings-export'),
+            label: '파일 내보내기',
+            onTap: _showPageActions ? () => then(_openExportDialog) : null,
+          ),
+        ],
+      ),
+      OtherSettingsSection(
+        title: '일반 설정',
+        children: [
+          ToolbarPositionRow(
+            alignment: _alignmentStow.value,
+            onChanged: _setToolbarAlignment,
+          ),
+          SwitchListTile(
+            key: const ValueKey('other-settings-continuous'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('연속 스크롤'),
+            value: !_singlePageMode,
+            onChanged: _showPageMode ? (_) => _togglePageMode() : null,
+          ),
+          OtherSettingsNavRow(
+            key: const ValueKey('other-settings-toolbar-custom'),
+            label: '사용자 지정 도구 모음',
+            onTap: () => then(() {
+              // The dialog rewrites pageToolbarLayout with the tools only; the
+              // shortcut bar still follows its 228 switches until it has its own.
+              final kept = keptShortcutLayout(
+                stows.noteShortcutLayout.value,
+                stows.pageToolbarLayout.value,
+              );
+              if (kept != null) stows.noteShortcutLayout.value = kept;
+              unawaited(
+                showToolbarCustomDialog(
+                  context,
+                  items: pageToolbarItems,
+                  layout: stows.pageToolbarLayout,
+                ),
+              );
+            }),
+          ),
+          OtherSettingsNavRow(
+            key: const ValueKey('other-settings-shortcut-custom'),
+            label: '사용자 지정 바로가기 막대',
+            onTap: () => then(_openShortcutEditor),
+          ),
+          const ToolbarWritingSettings(),
+        ],
+      ),
+    ];
+  }
+
+  void _openShortcutEditor() => unawaited(
+    showShortcutBarEditor(
+      context,
+      layout: stows.noteShortcutLayout,
+      legacyToolbar: stows.pageToolbarLayout.value,
+    ),
+  );
+
+  /// The function row the editor draws itself when no host does.
+  Widget _ownFunctionRow() => ListenableBuilder(
+    listenable: Listenable.merge([
+      stows.noteShortcutLayout,
+      stows.editorFingerDrawing,
+    ]),
+    builder: (context, _) => NoteFunctionRow(
+      shortcuts: chromeShortcuts(),
+      fixed: chromeFixed(),
+      layout: ShortcutLayout.decode(
+        noteShortcutItems,
+        stows.noteShortcutLayout.value,
+        legacyToolbar: stows.pageToolbarLayout.value,
+      ),
+      onCustomize: _openShortcutEditor,
+    ),
+  );
 
   void snackBarNeedsToSaveBeforeExiting() {
     if (!mounted) return;
@@ -2486,6 +2667,7 @@ class EditorState extends State<Editor> {
     unawaited(_cleanUpAsync());
 
     DynamicMaterialApp.removeFullscreenListener(_setState);
+    widget.chrome?.detach(this);
 
     _delayedSaveTimer?.cancel();
     _watchServerTimer?.cancel();
@@ -2517,4 +2699,64 @@ class EditorState extends State<Editor> {
       coreInfo.dispose();
     }
   }
+}
+
+/// StarNote's "페이지로 이동 [n] 페이지" in the 기타 설정 panel.
+class _GoToPageRow extends StatefulWidget {
+  const new({required this.pages, required this.onGo});
+
+  final int pages;
+  final ValueChanged<int> onGo;
+
+  @override
+  State<_GoToPageRow> createState() => _GoToPageRowState();
+}
+
+class _GoToPageRowState extends State<_GoToPageRow> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _go(String text) {
+    final page = int.tryParse(text.trim());
+    if (page == null || page < 1 || page > widget.pages) return;
+    widget.onGo(page);
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    key: const ValueKey('other-settings-go-to-page'),
+    height: 48,
+    child: Row(
+      children: [
+        Expanded(
+          child: Text('페이지로 이동', style: TextTheme.of(context).bodyLarge),
+        ),
+        SizedBox(
+          width: 76,
+          height: 36,
+          child: TextField(
+            key: const ValueKey('other-settings-go-to-page-field'),
+            controller: _controller,
+            enabled: widget.pages > 0,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            textAlign: TextAlign.center,
+            decoration: const InputDecoration(
+              hintText: '1',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: _go,
+          ),
+        ),
+        const SizedBox(width: 8),
+        const Text('페이지'),
+      ],
+    ),
+  );
 }

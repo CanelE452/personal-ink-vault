@@ -70,9 +70,9 @@ void main() {
         isNull,
         reason: 'The workspace actions must fit in the 320px app bar.',
       );
-      final appBar = find.byType(AppBar);
+      // The tab row shows the note; the function row under it holds back, the shortcuts and ⋯.
       final title = find.descendant(
-        of: appBar,
+        of: find.byKey(const ValueKey('note-tab-row')),
         matching: find.text(note.title),
       );
       final back = find.byKey(const ValueKey('workspace-back-to-library'));
@@ -81,13 +81,18 @@ void main() {
       final more = find.byKey(const ValueKey('workspace-more-actions'));
       expect(title, findsOneWidget);
       expect(tester.getSize(title).width, greaterThan(0));
-      expect(find.byTooltip('더 많은 작업'), findsOneWidget);
-      for (final action in [back, save, export, more]) {
+      expect(find.byTooltip('더 많은 기능'), findsOneWidget);
+      for (final action in [back, save, more]) {
         expect(action.hitTestable(), findsOneWidget);
         final bounds = tester.getRect(action);
         expect(bounds.left, greaterThanOrEqualTo(0));
         expect(bounds.right, lessThanOrEqualTo(320));
       }
+      // The shortcut bar's left part scrolls, as StarNote's does, at 320px.
+      await tester.ensureVisible(export);
+      await tester.pumpAndSettle();
+      expect(export.hitTestable(), findsOneWidget);
+      expect(tester.getRect(export).right, lessThanOrEqualTo(320));
 
       await tester.runAsync(() => tester.tap(save));
       await tester.pump();

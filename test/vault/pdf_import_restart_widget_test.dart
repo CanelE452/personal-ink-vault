@@ -23,7 +23,7 @@ import 'package:saber/pages/workspace/markdown_editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 import 'package:sbn/tool_id.dart';
 
-import '../office/office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show
         officePreviewPdf,
         officePreviewPdfiumAvailable,

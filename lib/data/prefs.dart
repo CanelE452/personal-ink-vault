@@ -154,6 +154,22 @@ class Stows {
     volatile: !_isOnMainIsolate,
   );
 
+  /// The note function row's shortcuts (`ShortcutLayout.encode`): `L:id` and
+  /// `R:id` on the bar, `!id` in "더 많은 기능". Empty means the default, which
+  /// takes the 228 toolbar's switches for the page actions that moved there.
+  final noteShortcutLayout = PlainStow(
+    'noteShortcutLayout',
+    <String>[],
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Whether the note's tab row is hidden (StarNote's "메모 막대 숨기기").
+  final noteTabBarHidden = PlainStow(
+    'noteTabBarHidden',
+    false,
+    volatile: !_isOnMainIsolate,
+  );
+
   /// Whether the library's side panel is open (tablets and wider windows).
   /// Null until the user opens or closes it; until then it is open only on
   /// wide screens, where the old fixed rail was.
@@ -379,7 +395,8 @@ class Stows {
       ),
       lastHighlighterColor = PlainStow(
         'lastHighlighterColor',
-        Colors.yellow.withAlpha(Highlighter.alpha).toARGB32(),
+        // StarNote's first highlighter colour (highlighterQuickColors).
+        const Color(0xffffe60f).withAlpha(Highlighter.alpha).toARGB32(),
         volatile: !_isOnMainIsolate,
       ),
       lastPencilColor = PlainStow(

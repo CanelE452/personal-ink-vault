@@ -20,7 +20,7 @@ import 'package:saber/data/vault/saber_ink_adapter.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 
-import '../office/office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show
         officePreviewDocumentsClosed,
         officePreviewPdf,

@@ -470,6 +470,9 @@ void main() {
       // ignore: invalid_use_of_protected_member
       editor.setState(() {});
       await tester.pumpAndSettle();
+      // At this width the tools part scrolls on its own (StarNote's toolbar).
+      await tester.ensureVisible(find.byTooltip('지우개'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('지우개'));
       await tester.pumpAndSettle();
 

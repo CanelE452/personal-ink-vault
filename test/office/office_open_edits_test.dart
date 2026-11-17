@@ -14,25 +14,19 @@ void main() {
   });
   tearDown(() => temp.delete(recursive: true));
 
-  OfficeOpenEdit edit(
-    String noteId,
-    OfficeEditorKind kind, {
-    String? returnNoteId,
-    String? returnFolderId,
-  }) => OfficeOpenEdit(
+  OfficeOpenEdit edit(String noteId, OfficeEditorKind kind) => OfficeOpenEdit(
     noteId: noteId,
     title: 'T-$noteId',
     sessionId: 's-$noteId',
     kind: kind,
     workingPath: '/w/$noteId/original.docx',
     inputSourceSha256: 'a' * 64,
-    returnTo: OfficeEditorReturn(noteId: returnNoteId, folderId: returnFolderId),
   );
 
   test('an open edit survives a restart of the app', () async {
     final edits = OfficeOpenEdits(file);
     await edits.load();
-    await edits.put(edit('n1', OfficeEditorKind.office, returnFolderId: 'f1'));
+    await edits.put(edit('n1', OfficeEditorKind.office));
     final restarted = OfficeOpenEdits(file);
     await restarted.load();
     final restored = restarted.forNote('n1')!;
@@ -41,10 +35,23 @@ void main() {
     expect(restored.kind, OfficeEditorKind.office);
     expect(restored.workingPath, '/w/n1/original.docx');
     expect(restored.inputSourceSha256, 'a' * 64);
-    expect(restored.returnTo.folderId, 'f1');
-    expect(restored.returnTo.noteId, isNull);
     expect(restarted.forKind(OfficeEditorKind.office)!.noteId, 'n1');
     expect(restarted.forKind(OfficeEditorKind.hwp), isNull);
+    // 228 opens editors over the current screen, so nothing records a screen to return to.
+    expect(await file.readAsString(), isNot(contains('return')));
+  });
+
+  test('a list written by 227, with the screens to return to, still loads', () async {
+    await file.parent.create(recursive: true);
+    await file.writeAsString(
+      '{"version":1,"edits":[{"noteId":"n1","title":"T-n1","sessionId":"s-n1",'
+      '"kind":"hwp","workingPath":"/w/n1/original.hwp","inputSourceSha256":"${'a' * 64}",'
+      '"returnNoteId":"n9","returnFolderId":null}]}',
+    );
+    final edits = OfficeOpenEdits(file);
+    await edits.load();
+    expect(edits.forNote('n1')?.sessionId, 's-n1');
+    expect(edits.forKind(OfficeEditorKind.hwp)?.noteId, 'n1');
   });
 
   test('one editor of each kind: a second document of the same kind is refused', () async {
@@ -53,9 +60,9 @@ void main() {
     await edits.put(edit('n1', OfficeEditorKind.office));
     await edits.put(edit('n2', OfficeEditorKind.hwp));
     await expectLater(edits.put(edit('n3', OfficeEditorKind.office)), throwsStateError);
-    // The same document may be put again: its editor was brought back from another place.
-    await edits.put(edit('n1', OfficeEditorKind.office, returnNoteId: 'n9'));
-    expect(edits.forNote('n1')!.returnTo.noteId, 'n9');
+    // The same document may be put again: its editor was brought back.
+    await edits.put(edit('n1', OfficeEditorKind.office));
+    expect(edits.forNote('n1')?.sessionId, 's-n1');
     expect(edits.entries, hasLength(2));
   });
 

@@ -344,7 +344,7 @@ Future<void> _removeOwned(Directory root) async {
 }
 
 class _InspectableWindowsOfficeEngine extends WindowsOfficeEngine {
-  _InspectableWindowsOfficeEngine({super.runtimePath, super.helperDirectory});
+  new({super.runtimePath, super.helperDirectory});
 
   @override
   Future<WindowsOfficeSnapshot> inspect(

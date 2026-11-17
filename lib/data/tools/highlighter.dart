@@ -10,7 +10,8 @@ class Highlighter extends Pen {
         name: t.editor.pens.highlighter,
         sizeMin: 10,
         sizeMax: 100,
-        sizeStep: 10,
+        // 5, so StarNote's 25 and 35 presets sit on the slider.
+        sizeStep: 5,
         icon: highlighterIcon,
         options: stows.lastHighlighterOptions.value,
         pressureEnabled: false,

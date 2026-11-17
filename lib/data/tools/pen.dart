@@ -108,7 +108,8 @@ class Pen extends Tool {
     .ballpointPen => const [3, 8, 15],
     .fountainPen || .pencil => const [5, 8, 15],
     .shapePen => const [3, 6, 10],
-    .highlighter => const [30, 40, 50],
+    // StarNote's shape_marker_pen_size_list_default.
+    .highlighter => const [25, 35, 50],
     _ => null,
   };
 

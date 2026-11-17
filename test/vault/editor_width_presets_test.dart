@@ -92,7 +92,8 @@ void main() {
       (Pen.fountainPen(), const [5.0, 8.0, 15.0]),
       (Pencil(), const [5.0, 8.0, 15.0]),
       (ShapePen(), const [3.0, 6.0, 10.0]),
-      (Highlighter(), const [30.0, 40.0, 50.0]),
+      // StarNote's highlighter widths (starnote-editor-rea.md 3.7), slider step 5.
+      (Highlighter(), const [25.0, 35.0, 50.0]),
     ]) {
       expect(pen.sizePresets, expected);
       for (final width in pen.sizePresets!) {
@@ -179,7 +180,15 @@ void main() {
       platform: TargetPlatform.android,
       editorWidth: 320,
     );
-    expect(find.byKey(_group), findsNothing);
+    // The toolbar's values part keeps the width dots on every width and
+    // scrolls, as StarNote's does.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('toolbar-params-scroll')),
+        matching: find.byKey(_group),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.byTooltip('펜'));
     await tester.pumpAndSettle();
     final slider = find.byKey(_slider);

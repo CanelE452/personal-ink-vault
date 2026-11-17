@@ -18,7 +18,7 @@ AxisDirection nearestToolbarEdge(Offset local, Size size) {
 /// Dragging a [ToolbarDockHandle] inside [toolbar] shows the four edges as
 /// places to drop it; dropping reports the edge nearest to the finger.
 class ToolbarDock extends StatefulWidget {
-  const ToolbarDock({
+  const new({
     super.key,
     required this.alignment,
     required this.onAlignmentChanged,
@@ -162,7 +162,7 @@ class _ToolbarDockState extends State<ToolbarDock> {
 }
 
 class _DockScope extends InheritedWidget {
-  const _DockScope({required this.dock, required super.child});
+  const new({required this.dock, required super.child});
 
   final _ToolbarDockState dock;
 
@@ -172,7 +172,7 @@ class _DockScope extends InheritedWidget {
 
 /// The grip that moves the toolbar. It draws nothing outside a [ToolbarDock].
 class ToolbarDockHandle extends StatelessWidget {
-  const ToolbarDockHandle({super.key, this.axis = Axis.horizontal});
+  const new({super.key, this.axis = Axis.horizontal});
 
   /// The axis of the toolbar the handle sits in.
   final Axis axis;

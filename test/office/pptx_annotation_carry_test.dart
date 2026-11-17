@@ -24,8 +24,8 @@ import 'package:saber/data/tools/pen.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/office/office_workspace.dart';
 
+import '../utils/office_preview.dart';
 import '../utils/test_mock_channel_handlers.dart';
-import 'office_original_preview_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

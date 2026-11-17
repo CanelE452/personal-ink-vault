@@ -13,7 +13,7 @@ const zoomPillHideDelay = Duration(seconds: 2);
 /// The scale of a [TransformationController] that notifies only when the
 /// scale changes, so scrolling and panning leave it quiet.
 class ControllerScale extends ValueNotifier<double> {
-  ControllerScale(this.controller) : super(controller.value.approxScale) {
+  new(this.controller) : super(controller.value.approxScale) {
     controller.addListener(_sync);
   }
 
@@ -32,7 +32,7 @@ class ControllerScale extends ValueNotifier<double> {
 /// hides [zoomPillHideDelay] after the last change. It stays while touched
 /// or while its scale list is open.
 class ZoomPillOverlay extends StatefulWidget {
-  const ZoomPillOverlay({
+  const new({
     super.key,
     required this.scale,
     this.onSelectScale,

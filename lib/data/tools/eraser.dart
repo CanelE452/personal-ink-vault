@@ -26,7 +26,7 @@ class Eraser extends Tool {
 
   List<Stroke> _erased = [];
 
-  new({double? size}) : _size = size;
+  new({this._size});
 
   @override
   ToolId get toolId => .eraser;

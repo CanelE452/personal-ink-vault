@@ -14,46 +14,55 @@ import 'utils/test_mock_channel_handlers.dart';
 
 void main() {
   group('toolbar layout', () {
-    test('an empty layout is the StarNote order with laser and export hidden', () {
+    test('the page toolbar lists only the tools, StarNote-style, with pencil and laser hidden', () {
       final layout = ToolbarLayout.decode(pageToolbarItems, const []);
-      expect(
-        layout.items.map((item) => item.id),
-        pageToolbarItems.map((item) => item.id),
-      );
-      expect(layout.shownIds.first, 'undo');
+      expect(pageToolbarItems.map((item) => item.id), [
+        'pen',
+        'pencil',
+        'highlighter',
+        'eraser',
+        'select',
+        'photo',
+        'text',
+        'laser',
+      ]);
+      expect(layout.shownIds.first, 'pen');
       expect(layout.shownIds, isNot(contains('laser')));
-      expect(layout.shownIds, isNot(contains('export')));
+      expect(layout.shownIds, isNot(contains('pencil')));
       expect(layout.labelOf('select'), '올가미');
     });
 
-    test('a stored layout keeps its order and adds unknown items after it', () {
-      final layout = ToolbarLayout.decode(pageToolbarItems, [
-        'redo',
-        '!undo',
-        'pen',
-        'gone',
-        'pen',
-      ]);
-      expect(layout.items.take(4).map((item) => item.id), [
-        'redo',
+    test('a stored layout keeps its order and drops ids that are no longer tools', () {
+      // 228 and earlier stored undo, colours, widths and page actions in the same list.
+      final layout = ToolbarLayout.decode(pageToolbarItems, const [
         'undo',
+        'highlighter',
+        '!pen',
+        'gone',
+        'colors',
+        'pageMode',
+        'highlighter',
+      ]);
+      expect(layout.items.take(3).map((item) => item.id), [
+        'highlighter',
         'pen',
         'pencil',
       ]);
-      expect(layout.shown, isNot(contains('undo')));
+      expect(layout.shown, isNot(contains('pen')));
       expect(layout.items, hasLength(pageToolbarItems.length));
       expect(layout.shown, isNot(contains('laser')));
     });
 
     test('moving, hiding and encoding round-trip', () {
+      // The index after the move, as ReorderableListView.onReorderItem reports it.
       final layout = ToolbarLayout.decode(pageToolbarItems, const [])
-          .moved(0, 3)
+          .moved(0, 2)
           .withShown('laser', true)
           .withShown('pencil', false);
       expect(layout.items.take(3).map((item) => item.id), [
-        'redo',
+        'pencil',
+        'highlighter',
         'pen',
-        'undo',
       ]);
       final again = ToolbarLayout.decode(pageToolbarItems, layout.encode());
       expect(again.encode(), layout.encode());
@@ -104,10 +113,12 @@ void main() {
     Offset at(WidgetTester tester, String tooltip) =>
         tester.getCenter(find.byTooltip(tooltip).first);
 
-    testWidgets('the default order follows StarNote and hides laser and export', (
+    testWidgets('the default order follows StarNote and hides the laser', (
       tester,
     ) async {
       await mountEditor(tester);
+      await tester.tap(find.byTooltip('펜'));
+      await tester.pumpAndSettle();
       final firstColor = tester.getCenter(
         find.byKey(const ValueKey('toolbar-color-0')),
       );
@@ -117,11 +128,14 @@ void main() {
       expect(at(tester, '실행 취소').dx, lessThan(at(tester, '펜').dx));
       expect(at(tester, '펜').dx, lessThan(at(tester, '지우개').dx));
       expect(at(tester, '올가미').dx, lessThan(at(tester, '사진').dx));
+      // The tools come before the chosen tool's values.
       expect(at(tester, '글상자').dx, lessThan(firstColor.dx));
-      expect(lastColor.dx, lessThan(at(tester, '전체 화면').dx));
-      expect(at(tester, '전체 화면').dx, lessThan(at(tester, '툴바 설정').dx));
+      expect(firstColor.dx, lessThan(lastColor.dx));
       expect(find.byTooltip('레이저 포인터'), findsNothing);
-      expect(find.byTooltip('내보내기'), findsNothing);
+      expect(
+        find.descendant(of: find.byType(Toolbar), matching: find.byTooltip('내보내기')),
+        findsNothing,
+      );
     });
 
     testWidgets('a quick colour is chosen with one tap', (tester) async {
@@ -139,43 +153,57 @@ void main() {
       );
     });
 
-    testWidgets('the toolbar editor shows, hides and resets items', (
+    Future<void> tapKey(WidgetTester tester, String key) async {
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+    }
+
+    /// StarNote's 기타 설정 panel, where the toolbar settings now live.
+    Future<void> openOtherSettings(WidgetTester tester) =>
+        tapKey(tester, 'note-other-settings');
+
+    testWidgets('사용자 지정 도구 모음 shows, hides and resets tools', (
       tester,
     ) async {
       await mountEditor(tester);
-      await tester.tap(find.byTooltip('툴바 설정'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('toolbar-edit')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('toolbar-item-laser')));
-      await tester.pumpAndSettle();
+      await openOtherSettings(tester);
+      await tapKey(tester, 'other-settings-toolbar-custom');
+      await tapKey(tester, 'toolbar-custom-eye-laser');
       // The pencil lives in the pen panel; its own button is off by default.
-      await tester.tap(find.byKey(const ValueKey('toolbar-item-pencil')));
-      await tester.pumpAndSettle();
+      await tapKey(tester, 'toolbar-custom-eye-pencil');
+      await tapKey(tester, 'toolbar-custom-apply');
       expect(stows.pageToolbarLayout.value, contains('laser'));
       expect(stows.pageToolbarLayout.value, contains('pencil'));
       expect(find.byTooltip('레이저 포인터'), findsOneWidget);
       expect(find.byTooltip('연필'), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('toolbar-edit-reset')));
-      await tester.pumpAndSettle();
-      expect(stows.pageToolbarLayout.value, isEmpty);
+      await openOtherSettings(tester);
+      await tapKey(tester, 'other-settings-toolbar-custom');
+      await tapKey(tester, 'toolbar-custom-reset');
+      await tapKey(tester, 'toolbar-custom-apply');
+      expect(
+        ToolbarLayout.decode(pageToolbarItems, stows.pageToolbarLayout.value).shownIds,
+        ToolbarLayout.decode(pageToolbarItems, const []).shownIds,
+      );
       expect(find.byTooltip('레이저 포인터'), findsNothing);
       expect(find.byTooltip('연필'), findsNothing);
     });
 
-    testWidgets('a narrow toolbar stays one row with its ends pinned', (
+    testWidgets('a narrow toolbar stays one row, its tools and values scrolling apart', (
       tester,
     ) async {
       await mountEditor(tester);
       tester.view.physicalSize = const Size(640, 2000);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('toolbar-scroll')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('toolbar-tools-scroll')), findsOneWidget);
+      expect(find.byKey(const ValueKey('toolbar-params-scroll')), findsOneWidget);
       expect(
-        (at(tester, '실행 취소').dy - at(tester, '전체 화면').dy).abs(),
+        (at(tester, '실행 취소').dy - at(tester, '펜').dy).abs(),
         lessThan(1),
       );
-      expect(at(tester, '툴바 설정').dx, lessThan(640));
       expect(
         tester.getCenter(find.byKey(const ValueKey('toolbar-dock-handle'))).dx,
         greaterThan(0),
@@ -239,21 +267,19 @@ void main() {
       expect(find.byKey(const ValueKey('toolbar-current-color')), findsNothing);
     });
 
-    testWidgets('the zoom lock can be turned off from the toolbar settings', (
+    testWidgets('the zoom lock can be turned off from 기타 설정', (
       tester,
     ) async {
       final previous = stows.lastZoomLock.value;
       stows.lastZoomLock.value = true;
       addTearDown(() => stows.lastZoomLock.value = previous);
       await mountEditor(tester);
-      await tester.tap(find.byTooltip('툴바 설정'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('toolbar-zoom-lock')));
-      await tester.pumpAndSettle();
+      await openOtherSettings(tester);
+      await tapKey(tester, 'toolbar-zoom-lock');
       expect(stows.lastZoomLock.value, isFalse);
     });
 
-    testWidgets('the writing settings Saber kept on its own page are in the toolbar settings', (
+    testWidgets('the writing settings Saber kept on its own page are in 기타 설정', (
       tester,
     ) async {
       final straighten = stows.autoStraightenLines.value;
@@ -265,8 +291,7 @@ void main() {
       });
       stows.autoStraightenLines.value = true;
       await mountEditor(tester);
-      await tester.tap(find.byTooltip('툴바 설정'));
-      await tester.pumpAndSettle();
+      await openOtherSettings(tester);
       await tester.ensureVisible(find.byKey(const ValueKey('toolbar-auto-straighten')));
       await tester.tap(find.byKey(const ValueKey('toolbar-auto-straighten')));
       await tester.pumpAndSettle();
@@ -302,7 +327,10 @@ void main() {
       await mountEditor(tester, alignment: AxisDirection.left);
       expect(at(tester, '실행 취소').dy, lessThan(at(tester, '펜').dy));
       expect(at(tester, '펜').dy, lessThan(at(tester, '글상자').dy));
-      expect(at(tester, '글상자').dy, lessThan(at(tester, '전체 화면').dy));
+      expect(
+        at(tester, '글상자').dy,
+        lessThan(tester.getCenter(find.byKey(const ValueKey('toolbar-pen-box'))).dy),
+      );
       expect(at(tester, '펜').dx, lessThan(200));
     });
   });

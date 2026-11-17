@@ -23,7 +23,7 @@ import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
 import '../office/annotation_store_test.dart' show annotationOfficeFile;
-import '../office/office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show
         officePreviewDocumentsClosed,
         officePreviewPdf,

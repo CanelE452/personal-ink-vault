@@ -57,7 +57,6 @@ class Toolbar extends StatefulWidget {
     required this.exportAsPng,
     this.exportTitle = '',
     this.leading = const [],
-    this.hostItems = const {},
     this.trailing = const [],
   });
 
@@ -96,11 +95,7 @@ class Toolbar extends StatefulWidget {
   /// Placed before the tools, for example the handle that moves the toolbar.
   final List<Widget> leading;
 
-  /// The host's own toolbar items (the page actions), by [ToolbarItem.id];
-  /// they are ordered and hidden like the toolbar's tools.
-  final Map<String, Widget> hostItems;
-
-  /// Always placed last, for example the toolbar settings button.
+  /// Always placed last.
   final List<Widget> trailing;
 
   @override
@@ -273,12 +268,9 @@ class _ToolbarState extends State<Toolbar> {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) =>
-        _buildToolbar(context, constraints.maxWidth),
-  );
+  Widget build(BuildContext context) => _buildToolbar(context);
 
-  Widget _buildToolbar(BuildContext context, double availableWidth) {
+  Widget _buildToolbar(BuildContext context) {
     final colorScheme = ColorScheme.of(context);
 
     final brightness = Theme.brightnessOf(context);
@@ -397,47 +389,13 @@ class _ToolbarState extends State<Toolbar> {
         padding: const .all(4),
         child: ValueListenableBuilder(
           valueListenable: stows.pageToolbarLayout,
-          builder: (context, stored, _) {
-            final layout = ToolbarLayout.decode(pageToolbarItems, stored);
-            final items = _mainItems(
-              layout: layout,
-              isToolbarVertical: isToolbarVertical,
-              availableWidth: availableWidth,
-              buttonPadding: buttonPadding,
-              currentColor: currentColor,
-              invert: invert,
-            );
-            // One line like StarNote: the tools scroll when they do not fit,
-            // while the handle and the settings button stay at the ends.
-            final axis = isToolbarVertical ? Axis.vertical : Axis.horizontal;
-            return Flex(
-              direction: axis,
-              children: [
-                ...widget.leading,
-                Expanded(
-                  // An open panel would stay where its button was.
-                  child: NotificationListener<ScrollStartNotification>(
-                    onNotification: (_) {
-                      _openPanel.value = null;
-                      return false;
-                    },
-                    child: SingleChildScrollView(
-                      key: const ValueKey('toolbar-scroll'),
-                      scrollDirection: axis,
-                      child: Flex(
-                        direction: axis,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final id in layout.shownIds) ?items[id],
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                ...widget.trailing,
-              ],
-            );
-          },
+          builder: (context, stored, _) => _mainBar(
+            layout: ToolbarLayout.decode(pageToolbarItems, stored),
+            isToolbarVertical: isToolbarVertical,
+            buttonPadding: buttonPadding,
+            currentColor: currentColor,
+            invert: invert,
+          ),
         ),
       ),
     ];
@@ -461,27 +419,104 @@ class _ToolbarState extends State<Toolbar> {
     );
   }
 
-  /// The toolbar's own tools and the host's items, by [ToolbarItem.id]; the
-  /// user's [ToolbarLayout] picks and orders them.
-  Map<String, Widget> _mainItems({
+  /// StarNote's tool bar (view_tool_bar_container): undo and redo, the tools
+  /// in the user's order, then the chosen tool's values. The tools and the
+  /// values scroll apart, like StarNote's.
+  Widget _mainBar({
     required ToolbarLayout layout,
     required bool isToolbarVertical,
-    required double availableWidth,
     required EdgeInsets buttonPadding,
     required Color? currentColor,
     required bool invert,
   }) {
-    final colorScheme = ColorScheme.of(context);
     final axis = isToolbarVertical ? Axis.vertical : Axis.horizontal;
-    String label(String id) => layout.labelOf(id);
-    // StarNote's toolbar shows the highlighter's own colours while it is in
-    // hand.
-    final quickColors = widget.currentTool is Highlighter
-        ? highlighterQuickColors
-        : toolbarQuickColors;
-    return {
-      'undo': ToolbarIconButton(
-        tooltip: label('undo'),
+    final tools = _toolItems(layout: layout, buttonPadding: buttonPadding);
+    final params = _paramItems(
+      axis: axis,
+      buttonPadding: buttonPadding,
+      currentColor: currentColor,
+      invert: invert,
+    );
+    // An open panel would stay where its button was. Only this part's own
+    // scrolling counts: an open panel hangs below its button (an
+    // OverlayPortal), so the panel's own scrolling reaches here too.
+    Widget scroll(String key, List<Widget> children) =>
+        NotificationListener<ScrollStartNotification>(
+          onNotification: (notification) {
+            if (notification.depth == 0) _openPanel.value = null;
+            return false;
+          },
+          child: SingleChildScrollView(
+            key: ValueKey(key),
+            scrollDirection: axis,
+            child: Flex(
+              direction: axis,
+              mainAxisSize: MainAxisSize.min,
+              children: children,
+            ),
+          ),
+        );
+    return Flex(
+      direction: axis,
+      children: [
+        ...widget.leading,
+        _undoRedo(axis, buttonPadding),
+        _sectionDivider(axis),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // What the handle, undo and redo leave: the tools take what
+              // they need of it up to a little over half, so the values
+              // always have room.
+              final toolsExtent =
+                  (isToolbarVertical
+                      ? constraints.maxHeight
+                      : constraints.maxWidth) *
+                  .55;
+              return Flex(
+                direction: axis,
+                children: [
+                  ConstrainedBox(
+                    constraints: isToolbarVertical
+                        ? BoxConstraints(maxHeight: toolsExtent)
+                        : BoxConstraints(maxWidth: toolsExtent),
+                    child: scroll('toolbar-tools-scroll', [
+                      for (final id in layout.shownIds) ?tools[id],
+                    ]),
+                  ),
+                  _sectionDivider(axis),
+                  Expanded(child: scroll('toolbar-params-scroll', params)),
+                ],
+              );
+            },
+          ),
+        ),
+        ...widget.trailing,
+        // Full screen hides the function row with its 전체 화면 shortcut.
+        if (DynamicMaterialApp.isFullscreen)
+          ToolbarIconButton(
+            key: const ValueKey('toolbar-exit-fullscreen'),
+            tooltip: '전체 화면 끝내기',
+            onPressed: toggleFullscreen,
+            padding: buttonPadding,
+            child: const AdaptiveIcon(
+              icon: Icons.fullscreen_exit,
+              cupertinoIcon: CupertinoIcons.fullscreen_exit,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Undo and redo, kept together before the tools (StarNote's
+  /// ll_undo_redo_container).
+  Widget _undoRedo(Axis axis, EdgeInsets buttonPadding) => Flex(
+    key: const ValueKey('toolbar-undo-redo'),
+    direction: axis,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      ToolbarIconButton(
+        tooltip: '실행 취소',
         enabled: !widget.readOnly && widget.isUndoPossible,
         onPressed: widget.undo,
         padding: buttonPadding,
@@ -490,8 +525,9 @@ class _ToolbarState extends State<Toolbar> {
           cupertinoIcon: CupertinoIcons.arrow_uturn_left,
         ),
       ),
-      'redo': ToolbarIconButton(
-        tooltip: label('redo'),
+      _sectionDivider(axis, short: true),
+      ToolbarIconButton(
+        tooltip: '다시 실행',
         enabled: !widget.readOnly && widget.isRedoPossible,
         onPressed: widget.redo,
         padding: buttonPadding,
@@ -500,6 +536,32 @@ class _ToolbarState extends State<Toolbar> {
           cupertinoIcon: CupertinoIcons.arrow_uturn_right,
         ),
       ),
+    ],
+  );
+
+  /// The thin line between the toolbar's parts.
+  Widget _sectionDivider(Axis axis, {bool short = false}) {
+    final length = short ? 16.0 : 24.0;
+    final horizontal = axis == Axis.horizontal;
+    return Container(
+      width: horizontal ? 0.5 : length,
+      height: horizontal ? length : 0.5,
+      margin: horizontal
+          ? const EdgeInsets.symmetric(horizontal: 4)
+          : const EdgeInsets.symmetric(vertical: 4),
+      color: Theme.of(context).dividerColor,
+    );
+  }
+
+  /// The tools, by [ToolbarItem.id]; the user's [ToolbarLayout] picks and
+  /// orders them.
+  Map<String, Widget> _toolItems({
+    required ToolbarLayout layout,
+    required EdgeInsets buttonPadding,
+  }) {
+    final colorScheme = ColorScheme.of(context);
+    String label(String id) => layout.labelOf(id);
+    return {
       // Tapping the chosen tool again opens its panel (StarNote's tool panels).
       // The pen button holds every pen kind, the pencil included, like
       // StarNote's pen; it shows and picks the kind chosen last.
@@ -641,102 +703,6 @@ class _ToolbarState extends State<Toolbar> {
           cupertinoIcon: CupertinoIcons.text_cursor,
         ),
       ),
-      'colors': Flex(
-        key: const ValueKey('toolbar-colors'),
-        direction: axis,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (index, value) in quickColors.indexed)
-            _quickColor(index, Color(value), currentColor, invert),
-          ValueListenableBuilder(
-            valueListenable: showColorOptions,
-            builder: (context, showColorOptions, child) {
-              return ToolbarIconButton(
-                tooltip: '색 더보기',
-                selected: showColorOptions,
-                enabled: !widget.readOnly,
-                onPressed: toggleColorOptions,
-                padding: buttonPadding,
-                child: child!,
-              );
-            },
-            child: currentColor != null &&
-                    !quickColors.contains(
-                      currentColor.withValues(alpha: 1).toARGB32(),
-                    )
-                ? Container(
-                    key: const ValueKey('toolbar-current-color'),
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: currentColor
-                          .withInversion(invert)
-                          .withValues(alpha: 1),
-                      shape: .circle,
-                      border: Border.all(color: colorScheme.primary, width: 2),
-                    ),
-                  )
-                : const Icon(Icons.palette_outlined),
-          ),
-        ],
-      ),
-      // The pens kept with "펜박스에 추가" (the star at the end of StarNote's
-      // colour row).
-      'penBox': _withPanel(
-        'penBox',
-        ToolbarIconButton(
-          key: const ValueKey('toolbar-pen-box'),
-          tooltip: label('penBox'),
-          enabled: !widget.readOnly,
-          onPressed: () => _togglePanel('penBox'),
-          padding: buttonPadding,
-          child: const Icon(Icons.star_border),
-        ),
-        (_) => PenBoxPanel(apply: _applyPenBoxEntry),
-      ),
-      if (widget.currentTool case final Pen pen
-          when isToolbarVertical || availableWidth >= 700)
-        if (pen.sizePresets case final widths?)
-          'widths': InkWidthPresets(
-            key: const ValueKey('toolbar-quick-ink-widths'),
-            widths: widths,
-            selectedWidth: pen.options.size,
-            onSelected: widget.readOnly
-                ? null
-                : (size) => _setPenSize(pen, size),
-            widthLabel: label('widths'),
-            axis: axis,
-          ),
-      ...widget.hostItems,
-      if (!stows.hideFingerDrawingToggle.value)
-        'finger': ValueListenableBuilder(
-          valueListenable: stows.editorFingerDrawing,
-          builder: (context, value, child) {
-            return ToolbarIconButton(
-              tooltip: label('finger'),
-              selected: value,
-              enabled: !widget.readOnly,
-              onPressed: widget.toggleFingerDrawing,
-              padding: buttonPadding,
-              child: const Icon(CupertinoIcons.hand_draw),
-            );
-          },
-        ),
-      'fullscreen': ToolbarIconButton(
-        tooltip: label('fullscreen'),
-        selected: DynamicMaterialApp.isFullscreen,
-        enabled: !widget.readOnly,
-        onPressed: toggleFullscreen,
-        padding: buttonPadding,
-        child: AdaptiveIcon(
-          icon: DynamicMaterialApp.isFullscreen
-              ? Icons.fullscreen_exit
-              : Icons.fullscreen,
-          cupertinoIcon: DynamicMaterialApp.isFullscreen
-              ? CupertinoIcons.fullscreen_exit
-              : CupertinoIcons.fullscreen,
-        ),
-      ),
       'laser': ToolbarIconButton(
         tooltip: label('laser'),
         selected: widget.currentTool == LaserPointer.currentLaserPointer,
@@ -748,18 +714,196 @@ class _ToolbarState extends State<Toolbar> {
         padding: buttonPadding,
         child: const Icon(Symbols.stylus_laser_pointer),
       ),
-      'export': ToolbarIconButton(
-        tooltip: label('export'),
-        enabled: !widget.readOnly,
-        onPressed: openExportDialog,
-        padding: buttonPadding,
-        child: const AdaptiveIcon(
-          icon: Icons.share,
-          cupertinoIcon: CupertinoIcons.share,
-        ),
-      ),
     };
   }
+
+  /// The chosen tool's values (StarNote's params_container): colours, the pen
+  /// box and widths for the pens and the highlighter; the eraser's modes and
+  /// sizes; the lasso's shapes and the colours that recolour a selection.
+  /// StarNote's pen box can be reached whatever the tool, so its star ends
+  /// every tool's values.
+  List<Widget> _paramItems({
+    required Axis axis,
+    required EdgeInsets buttonPadding,
+    required Color? currentColor,
+    required bool invert,
+  }) => switch (widget.currentTool) {
+    Eraser() => [
+      ..._eraserParams(axis, buttonPadding),
+      _sectionDivider(axis),
+      _penBoxItem(buttonPadding),
+    ],
+    Select() => [
+      _selectParams(axis, buttonPadding),
+      _sectionDivider(axis),
+      _colorItems(axis, buttonPadding, currentColor, invert),
+      _penBoxItem(buttonPadding),
+    ],
+    final Pen pen => [
+      _colorItems(axis, buttonPadding, currentColor, invert),
+      _penBoxItem(buttonPadding),
+      if (pen.sizePresets case final widths?)
+        InkWidthPresets(
+          key: const ValueKey('toolbar-quick-ink-widths'),
+          widths: widths,
+          selectedWidth: pen.options.size,
+          onSelected: widget.readOnly
+              ? null
+              : (size) => _setPenSize(pen, size),
+          widthLabel: '굵기',
+          axis: axis,
+        ),
+    ],
+    _ => [_penBoxItem(buttonPadding)],
+  };
+
+  /// The five colours and the palette button.
+  Widget _colorItems(
+    Axis axis,
+    EdgeInsets buttonPadding,
+    Color? currentColor,
+    bool invert,
+  ) {
+    final colorScheme = ColorScheme.of(context);
+    // StarNote's toolbar shows the highlighter's own colours while it is in
+    // hand.
+    final quickColors = widget.currentTool is Highlighter
+        ? highlighterQuickColors
+        : toolbarQuickColors;
+    return Flex(
+      key: const ValueKey('toolbar-colors'),
+      direction: axis,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (index, value) in quickColors.indexed)
+          _quickColor(index, Color(value), currentColor, invert),
+        ValueListenableBuilder(
+          valueListenable: showColorOptions,
+          builder: (context, showColorOptions, child) {
+            return ToolbarIconButton(
+              tooltip: '색 더보기',
+              selected: showColorOptions,
+              enabled: !widget.readOnly,
+              onPressed: toggleColorOptions,
+              padding: buttonPadding,
+              child: child!,
+            );
+          },
+          child: currentColor != null &&
+                  !quickColors.contains(
+                    currentColor.withValues(alpha: 1).toARGB32(),
+                  )
+              ? Container(
+                  key: const ValueKey('toolbar-current-color'),
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: currentColor
+                        .withInversion(invert)
+                        .withValues(alpha: 1),
+                    shape: .circle,
+                    border: Border.all(color: colorScheme.primary, width: 2),
+                  ),
+                )
+              : const Icon(Icons.palette_outlined),
+        ),
+      ],
+    );
+  }
+
+  /// The pens kept with "펜박스에 추가" (the star at the end of StarNote's
+  /// colour row).
+  Widget _penBoxItem(EdgeInsets buttonPadding) => _withPanel(
+    'penBox',
+    ToolbarIconButton(
+      key: const ValueKey('toolbar-pen-box'),
+      tooltip: '펜박스',
+      enabled: !widget.readOnly,
+      onPressed: () => _togglePanel('penBox'),
+      padding: buttonPadding,
+      child: const Icon(Icons.star_border),
+    ),
+    (_) => PenBoxPanel(apply: _applyPenBoxEntry),
+  );
+
+  /// StarNote's eraser values: its modes, then three sizes (the panel keeps
+  /// the slider). Sizes do nothing for the loop, so they are off with it.
+  List<Widget> _eraserParams(Axis axis, EdgeInsets buttonPadding) => [
+    ValueListenableBuilder(
+      valueListenable: stows.eraserMode,
+      builder: (context, mode, _) => Flex(
+        direction: axis,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (key, value, tooltip) in const [
+            ('toolbar-eraser-stroke', EraserMode.stroke, '스트로크 지우기'),
+            ('toolbar-eraser-lasso', EraserMode.lasso, '원형 선택 지우기'),
+          ])
+            ToolbarIconButton(
+              key: ValueKey(key),
+              tooltip: tooltip,
+              selected: mode == value,
+              enabled: !widget.readOnly,
+              onPressed: () => stows.eraserMode.value = value,
+              padding: buttonPadding,
+              child: EraserModeIcon(value),
+            ),
+          _sectionDivider(axis),
+          ValueListenableBuilder(
+            valueListenable: stows.eraserSize,
+            builder: (context, size, _) => Flex(
+              direction: axis,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (index, preset) in eraserSizePresets.indexed)
+                  ToolbarIconButton(
+                    key: ValueKey(
+                      'toolbar-eraser-size-${preset.toStringAsFixed(0)}',
+                    ),
+                    tooltip: '크기 ${preset.toStringAsFixed(0)}',
+                    selected: size == preset,
+                    enabled: !widget.readOnly && mode == EraserMode.stroke,
+                    onPressed: () => stows.eraserSize.value = preset,
+                    padding: buttonPadding,
+                    child: _SizeCircle(diameter: 7 + index * 5.0),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  ];
+
+  /// The lasso's two shapes, as in StarNote's lasso values.
+  Widget _selectParams(Axis axis, EdgeInsets buttonPadding) =>
+      ValueListenableBuilder(
+        valueListenable: stows.selectRectangle,
+        builder: (context, rectangle, _) => Flex(
+          direction: axis,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ToolbarIconButton(
+              key: const ValueKey('toolbar-select-free'),
+              tooltip: '자유 올가미',
+              selected: !rectangle,
+              enabled: !widget.readOnly,
+              onPressed: () => stows.selectRectangle.value = false,
+              padding: buttonPadding,
+              child: const Icon(CupertinoIcons.lasso),
+            ),
+            ToolbarIconButton(
+              key: const ValueKey('toolbar-select-rect'),
+              tooltip: '사각형 올가미',
+              selected: rectangle,
+              enabled: !widget.readOnly,
+              onPressed: () => stows.selectRectangle.value = true,
+              padding: buttonPadding,
+              child: const Icon(Icons.crop_square),
+            ),
+          ],
+        ),
+      );
 
   /// One of the five colours always shown in the toolbar.
   Widget _quickColor(int index, Color color, Color? currentColor, bool invert) {
@@ -809,3 +953,28 @@ class _ToolbarState extends State<Toolbar> {
 /// The strip under the toolbar: nothing, or the selection's actions. The pen
 /// options moved to the tool panels.
 enum ToolOptions { hide, select }
+
+/// A size choice in the toolbar: a ring as wide as the size it picks.
+class _SizeCircle extends StatelessWidget {
+  const new({required this.diameter});
+
+  final double diameter;
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: 20,
+    child: Center(
+      child: Container(
+        width: diameter,
+        height: diameter,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: IconTheme.of(context).color ?? ColorScheme.of(context).onSurface,
+            width: 1.5,
+          ),
+        ),
+      ),
+    ),
+  );
+}

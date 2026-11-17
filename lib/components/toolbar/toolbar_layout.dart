@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 /// One button or group in a pen toolbar that the user can show, hide and move.
 @immutable
 class ToolbarItem {
-  const ToolbarItem(this.id, this.label, {this.shownByDefault = true});
+  const new(this.id, this.label, {this.shownByDefault = true});
 
   final String id;
 
@@ -12,11 +12,11 @@ class ToolbarItem {
   final bool shownByDefault;
 }
 
-/// The pen toolbar of PDF and page notes, in StarNote's order: undo, writing
-/// tools, insert tools, colours, widths, then page and screen actions.
+/// The tools of the PDF and page notes' toolbar, its middle part, in StarNote's
+/// order. Undo and redo sit before them and the chosen tool's colours and widths
+/// after them; page and screen actions are function-row shortcuts
+/// (shortcut_layout.dart).
 const pageToolbarItems = <ToolbarItem>[
-  ToolbarItem('undo', '실행 취소'),
-  ToolbarItem('redo', '다시 실행'),
   ToolbarItem('pen', '펜'),
   // The pen panel holds the pencil, as StarNote's does; this button is
   // for people who want it apart.
@@ -26,17 +26,7 @@ const pageToolbarItems = <ToolbarItem>[
   ToolbarItem('select', '올가미'),
   ToolbarItem('photo', '사진'),
   ToolbarItem('text', '글상자'),
-  ToolbarItem('colors', '색'),
-  ToolbarItem('penBox', '펜박스'),
-  ToolbarItem('widths', '굵기'),
-  ToolbarItem('pageMode', '쪽 보기 방식'),
-  ToolbarItem('insertPage', '쪽 추가'),
-  ToolbarItem('pages', '쪽 관리'),
-  ToolbarItem('pageMenu', '쪽 메뉴'),
-  ToolbarItem('finger', '손가락 필기'),
-  ToolbarItem('fullscreen', '전체 화면'),
   ToolbarItem('laser', '레이저 포인터', shownByDefault: false),
-  ToolbarItem('export', '내보내기', shownByDefault: false),
 ];
 
 /// The infinite note toolbar, in the same order of groups except that the
@@ -57,25 +47,34 @@ const infiniteToolbarItems = <ToolbarItem>[
   ToolbarItem('save', '저장'),
 ];
 
-/// The five colours shown in the toolbars without opening the palette. The
-/// first is the pens' default black, so a new pen shows as chosen.
+/// The five colours shown in the toolbars without opening the palette,
+/// StarNote's `shape_color_list_default`. The first is the pens' default
+/// black, so a new pen shows as chosen.
 const toolbarQuickColors = [
   0xff000000,
-  0xffb63a3a,
-  0xff315fa0,
-  0xff237d82,
-  0xffd7a51c,
+  0xffb33333,
+  0xff2b4faf,
+  0xff007355,
+  0xffdaa001,
 ];
 
-/// The highlighter's five colours (drawn see-through), shown in its panel and
-/// in the toolbar while it is in hand. The first is the highlighter's default.
+/// The highlighter's five colours, StarNote's `shape_color_list_mark_pen`
+/// without its transparency (the canvas draws every highlighter stroke with
+/// one transparency), shown in its panel and in the toolbar while it is in
+/// hand. The first is the highlighter's default.
 const highlighterQuickColors = [
-  0xffffeb3b,
-  0xffffa94d,
-  0xff7be07b,
-  0xff8db8f2,
-  0xffc39bf0,
+  0xffffe60f,
+  0xffffa047,
+  0xff60f748,
+  0xffa0c6fe,
+  0xffbe9aff,
 ];
+
+/// The eraser's three toolbar sizes (radius). StarNote's
+/// shape_eraser_size_list_default is 30, 60 and 100 across, in the unit of its
+/// pen widths, which this app's widths share; half of each is the radius here,
+/// capped by the panel slider's 60.
+const eraserSizePresets = <double>[15, 30, 50];
 
 /// A toolbar's items in the user's order with their visibility.
 ///
@@ -84,9 +83,9 @@ const highlighterQuickColors = [
 /// order and visibility, so a later version can add tools.
 @immutable
 class ToolbarLayout {
-  const ToolbarLayout._(this.items, this.shown);
+  const new _(this.items, this.shown);
 
-  factory ToolbarLayout.decode(List<ToolbarItem> registry, List<String> stored) {
+  factory decode(List<ToolbarItem> registry, List<String> stored) {
     final unplaced = {for (final item in registry) item.id: item};
     final items = <ToolbarItem>[];
     final shown = <String>{};
@@ -120,14 +119,16 @@ class ToolbarLayout {
       ToolbarLayout._(items, Set.unmodifiable(value ? {...shown, id} : ({...shown}..remove(id))));
 
   /// Moves an item the way [ReorderableListView.onReorder] reports it.
-  ToolbarLayout moved(int oldIndex, int newIndex) {
+  /// The item at [from] moved so that it ends at [to] (the index after the move, as
+  /// ReorderableListView.onReorderItem reports it).
+  ToolbarLayout moved(int from, int to) {
     final next = [...items];
-    final item = next.removeAt(oldIndex);
-    next.insert(newIndex > oldIndex ? newIndex - 1 : newIndex, item);
+    next.insert(to, next.removeAt(from));
     return ToolbarLayout._(List.unmodifiable(next), shown);
   }
 
   List<String> encode() => [
-    for (final item in items) shown.contains(item.id) ? item.id : '!${item.id}',
+    for (final item in items)
+      if (shown.contains(item.id)) item.id else '!${item.id}',
   ];
 }

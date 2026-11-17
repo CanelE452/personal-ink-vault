@@ -26,7 +26,7 @@ import 'package:saber/data/vault/note_link.dart';
 
 import '../../integration_test/support/windows_mcp_rpc.dart';
 import '../office/annotation_store_test.dart' show annotationOfficeFile;
-import '../office/office_original_preview_test.dart' show officePreviewPdf;
+import '../utils/office_preview.dart' show officePreviewPdf;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

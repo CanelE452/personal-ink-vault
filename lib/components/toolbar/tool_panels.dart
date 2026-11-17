@@ -855,6 +855,31 @@ class _EraserCard extends StatelessWidget {
 
 enum _EraserKind { pixel, stroke, lasso }
 
+/// An eraser mode's picture for the toolbar: the panel card's drawing,
+/// scaled down.
+class EraserModeIcon extends StatelessWidget {
+  const new(this.mode, {super.key, this.size = 24});
+
+  final EraserMode mode;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: size,
+    child: FittedBox(
+      child: SizedBox.square(
+        dimension: 40,
+        child: CustomPaint(
+          painter: _EraserIconPainter(switch (mode) {
+            EraserMode.stroke => _EraserKind.stroke,
+            EraserMode.lasso => _EraserKind.lasso,
+          }, IconTheme.of(context).color ?? ColorScheme.of(context).onSurface),
+        ),
+      ),
+    ),
+  );
+}
+
 /// The eraser cards' pictures, drawn here rather than taken from an icon
 /// font: the Android build ships 209's icon fonts, which keep only the
 /// glyphs used then, so a newer icon would show as some other character.

@@ -15,9 +15,13 @@ import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart' show PdfDocument, PdfImage, PdfImageExt;
-import 'package:saber/components/user_error_text.dart';
 import 'package:saber/components/drive/drive_panel.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
+import 'package:saber/components/toolbar/note_function_row.dart';
+import 'package:saber/components/toolbar/other_settings_panel.dart';
+import 'package:saber/components/toolbar/shortcut_bar_editor.dart';
+import 'package:saber/components/toolbar/shortcut_layout.dart';
+import 'package:saber/components/user_error_text.dart';
 import 'package:saber/data/app_external_screen.dart';
 import 'package:saber/data/drive/drive_connection.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -65,6 +69,7 @@ import 'package:saber/data/vault/workspace_database.dart';
 import 'package:saber/data/vault/workspace_markdown_templates.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/pages/editor/editor.dart';
+import 'package:saber/pages/editor/editor_chrome.dart';
 import 'package:saber/pages/office/office_workspace.dart';
 import 'package:saber/pages/workspace/block_page_editor.dart';
 import 'package:saber/pages/workspace/block_page_history_sheet.dart';
@@ -78,6 +83,7 @@ import 'package:saber/pages/workspace/library_home.dart';
 import 'package:saber/pages/workspace/linked_database_block.dart';
 import 'package:saber/pages/workspace/markdown_editor.dart';
 import 'package:saber/pages/workspace/mcp_panel.dart';
+import 'package:saber/pages/workspace/office_editor_hosts.dart';
 import 'package:saber/pages/workspace/page_discussion_sheet.dart';
 import 'package:saber/pages/workspace/pdf_text_search_dialog.dart';
 import 'package:saber/pages/workspace/portable_export_capture.dart';
@@ -111,22 +117,6 @@ Uint8List _encodeObsidianCanvasZip(PortableExportBundle bundle) {
 Uint8List _encodeObsidianVaultZip(
   ({Map<String, Uint8List> files, List<String> folders}) data,
 ) => encodeObsidianVaultZip(files: data.files, folders: data.folders);
-
-class _WorkspaceToolbarAction {
-  const new(this.label, this.icon, this.onPressed, {this.key});
-
-  final String label;
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final Key? key;
-
-  IconButton button() => IconButton(
-    key: key,
-    tooltip: label,
-    icon: Icon(icon),
-    onPressed: onPressed,
-  );
-}
 
 class _DocumentNameDialog extends StatefulWidget {
   final String title;
@@ -165,26 +155,6 @@ class _DocumentNameDialogState extends State<_DocumentNameDialog> {
 }
 
 enum _OfficeImportMode { pdf, office }
-
-/// An Office·한글 document's editor driven by an OfficeWorkspace the app does not draw
-/// (Android): the screen the user is on stays while the editor opens, waits behind it and closes.
-class _EditorHost {
-  new(this.note);
-
-  VaultNote note;
-  final key = GlobalKey<OfficeWorkspaceState>();
-  OfficeOpenRequest? request;
-
-  /// From an edit request until its editor starts, it is declined, or it fails.
-  var launching = false;
-
-  /// Preparing the editor or saving its result as a version.
-  var busy = false;
-  Timer? launchTimeout;
-}
-
-/// The open note's two views in the note bar's switch.
-enum _NoteView { note, markdown }
 
 class StudyWorkspace extends StatefulWidget {
   static final pendingDocumentImport = SharedDocumentInbox();
@@ -226,6 +196,9 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   McpAccessController? _mcp;
   NoteRepository? _mcpRepository;
   final _scaffold = GlobalKey<ScaffoldState>();
+  // The open note's editor gives the function row its shortcuts and the 기타 설정 panel its sections.
+  late final _editorChrome = EditorChromeController()
+    ..openOtherSettings = () => _scaffold.currentState?.openEndDrawer();
   _LibrarySelectionScope? _librarySelection;
   var _editor = GlobalKey<EditorState>();
   var _infinite = GlobalKey<InfiniteCanvasState>();
@@ -263,8 +236,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   StreamSubscription<({String sessionId, String status})>? _editorFinishedEvents;
   // Android: each Office·한글 document whose editor is open or opening has a host the app does
   // not draw, so opening, leaving and closing the editor never change the screen behind it.
-  final _editorHosts = <String, _EditorHost>{};
-  NoteRepository? _editorHostRepository;
+  late final _editorHosts = OfficeEditorHosts(
+    onDeclined: _hostDeclined,
+    onError: _hostError,
+    onFinished: _hostFinished,
+  );
   // Work that arrived while the workspace was busy; it runs once the current work is done.
   final _whenIdle = <Future<void> Function()>[];
   // 닫고 열기 waits here for how the editor it asked to close ended (null: left for the tabs).
@@ -311,6 +287,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       unawaited(windowManager.setPreventClose(true));
     }
     StudyWorkspace.pendingDocumentImport.addListener(_sharedDocument);
+    stows.noteTabBarHidden.addListener(_tabBarHiddenChanged);
+    _editorHosts.addListener(_editorHostsChanged);
     _editorFinishedEvents = OfficeEditorEvents.instance.editorFinished.listen(
       _onLateEditorResult,
     );
@@ -446,7 +424,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           when !identical(c?.activeSession, pending.session)) {
         _officeOpenRequest = null;
       }
-      _settleEditorHosts(c);
+      _editorHosts.forgetOtherVaults(c?.repository);
       if (_automation != null &&
           !identical(_automationRepository, c?.repository)) {
         _automationRepository = c?.repository;
@@ -1474,7 +1452,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         .where((note) => note.id == noteId)
         .firstOrNull;
     if (note == null || !mounted || !identical(c, controller)) return false;
-    _requestHost(c, note, OfficeOpenRequest(OfficeOpenAction.close));
+    _editorHosts.request(
+      c.repository,
+      note,
+      OfficeOpenRequest(OfficeOpenAction.close),
+    );
     return true;
   }
 
@@ -1491,9 +1473,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   /// Opens [note]'s editor, or brings it back, over the current screen, which stays as it is.
   /// The document keeps a tab (marked 편집 중) without becoming the open document.
   Future<void> _openInEditor(WorkspaceController c, VaultNote note) async {
-    // One editor opening at a time: two of one kind cannot be told apart by the engine.
-    if (_editorHosts.values.any((host) => host.launching)) return;
-    if (_editorHosts[note.id]?.busy ?? false) return;
+    if (_editorHosts.launching || _editorHosts.isBusy(note.id)) return;
     final blocking = await _blockingEditor(c, note, OfficeOpenAction.edit);
     if (!mounted || !identical(c, controller)) return;
     if (blocking != null) {
@@ -1501,109 +1481,43 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     }
     await c.keepDocumentTab(note);
     if (!mounted || !identical(c, controller)) return;
-    _requestHost(c, note, OfficeOpenRequest(OfficeOpenAction.edit));
+    _editorHosts.request(
+      c.repository,
+      note,
+      OfficeOpenRequest(OfficeOpenAction.edit),
+    );
   }
 
-  void _requestHost(
-    WorkspaceController c,
-    VaultNote note,
-    OfficeOpenRequest request,
-  ) {
-    if (!identical(_editorHostRepository, c.repository)) {
-      _dropEditorHosts();
-      _editorHostRepository = c.repository;
-    }
-    final host = _editorHosts.putIfAbsent(note.id, () => _EditorHost(note));
-    host.launchTimeout?.cancel();
-    host.launchTimeout = null;
-    setState(() {
-      host.note = note;
-      host.request = request;
-      host.launching = request.action == OfficeOpenAction.edit;
-    });
-    if (host.launching) {
-      // A host that never reports back must not keep every other document from opening.
-      host.launchTimeout = Timer(
-        const Duration(seconds: 30),
-        () => _hostSettled(host),
-      );
-    }
-  }
-
-  void _dropEditorHosts() {
-    for (final host in _editorHosts.values) {
-      host.launchTimeout?.cancel();
-    }
-    _editorHosts.clear();
-  }
-
-  Widget _editorHostView(WorkspaceController c, _EditorHost host) =>
-      OfficeWorkspace(
-        key: host.key,
-        hosted: true,
-        showBackButton: false,
-        repository: c.repository,
-        note: host.note,
-        engine: widget.officeEngine,
-        previewEngine: widget.officePreviewEngine,
-        openRequest: host.request,
-        onOpenRequestHandled: (request) {
-          if (identical(host.request, request)) host.request = null;
-        },
-        openEdits: c.officeOpenEdits,
-        onEditorStarted: () => _hostSettled(host),
-        onEditDeclined: () => unawaited(_hostDeclined(c, host)),
-        onHostError: (message) => _hostError(c, host, message),
-        onEditorFinished: (outcome) => _hostFinished(c, host, outcome),
-        onBusyChanged: (value) {
-          if (mounted && host.busy != value) setState(() => host.busy = value);
-        },
-        onBack: () {},
-      );
-
-  void _hostSettled(_EditorHost host) {
-    host.launchTimeout?.cancel();
-    host.launchTimeout = null;
-    if (mounted && host.launching) setState(() => host.launching = false);
+  void _editorHostsChanged() {
+    if (mounted) setState(() {});
   }
 
   /// No editor could open (no engine, a format this device cannot edit, two versions to choose
   /// from): the Office screen opens instead, as before.
-  Future<void> _hostDeclined(WorkspaceController c, _EditorHost host) async {
-    _removeHost(host);
-    if (!mounted || !identical(c, controller)) return;
-    await _runWhenIdle(() => _open(host.note, officeScreen: true));
+  void _hostDeclined(VaultNote note) {
+    if (!mounted) return;
+    unawaited(_runWhenIdle(() => _open(note, officeScreen: true)));
   }
 
-  void _hostError(WorkspaceController c, _EditorHost host, String message) {
-    _hostSettled(host);
+  void _hostError(VaultNote note, String message) {
     if (!mounted) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(content: Text(message)),
     );
-    if (c.officeOpenEdits.forNote(host.note.id) == null) _removeHost(host);
   }
 
   /// The host's editor closed. 닫고 열기 takes the outcome; otherwise a save, 저장 안 함 or
   /// nothing changed closes the document's tab, unless the user is looking at that document
   /// (기록·도구). An error keeps the tab: tapping it tries again.
-  void _hostFinished(
-    WorkspaceController c,
-    _EditorHost host,
-    OfficeEditorOutcome outcome,
-  ) {
-    final noteId = host.note.id;
-    _removeHost(host);
+  void _hostFinished(VaultNote note, OfficeEditorOutcome outcome) {
+    final noteId = note.id;
     final waiting = _closeWaits.remove(noteId);
     if (waiting != null) {
       if (!waiting.isCompleted) waiting.complete(outcome);
       return;
     }
-    if (outcome == OfficeEditorOutcome.failed ||
-        !mounted ||
-        !identical(c, controller)) {
-      return;
-    }
+    final c = controller;
+    if (outcome == OfficeEditorOutcome.failed || !mounted || c == null) return;
     unawaited(
       _runWhenIdle(() async {
         if (!identical(c, controller) ||
@@ -1614,21 +1528,6 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         await c.closeDocumentTab(noteId);
       }),
     );
-  }
-
-  void _removeHost(_EditorHost host) {
-    host.launchTimeout?.cancel();
-    if (!mounted || !identical(_editorHosts[host.note.id], host)) return;
-    setState(() => _editorHosts.remove(host.note.id));
-  }
-
-  /// A vault switch drops every host. Otherwise a host leaves only through its own report (its
-  /// editor finished, no editor could open, or an error): only it knows when its work is done.
-  void _settleEditorHosts(WorkspaceController? c) {
-    if (_editorHosts.isEmpty) return;
-    if (c == null || !identical(_editorHostRepository, c.repository)) {
-      _dropEditorHosts();
-    }
   }
 
   /// An editor finished while no call waited for it (after an app restart): its result is in the
@@ -1645,6 +1544,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   Future<void> _back() async {
     if (_scaffold.currentState?.isDrawerOpen ?? false) {
       _scaffold.currentState?.closeDrawer();
+      return;
+    }
+    // The 기타 설정 panel: the PopScope keeps the system back from closing it, so it closes here.
+    if (_scaffold.currentState?.isEndDrawerOpen ?? false) {
+      _scaffold.currentState?.closeEndDrawer();
       return;
     }
     final session = controller?.activeSession;
@@ -1942,44 +1846,97 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     _scaffold.currentState?.closeDrawer();
   }
 
-  static const _noteBarHeight = 44.0;
+  static const _tabRowHeight = 40.0;
 
-  /// The open note's single top row: back, the document tabs, the note's view switch and its compact actions
-  /// (the rest are in "더 많은 작업"). Full screen hides it, together with the editor's own bars. A [compact]
-  /// (narrow) row switches views with one button.
+  /// The open note's two rows above its tools, as StarNote's: the tab row holds only the tabs (the user can hide
+  /// it), and the function row under it holds back, the shortcut bar and ⋯. Full screen hides both, together with
+  /// the editor's own bars. [sideBySide] (a wide desktop window) shows the note and its Markdown together.
   PreferredSizeWidget? _noteBar(
     WorkspaceController c,
     NoteSession session, {
-    required bool compact,
+    required bool sideBySide,
   }) {
     if (DynamicMaterialApp.isFullscreen) return null;
-    final kind = session.note.documentKind;
-    return AppBar(
-      toolbarHeight: _noteBarHeight,
-      titleSpacing: 0,
-      leading: IconButton(
-        key: const ValueKey('workspace-back-to-library'),
-        tooltip: '문서 목록으로',
-        onPressed: busy ? null : () => unawaited(_back()),
-        icon: const Icon(Icons.arrow_back),
+    final tabsShown = !stows.noteTabBarHidden.value;
+    return PreferredSize(
+      preferredSize: Size.fromHeight(
+        (tabsShown ? _tabRowHeight : 0) + NoteFunctionRow.height,
       ),
-      // The tabs get the width the actions leave, so the history arrows and the open-tabs menu come only when
-      // that width holds them.
-      title: LayoutBuilder(
-        builder: (context, constraints) => _documentTabs(
-          c,
-          history: constraints.maxWidth >= 260,
-          switcher: constraints.maxWidth >= 120,
-          fallbackTitle: session.note.title,
+      child: Material(
+        color: ColorScheme.of(context).surface,
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              if (tabsShown)
+                SizedBox(
+                  key: const ValueKey('note-tab-row'),
+                  height: _tabRowHeight,
+                  child: _documentTabs(c, fallbackTitle: session.note.title),
+                ),
+              _functionRow(c, session, sideBySide: sideBySide),
+            ],
+          ),
         ),
       ),
-      actions: [
-        if (kind != VaultDocumentKind.markdown)
-          _noteViewToggle(kind, compact: compact),
-        ..._toolbarActions(c, session, compact: true),
-      ],
     );
   }
+
+  void _tabBarHiddenChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// StarNote's function row: back, the shortcut bar with the workspace's shortcuts and the open editor's (placed
+  /// as the user arranged them), the editor's 문서 개요 and 기타 설정, and ⋯ 더 많은 기능.
+  Widget _functionRow(
+    WorkspaceController c,
+    NoteSession session, {
+    required bool sideBySide,
+  }) => ListenableBuilder(
+    listenable: Listenable.merge([
+      _editorChrome,
+      stows.noteShortcutLayout,
+      stows.editorFingerDrawing,
+    ]),
+    builder: (context, _) {
+      // The editor's shortcuts only while it is on screen, not under the Markdown view.
+      final editorShown = !markdownTab || sideBySide;
+      return NoteFunctionRow(
+        back: IconButton(
+          key: const ValueKey('workspace-back-to-library'),
+          tooltip: '문서 목록으로',
+          onPressed: busy ? null : () => unawaited(_back()),
+          icon: const Icon(Icons.arrow_back),
+        ),
+        leading: [
+          if (stows.noteTabBarHidden.value)
+            IconButton(
+              key: const ValueKey('note-tab-bar-show'),
+              tooltip: '탭 줄 보이기',
+              onPressed: () => stows.noteTabBarHidden.value = false,
+              icon: const Icon(Icons.expand_more),
+            ),
+        ],
+        shortcuts: [
+          ..._workspaceShortcuts(c, session, sideBySide: sideBySide),
+          if (editorShown) ..._editorChrome.shortcuts,
+        ],
+        fixed: editorShown ? _editorChrome.fixed : const [],
+        layout: ShortcutLayout.decode(
+          noteShortcutItems,
+          stows.noteShortcutLayout.value,
+          legacyToolbar: stows.pageToolbarLayout.value,
+        ),
+        onCustomize: () => unawaited(
+          showShortcutBarEditor(
+            context,
+            layout: stows.noteShortcutLayout,
+            legacyToolbar: stows.pageToolbarLayout.value,
+          ),
+        ),
+      );
+    },
+  );
 
   /// What stands before the path above the documents (the library has no top
   /// row): on a tablet, the button that brings the hidden side bar back; on a
@@ -2024,53 +1981,27 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     ),
   );
 
-  /// Switches the open note between its own view and its Markdown, as the bottom bar used to.
-  Widget _noteViewToggle(VaultDocumentKind kind, {required bool compact}) {
+  /// Switches the open note between its own view and its Markdown, as the bottom bar used to; the button shows
+  /// the other view.
+  NoteShortcut _viewToggleShortcut(VaultDocumentKind kind) {
     final (label, icon) = switch (kind) {
       VaultDocumentKind.page => ('페이지', Icons.view_agenda_outlined),
       VaultDocumentKind.database => ('데이터베이스', Icons.draw_outlined),
       VaultDocumentKind.canvas => ('캔버스', Icons.draw_outlined),
       _ => ('PDF·필기', Icons.draw_outlined),
     };
-    if (compact) {
-      return IconButton(
-        key: const ValueKey('note-view-toggle'),
-        tooltip: markdownTab ? label : 'Markdown',
-        icon: Icon(markdownTab ? icon : Icons.notes),
-        onPressed: () => setState(() => markdownTab = !markdownTab),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: SegmentedButton<_NoteView>(
-        key: const ValueKey('note-view-toggle'),
-        showSelectedIcon: false,
-        style: const ButtonStyle(
-          visualDensity: VisualDensity.compact,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        segments: [
-          ButtonSegment(value: _NoteView.note, icon: Icon(icon), tooltip: label),
-          const ButtonSegment(
-            value: _NoteView.markdown,
-            icon: Icon(Icons.notes),
-            tooltip: 'Markdown',
-          ),
-        ],
-        selected: {if (markdownTab) _NoteView.markdown else _NoteView.note},
-        onSelectionChanged: (selection) => setState(
-          () => markdownTab = selection.single == _NoteView.markdown,
-        ),
-      ),
+    return NoteShortcut(
+      id: 'viewToggle',
+      label: markdownTab ? label : 'Markdown',
+      icon: Icon(markdownTab ? icon : Icons.notes),
+      buttonKey: const ValueKey('note-view-toggle'),
+      onPressed: () => setState(() => markdownTab = !markdownTab),
     );
   }
 
-  Widget _documentTabs(
-    WorkspaceController c, {
-    bool history = true,
-    bool switcher = true,
-    String? fallbackTitle,
-  }) {
+  /// The tab row (StarNote's NoteTabLayout): the open documents' tabs and the open-tabs menu, nothing else. A
+  /// long press on a tab offers 닫기 and 다른 탭 닫기.
+  Widget _documentTabs(WorkspaceController c, {String? fallbackTitle}) {
     final repository = c.repository;
     final tabs = c.navigation.tabs;
     final enabled = !busy && !c.externalBusy;
@@ -2112,33 +2043,65 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       );
     }
 
-    return SizedBox(
-      height: 44,
-      child: Row(
-        children: [
-          if (history) ...[
-            IconButton(
-              tooltip: '이전 위치',
-              icon: const Icon(Icons.arrow_back, size: 20),
-              onPressed: !enabled || c.navigation.peekBack == null
-                  ? null
-                  : () => _run(() => _history(forward: false)),
+    // A document whose editor is open asks that editor first.
+    void close(String id) => unawaited(
+      _run(
+        () => c.officeOpenEdits.forNote(id) != null
+            ? _requestEditorClose(c, id)
+            : _changeDocumentTab(c, () => c.closeDocumentTab(id)),
+      ),
+    );
+
+    // StarNote's long-press menu, under the tab.
+    void tabMenu(BuildContext tab, String id) {
+      final box = tab.findRenderObject() as RenderBox?;
+      final overlay = Overlay.of(tab).context.findRenderObject() as RenderBox?;
+      if (box == null || overlay == null) return;
+      unawaited(
+        showMenu<void>(
+          context: tab,
+          position: RelativeRect.fromRect(
+            Rect.fromPoints(
+              box.localToGlobal(
+                box.size.bottomLeft(Offset.zero),
+                ancestor: overlay,
+              ),
+              box.localToGlobal(
+                box.size.bottomRight(Offset.zero),
+                ancestor: overlay,
+              ),
             ),
-            IconButton(
-              tooltip: '다음 위치',
-              icon: const Icon(Icons.arrow_forward, size: 20),
-              onPressed: !enabled || c.navigation.peekForward == null
-                  ? null
-                  : () => _run(() => _history(forward: true)),
+            Offset.zero & overlay.size,
+          ),
+          items: [
+            PopupMenuItem<void>(
+              key: const ValueKey('document-tab-menu-close'),
+              onTap: () => close(id),
+              child: const Text('닫기'),
+            ),
+            PopupMenuItem<void>(
+              key: const ValueKey('document-tab-menu-close-others'),
+              enabled: tabs.length > 1,
+              onTap: () => unawaited(_run(() => _closeOtherTabs(c, keep: id))),
+              child: const Text('다른 탭 닫기'),
             ),
           ],
+        ),
+      );
+    }
+
+    return Row(
+        children: [
           if (tabs.isEmpty && fallbackTitle != null)
             Expanded(
-              child: Text(
-                fallbackTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  fallbackTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
             )
           else
@@ -2172,22 +2135,29 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                                   ),
                                 ),
                               ),
-                            InkWell(
-                              key: ValueKey('document-tab-${tab.noteId}'),
-                              onTap: enabled ? () => select(tab.noteId) : null,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
-                                ),
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 160,
+                            Builder(
+                              builder: (tabContext) => InkWell(
+                                key: ValueKey('document-tab-${tab.noteId}'),
+                                onTap: enabled
+                                    ? () => select(tab.noteId)
+                                    : null,
+                                onLongPress: enabled
+                                    ? () => tabMenu(tabContext, tab.noteId)
+                                    : null,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
                                   ),
-                                  child: Text(
-                                    tab.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 160,
+                                    ),
+                                    child: Text(
+                                      tab.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2196,19 +2166,9 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                               tooltip: '${tab.title} 탭 닫기',
                               visualDensity: VisualDensity.compact,
                               icon: const Icon(Icons.close, size: 16),
-                              onPressed: !enabled
-                                  ? null
-                                  : () => _run(
-                                      // A document whose editor is open asks that editor first.
-                                      () =>
-                                          c.officeOpenEdits.forNote(tab.noteId) !=
-                                              null
-                                          ? _requestEditorClose(c, tab.noteId)
-                                          : _changeDocumentTab(
-                                              c,
-                                              () => c.closeDocumentTab(tab.noteId),
-                                            ),
-                                    ),
+                              onPressed: enabled
+                                  ? () => close(tab.noteId)
+                                  : null,
                             ),
                           ],
                         ),
@@ -2218,15 +2178,55 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               ),
             ),
           ),
-          if (switcher)
-            WorkspaceTabSwitcher(
-              tabs: tabs,
-              activeNoteId: c.activeSession?.note.id,
-              onSelected: enabled ? select : null,
-            ),
+          WorkspaceTabSwitcher(
+            tabs: tabs,
+            activeNoteId: c.activeSession?.note.id,
+            onSelected: enabled ? select : null,
+            onHideTabBar: () => stows.noteTabBarHidden.value = true,
+            onCloseOthers: () {
+              final active = c.activeSession?.note.id;
+              if (active != null) {
+                unawaited(_run(() => _closeOtherTabs(c, keep: active)));
+              }
+            },
+          ),
         ],
-      ),
     );
+  }
+
+  /// 다른 탭 닫기: opens [keep] if it is not the open document, then closes every other tab. A tab whose Office·한글
+  /// editor is open stays, since closing it needs that editor's answer about saving.
+  Future<void> _closeOtherTabs(
+    WorkspaceController c, {
+    required String keep,
+  }) async {
+    final repository = c.repository;
+    bool current() =>
+        mounted &&
+        identical(controller, c) &&
+        identical(c.repository, repository);
+    if (c.activeSession?.note.id != keep) {
+      await _changeDocumentTab(c, () => c.activateDocumentTab(keep));
+      if (!current() || c.activeSession?.note.id != keep) return;
+    }
+    // Closing a tab flushes the vault, which refuses unsaved ink: save the open note first, as × does.
+    await _save();
+    if (!current()) return;
+    var keptEditors = false;
+    for (final tab in [...c.navigation.tabs]) {
+      if (tab.noteId == keep) continue;
+      if (c.officeOpenEdits.forNote(tab.noteId) != null) {
+        keptEditors = true;
+        continue;
+      }
+      await c.closeDocumentTab(tab.noteId);
+      if (!current()) return;
+    }
+    if (keptEditors && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('편집기가 열린 탭은 남겼습니다')));
+    }
   }
 
   Future<void> _goFolder(String? id) async {
@@ -5028,14 +5028,18 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     },
   );
 
-  List<Widget> _toolbarActions(
+  /// The workspace's shortcuts for the open document; the function row places them by id (see
+  /// [noteShortcutItems]). Ones that do not apply to this document are left out.
+  List<NoteShortcut> _workspaceShortcuts(
     WorkspaceController c,
-    NoteSession? session, {
-    required bool compact,
+    NoteSession session, {
+    required bool sideBySide,
   }) {
     final repository = c.repository;
     final mcp = _mcp;
-    final kind = session?.note.documentKind;
+    final kind = session.note.documentKind;
+    final idle = !busy && !c.externalBusy;
+    final pdfCanvas = kind == VaultDocumentKind.pdf && _pdfCanvasVisible();
     final canvasExport = kind == VaultDocumentKind.canvas;
     final formats = <(PortableExportFormat, String)>[
       if (kind == VaultDocumentKind.page ||
@@ -5048,61 +5052,130 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       ],
     ];
     final documentExport = canvasExport || formats.isNotEmpty;
-    final vaultExport = session != null && c.native != null;
-    final showExport = documentExport || (vaultExport && !compact);
     bool current() =>
         mounted &&
         identical(controller, c) &&
         identical(c.repository, repository) &&
         identical(c.activeSession, session);
+    // From 더 많은 기능 the document may have changed while the menu was open.
+    VoidCallback guarded(VoidCallback action) => () {
+      if (current()) action();
+    };
+    void run(Future<void> Function() operation) {
+      if (current()) unawaited(_run(operation));
+    }
+
     void export(Future<void> Function() operation) {
       if (current() && !busy && !c.externalBusy) unawaited(_run(operation));
     }
 
-    PopupMenuItem<void> vaultExportItem() => PopupMenuItem<void>(
-      key: const ValueKey('workspace-vault-export'),
-      enabled: !busy && !c.externalBusy,
-      onTap: () => export(_exportObsidianVault),
-      child: const Text('Obsidian 보관함 ZIP'),
-    );
-
-    final quickSwitch = _WorkspaceToolbarAction(
-      '빠른 문서 전환',
-      Icons.search,
-      busy || c.externalBusy ? null : _quickSwitch,
-      key: const ValueKey('workspace-quick-switch'),
-    );
-    final navigationActions = [
-      if (!compact || session != null) quickSwitch,
+    return [
+      NoteShortcut(
+        id: 'prev',
+        label: '이전 위치',
+        icon: const Icon(Icons.arrow_back_ios_new),
+        onPressed: idle && c.navigation.peekBack != null
+            ? () => run(() => _history(forward: false))
+            : null,
+      ),
+      NoteShortcut(
+        id: 'next',
+        label: '다음 위치',
+        icon: const Icon(Icons.arrow_forward_ios),
+        onPressed: idle && c.navigation.peekForward != null
+            ? () => run(() => _history(forward: true))
+            : null,
+      ),
+      NoteShortcut(
+        id: 'save',
+        label: '기기에 저장',
+        icon: const Icon(Icons.save_outlined),
+        onPressed: () => run(_save),
+      ),
+      if (pdfCanvas)
+        NoteShortcut(
+          id: 'pdfSearch',
+          label: 'PDF 본문 검색',
+          icon: const Icon(Icons.search),
+          onPressed: busy || !c.canSearchPdfText(session)
+              ? null
+              : guarded(() => unawaited(_showPdfTextSearch(c, session))),
+        ),
+      if (documentExport)
+        NoteShortcut(
+          id: 'documentExport',
+          label: '문서 내보내기',
+          icon: const Icon(Icons.file_download_outlined),
+          buttonKey: const ValueKey('portable-export-menu'),
+          // A menu shortcut is on while its callback is set.
+          onPressed: idle ? () {} : null,
+          menuBuilder: (_) => [
+            if (canvasExport)
+              PopupMenuItem<void>(
+                onTap: () => export(_exportObsidianCanvas),
+                child: const Text('Obsidian Canvas ZIP'),
+              ),
+            for (final (format, label) in formats)
+              PopupMenuItem<void>(
+                onTap: () => export(() => _exportDocument(format)),
+                child: Text(label),
+              ),
+          ],
+        ),
+      if (kind != VaultDocumentKind.markdown && !sideBySide)
+        _viewToggleShortcut(kind),
+      if (pdfCanvas && _keepsOriginal(c, session))
+        NoteShortcut(
+          id: 'pdfRemake',
+          label: '새 엔진으로 PDF 다시 만들기',
+          icon: const Icon(Icons.autorenew),
+          buttonKey: const ValueKey('pdf-remake-from-original'),
+          onPressed: idle
+              ? () => run(() => _remakePdfFromOriginal(c, session))
+              : null,
+        ),
+      NoteShortcut(
+        id: 'quickSwitch',
+        label: '빠른 문서 전환',
+        icon: const Icon(Icons.manage_search),
+        buttonKey: const ValueKey('workspace-quick-switch'),
+        onPressed: idle ? guarded(_quickSwitch) : null,
+      ),
       if (repository.formatVersion >= 2)
-        _WorkspaceToolbarAction(
-          '북마크',
-          Icons.format_list_bulleted,
-          busy || c.externalBusy ? null : _bookmarks,
-          key: const ValueKey('workspace-bookmarks'),
+        NoteShortcut(
+          id: 'bookmarks',
+          label: '북마크',
+          icon: const Icon(Icons.format_list_bulleted),
+          buttonKey: const ValueKey('workspace-bookmarks'),
+          onPressed: idle ? guarded(() => unawaited(_bookmarks())) : null,
         ),
       if (mcp != null)
-        _WorkspaceToolbarAction(
-          '다른 AI 연결 · MCP',
-          Icons.smart_toy_outlined,
-          () => showDialog<void>(
-            context: context,
-            builder: (_) => McpPanel(access: mcp),
+        NoteShortcut(
+          id: 'mcp',
+          label: '다른 AI 연결 · MCP',
+          icon: const Icon(Icons.smart_toy_outlined),
+          onPressed: guarded(
+            () => unawaited(
+              showDialog<void>(
+                context: context,
+                builder: (_) => McpPanel(access: mcp),
+              ),
+            ),
           ),
         ),
       if (c.native != null)
-        _WorkspaceToolbarAction(
-          '문서 연결 · 태그 · 그래프',
-          Icons.hub_outlined,
-          busy ? null : _knowledge,
+        NoteShortcut(
+          id: 'knowledge',
+          label: '문서 연결 · 태그 · 그래프',
+          icon: const Icon(Icons.hub_outlined),
+          onPressed: busy ? null : guarded(() => unawaited(_knowledge())),
         ),
-    ];
-    final linkActions = [
-      if (session != null && !c.pdfPeerPreview)
-        _WorkspaceToolbarAction(
-          '현재 페이지 링크 복사',
-          Icons.link,
-          () => _run(() async {
+      if (!c.pdfPeerPreview)
+        NoteShortcut(
+          id: 'copyPageLink',
+          label: '현재 페이지 링크 복사',
+          icon: const Icon(Icons.link),
+          onPressed: () => run(() async {
             if (session.note.documentKind == VaultDocumentKind.office) {
               final repository = c.repository;
               final office = _office.currentState;
@@ -5129,93 +5202,23 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
             );
           }),
         ),
-      _WorkspaceToolbarAction(
-        '노트 링크 열기',
-        Icons.open_in_new,
-        () => _run(() async {
+      NoteShortcut(
+        id: 'openNoteLink',
+        label: '노트 링크 열기',
+        icon: const Icon(Icons.open_in_new),
+        onPressed: () => run(() async {
           final link = await _input('inkvault 링크 열기', '');
           if (link != null) await _openLink(link);
         }),
       ),
-    ];
-
-    return [
-      if (compact && session == null) quickSwitch.button(),
-      if (!compact)
-        for (final action in navigationActions) action.button(),
-      if (session != null) ...[
-        if (showExport)
-          PopupMenuButton<void>(
-            key: const ValueKey('portable-export-menu'),
-            tooltip: documentExport ? '문서 내보내기' : '보관함 내보내기',
-            enabled: !busy && !c.externalBusy,
-            icon: const Icon(Icons.file_download_outlined),
-            itemBuilder: (_) => [
-              if (canvasExport)
-                PopupMenuItem<void>(
-                  onTap: () => export(_exportObsidianCanvas),
-                  child: const Text('Obsidian Canvas ZIP'),
-                ),
-              for (final (format, label) in formats)
-                PopupMenuItem<void>(
-                  onTap: () => export(() => _exportDocument(format)),
-                  child: Text(label),
-                ),
-              if (vaultExport) ...[
-                if (documentExport) const PopupMenuDivider(),
-                vaultExportItem(),
-              ],
-            ],
-          ),
-        IconButton(
-          tooltip: '기기에 저장',
-          onPressed: () => _run(_save),
-          icon: const Icon(Icons.save_outlined),
+      if (c.native != null)
+        NoteShortcut(
+          id: 'vaultExport',
+          label: 'Obsidian 보관함 ZIP',
+          icon: const Icon(Icons.archive_outlined),
+          buttonKey: const ValueKey('workspace-vault-export'),
+          onPressed: idle ? () => export(_exportObsidianVault) : null,
         ),
-        if (session.note.documentKind == VaultDocumentKind.pdf &&
-            _pdfCanvasVisible())
-          IconButton(
-            tooltip: 'PDF 본문 검색',
-            onPressed: busy || !c.canSearchPdfText(session)
-                ? null
-                : () => unawaited(_showPdfTextSearch(c, session)),
-            icon: const Icon(Icons.search),
-          ),
-        if (session.note.documentKind == VaultDocumentKind.pdf &&
-            _pdfCanvasVisible() &&
-            _keepsOriginal(c, session))
-          IconButton(
-            key: const ValueKey('pdf-remake-from-original'),
-            tooltip: '새 엔진으로 PDF 다시 만들기',
-            onPressed: busy || c.externalBusy
-                ? null
-                : () => _run(() => _remakePdfFromOriginal(c, session)),
-            icon: const Icon(Icons.autorenew),
-          ),
-      ],
-      if (compact)
-        PopupMenuButton<void>(
-          key: const ValueKey('workspace-more-actions'),
-          tooltip: '더 많은 작업',
-          icon: const Icon(Icons.more_vert),
-          itemBuilder: (_) => [
-            if (vaultExport && !showExport) ...[
-              vaultExportItem(),
-              const PopupMenuDivider(),
-            ],
-            for (final action in [...navigationActions, ...linkActions])
-              PopupMenuItem<void>(
-                key: action.key,
-                enabled: action.onPressed != null,
-                onTap: () {
-                  if (current()) action.onPressed?.call();
-                },
-                child: Text(action.label),
-              ),
-          ],
-        )
-      else
-        for (final action in linkActions) action.button(),
     ];
   }
 
@@ -5234,28 +5237,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                 ),
         ),
       );
-    final session = c.activeSession;
-    final pdfNote = session?.note.documentKind == VaultDocumentKind.pdf;
-    final extraPdfAction = c.native != null && pdfNote;
-    final keptOriginalAction = pdfNote && _keepsOriginal(c, session!);
-    return LayoutBuilder(
-      builder: (context, constraints) => _buildWorkspace(
-        context,
-        c,
-        compactToolbar:
-            constraints.maxWidth <
-            540 +
-                (extraPdfAction ? kMinInteractiveDimension : 0) +
-                (keptOriginalAction ? kMinInteractiveDimension : 0),
-      ),
-    );
+    return _buildWorkspace(context, c);
   }
 
-  Widget _buildWorkspace(
-    BuildContext context,
-    WorkspaceController c, {
-    required bool compactToolbar,
-  }) {
+  Widget _buildWorkspace(BuildContext context, WorkspaceController c) {
     final session = c.activeSession;
     final selectingLibrary = _librarySelection == _librarySelectionScope(c);
     final pdfPeerPreview = c.pdfPeerPreview;
@@ -5266,8 +5251,6 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     // stay usable; phones and narrow windows keep the drawer.
     final libraryPanel = session == null && width >= 720;
     final showNoteRail = wide && desktop && session != null;
-    // An open note on a tablet, phone or narrow window keeps one slim row above its tools (see _noteBar).
-    final noteChrome = session != null && !(desktop && wide);
     Widget body;
     if (session == null) {
       _dataview = null;
@@ -5625,6 +5608,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           ? OfficeWorkspace(
               key: _office,
               showBackButton: false,
+              editorChrome: _editorChrome,
               repository: c.repository,
               note: session.note,
               engine: widget.officeEngine,
@@ -5752,7 +5736,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               path: '/.working/${session.note.id}/new/main',
               customTitle: session.note.title,
               showDocumentHeader: false,
-              pageActionsInToolbar: noteChrome,
+              chrome: _editorChrome,
               pdfPath: pdfPeerPreview
                   ? c.pdfPeerPreviewPath
                   : c.pendingPdfPath ?? _pendingPdf,
@@ -5920,27 +5904,25 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         key: _scaffold,
         // The library has no top row, like StarNote's: its side bar and the
         // header above the documents hold its buttons.
-        appBar: noteChrome
-            ? _noteBar(c, session, compact: compactToolbar)
-            : session == null
+        // An open document: the tab row and the function row, on every screen.
+        appBar: session == null
             ? null
-            // An open note on a wide desktop window.
-            : AppBar(
-          leading: IconButton(
-            key: selectingLibrary
-                ? const ValueKey('workspace-exit-library-selection')
-                : const ValueKey('workspace-back-to-library'),
-            tooltip: selectingLibrary ? '일괄 관리 닫기' : '문서 목록으로',
-            onPressed: busy ? null : () => unawaited(_back()),
-            icon: const Icon(Icons.arrow_back),
-          ),
-          title: Text(
-            session.note.title,
-            maxLines: compactToolbar ? 1 : null,
-            overflow: compactToolbar ? TextOverflow.ellipsis : null,
-          ),
-          actions: _toolbarActions(c, session, compact: compactToolbar),
-        ),
+            : _noteBar(c, session, sideBySide: desktop && wide),
+        // StarNote's 기타 설정 panel, opened only from its button: a stroke that starts at the edge draws.
+        endDrawer: session == null
+            ? null
+            : Drawer(
+                width: 280,
+                child: ListenableBuilder(
+                  listenable: _editorChrome,
+                  builder: (context, _) => OtherSettingsPanel(
+                    sections: _editorChrome.settingsSections(
+                      close: () => _scaffold.currentState?.closeEndDrawer(),
+                    ),
+                  ),
+                ),
+              ),
+        endDrawerEnableOpenDragGesture: false,
         // The drawer stays in the tree even where the library uses its side panel: removing it while it closes
         // would leave the Scaffold remembering it as open, and the next note would show it open again.
         drawer: wide ? null : Drawer(child: SafeArea(child: _library(c))),
@@ -5962,18 +5944,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               Expanded(
                 child: Column(
                   children: [
-                    // The library shows its tabs in its top row (_libraryBar).
-                    if (!noteChrome &&
-                        session != null &&
-                        (c.navigation.tabs.isNotEmpty ||
-                            c.navigation.peekBack != null))
-                      _documentTabs(c),
                     if (busy ||
                         c.externalBusy ||
                         StudyWorkspace.pendingDocumentImport.processing ||
-                        _editorHosts.values.any(
-                          (host) => host.launching || host.busy,
-                        ))
+                        _editorHosts.working)
                       const LinearProgressIndicator(),
                     if (c.externalBusy)
                       const Padding(
@@ -6068,14 +6042,12 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           fit: StackFit.expand,
           children: [
             workspace,
-            Offstage(
-              key: const ValueKey('office-editor-hosts'),
-              child: Column(
-                children: [
-                  for (final host in _editorHosts.values)
-                    _editorHostView(c, host),
-                ],
-              ),
+            OfficeEditorHostLayer(
+              hosts: _editorHosts,
+              repository: c.repository,
+              openEdits: c.officeOpenEdits,
+              engine: widget.officeEngine,
+              previewEngine: widget.officePreviewEngine,
             ),
           ],
         ),
@@ -6209,7 +6181,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isWindows) windowManager.removeListener(this);
     StudyWorkspace.pendingDocumentImport.removeListener(_sharedDocument);
-    _dropEditorHosts();
+    stows.noteTabBarHidden.removeListener(_tabBarHiddenChanged);
+    _editorChrome.dispose();
+    _editorHosts
+      ..removeListener(_editorHostsChanged)
+      ..dispose();
     unawaited(_editorFinishedEvents?.cancel());
     final workspace = controller;
     workspace?.removeListener(_changed);

@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136228,
+  "versionCode": 136229,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,7 +17,7 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "ef889dbf2778f5cccb370b59f1999f8e9de368df3c61de37d911f51af05f7ffa",
+      "sha256": "65ccd2719c3ab7f7a26d2e8a485069bdfad755484d614b55c38be8a2051bac88",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
@@ -589,7 +589,7 @@
       "mode": "100644"
     },
     "lib/components/canvas/hud/canvas_hud.dart": {
-      "sha256": "dafa4ab2ad7e79c951916ea0f380211000b345ebabadf48d16cb2f2bde49ea4b",
+      "sha256": "33d33bb77e2c72bbe9a8b24d128373977c2c1ca1616716b95d5f1bf6d0cc53cc",
       "mode": "100644"
     },
     "lib/components/canvas/hud/canvas_zoom_indicator.dart": {
@@ -597,7 +597,7 @@
       "mode": "100644"
     },
     "lib/components/canvas/hud/zoom_pill.dart": {
-      "sha256": "a0920b433008c73e87fb515ddd13e2d68b717ab4301529b469ace7834b4484bd",
+      "sha256": "80d463cd1339744f6ded0b9b30db13a2d45fbc7aa4a60c8220ffdfaf0a4dc4fd",
       "mode": "100644"
     },
     "lib/components/canvas/image/editor_image.dart": {
@@ -884,6 +884,14 @@
       "sha256": "7ba5a54a58620c4f79214de13f6e79bbf5bec5633715ae7c963531cade313f30",
       "mode": "100644"
     },
+    "lib/components/toolbar/note_function_row.dart": {
+      "sha256": "7fd1d642c78e6391b40f6b49946812d14f4ac2809ab6e029405d15b1a4c00e8a",
+      "mode": "100644"
+    },
+    "lib/components/toolbar/other_settings_panel.dart": {
+      "sha256": "6ef2ab97f9a699b599dcb96f8a46630b1bf2e6779a2f9718bdf60895d0fcaa2d",
+      "mode": "100644"
+    },
     "lib/components/toolbar/pen_drawings.dart": {
       "sha256": "7e2992d14c32faceac6367a0076f39469e6b3af47ec4baef2cba84c8465e9e47",
       "mode": "100644"
@@ -896,36 +904,48 @@
       "sha256": "7a40923f857145843197f75193f0bd08aa229c16612a67d2e1675b12164541e7",
       "mode": "100644"
     },
+    "lib/components/toolbar/shortcut_bar_editor.dart": {
+      "sha256": "2d528c2c90d8ab5354278c16e69e8221a68f89ed438903518a55ef590aafb552",
+      "mode": "100644"
+    },
+    "lib/components/toolbar/shortcut_layout.dart": {
+      "sha256": "3341fa4ecd88c53c1edb9648a3414719972c8a10a4de090e32498abed5aef25a",
+      "mode": "100644"
+    },
     "lib/components/toolbar/size_picker.dart": {
       "sha256": "422c85d31b296ae64e83432f30b764e9880c3c751eef82f443b767b1fd3f3faa",
       "mode": "100644"
     },
     "lib/components/toolbar/tool_panels.dart": {
-      "sha256": "05338a2fb95d7fbcdd505467ef3e25d4d12d0350f5edf477cbabedd30a4eaa5d",
+      "sha256": "317a43a6bdd2138187b688fac714f15bba46fb3b29ae5e6c3bb05533e8907368",
       "mode": "100644"
     },
     "lib/components/toolbar/toolbar.dart": {
-      "sha256": "5a04fe419484d07bbab1c51b322ebe477d62386d8cc3b7d9c4d69baa9777f248",
+      "sha256": "0a40a3a5921d937e8352043f53b905ebbf69805b02101e63913679e67071dbbf",
       "mode": "100644"
     },
     "lib/components/toolbar/toolbar_button.dart": {
       "sha256": "50242021c5ec7fd0f29df529dd954e1b0054017c5651c8fb47a6c2d2eeb0bc91",
       "mode": "100644"
     },
+    "lib/components/toolbar/toolbar_custom_dialog.dart": {
+      "sha256": "331fc9fd0cf1f74c146b22ab320db79623c360703e084362323c3e82e80afe9c",
+      "mode": "100644"
+    },
     "lib/components/toolbar/toolbar_dock.dart": {
-      "sha256": "2a88c0d9d12c9d583592e2edba74d93e44561ad6d5d39e2992a4aed2102eaafc",
+      "sha256": "55f63898957e454e786e8f429c9fe850f82f0dc6f998aafd7d9e213482bcf994",
       "mode": "100644"
     },
     "lib/components/toolbar/toolbar_layout.dart": {
-      "sha256": "c5dae5d58805fcb06ac2fe794956efd5adddba72869a487015f5499620ae026b",
+      "sha256": "78a6126027da0829443315106807ff62494a2839b8e9b593555ab896ce2d0d4c",
       "mode": "100644"
     },
     "lib/components/toolbar/toolbar_settings_sheet.dart": {
-      "sha256": "5408414a0a839c2e302ee8051d1611cc9ce9cca884349eb559cf4dfa66d82703",
+      "sha256": "da4d66d6d39b732c239a69d7b3ea85bbdc5c14fcd59eecf37df2549366a6633c",
       "mode": "100644"
     },
     "lib/components/user_error_text.dart": {
-      "sha256": "47bc080ea3002b1f649de1a5b450798548ee395630d695a8f4a147c299cf6c4e",
+      "sha256": "23cff84655db62108756fa134ebad949b93f1a621b6b12da2b1cbebb7dae1812",
       "mode": "100644"
     },
     "lib/data/app_external_screen.dart": {
@@ -1165,7 +1185,7 @@
       "mode": "100644"
     },
     "lib/data/office/office_open_edits.dart": {
-      "sha256": "f8975f176274fe853911be9d3bf88877402fe8cdbbe2bd0c30497e9207dda60b",
+      "sha256": "2663342afc1d0d5d72b8b472c426adf590507b1408711dbf8a94d78e79ec623e",
       "mode": "100644"
     },
     "lib/data/office/office_original_edit_result.dart": {
@@ -1281,7 +1301,7 @@
       "mode": "100644"
     },
     "lib/data/prefs.dart": {
-      "sha256": "aa7d767801f5436a975969bec63e99cec48bae55c91742562ea23c902026fa57",
+      "sha256": "742027cb7fd1eec508d7e6475be32e8482a16a7fce3fbb50e589038727ea7a6d",
       "mode": "100644"
     },
     "lib/data/quota.dart": {
@@ -1313,11 +1333,11 @@
       "mode": "100644"
     },
     "lib/data/tools/eraser.dart": {
-      "sha256": "d0acff835550862953eee249db9ce6944672361f509bcc4d29ff87e09bfe47c8",
+      "sha256": "d9155812593ff53bab6c2ce1263ca59e013ac0be7f9625663c679b3388e2c8e7",
       "mode": "100644"
     },
     "lib/data/tools/highlighter.dart": {
-      "sha256": "70b5ac73613f1838b93de37ff0b59806295c0eb55787bb41c651af87515fab32",
+      "sha256": "68fabe241b78251ea73bcae7c7a51cb6fe88eeb7a18951314c4ed567cbeef87b",
       "mode": "100644"
     },
     "lib/data/tools/laser_pointer.dart": {
@@ -1325,7 +1345,7 @@
       "mode": "100644"
     },
     "lib/data/tools/pen.dart": {
-      "sha256": "72d869aa1c17f2c097a120d68e4d25fde1998f4287187f7aa2f8c2a3aaa033f6",
+      "sha256": "23cef80418c851ad95494e6206682ce31d416aa514f2c8b0cefdfb4c4c48cdb5",
       "mode": "100644"
     },
     "lib/data/tools/pen_box.dart": {
@@ -1829,7 +1849,11 @@
       "mode": "100644"
     },
     "lib/pages/editor/editor.dart": {
-      "sha256": "c2581ec4565dc43cad4e4ac94f9ad40a4adcff4513858fb82c4d0e83dbe14794",
+      "sha256": "f9afe45c162c31d0499ee8449a88d489ca32d646ef451723bc5488c9566e87b5",
+      "mode": "100644"
+    },
+    "lib/pages/editor/editor_chrome.dart": {
+      "sha256": "ec3947b138e9c58fa84e60ae01ffd8495ecbedfcf64c42507a77592f67c35a70",
       "mode": "100644"
     },
     "lib/pages/home/browse.dart": {
@@ -1885,7 +1909,7 @@
       "mode": "100644"
     },
     "lib/pages/office/office_workspace.dart": {
-      "sha256": "6366316bfdf5f17e74557c8c329db350a83b79936d78c79c840f22e91b23d343",
+      "sha256": "b41dd2de689e4a89f218710f5d6feb6c8b75cb06b65131e5c69c08cdc5fcfcd9",
       "mode": "100644"
     },
     "lib/pages/office/pptx_find_replace_dialog.dart": {
@@ -2025,7 +2049,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/library_home.dart": {
-      "sha256": "9776d80910bea33995878bbf7fc8fc776b355e8a7519d059896d716588c0090f",
+      "sha256": "e44e95affe3edcea03bd3e2da021b26133d5476f68b1ba00672fd089e52a7250",
       "mode": "100644"
     },
     "lib/pages/workspace/linked_database_block.dart": {
@@ -2052,6 +2076,10 @@
       "sha256": "e377e73c1d253342d89ee77209393559019ab94fe16f7ea75cfa4d3e9c5c7893",
       "mode": "100644"
     },
+    "lib/pages/workspace/office_editor_hosts.dart": {
+      "sha256": "454811b3a3a2a26a829b94c8ed4058b18492b5b973fe98e4751e9c6dd1a41638",
+      "mode": "100644"
+    },
     "lib/pages/workspace/page_discussion_sheet.dart": {
       "sha256": "31732025f4a6494ddec513c809979173aaa7573a2c388a31fa194d79db189232",
       "mode": "100644"
@@ -2065,7 +2093,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/study_workspace.dart": {
-      "sha256": "fca591c8a9b91e29e903724e5845dd6d0c71c809c8a8c839bdcb9bd2cee9dbbe",
+      "sha256": "15c76c872857da26c52ac93121547a1ca6ace6e9a7d8e6546a444ca73883c3c9",
       "mode": "100644"
     },
     "lib/pages/workspace/synced_block_view.dart": {
@@ -2077,7 +2105,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_controller.dart": {
-      "sha256": "42b2ae3fc5c522dbdc64ddd6c7d9f8e26970746e63d90347ed7f45100ca5b2a4",
+      "sha256": "f5e809abd3aac133f2ae3050ed898b5400c8d07bee07e71878178fcfc3a9726f",
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_quick_switcher.dart": {
@@ -2085,7 +2113,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_tab_switcher.dart": {
-      "sha256": "51390867a1e1eb9fc58773ce1bb8b813e3ceddd2d16f1c2a485f0b720c06cbd5",
+      "sha256": "b3b0f58643010bf0aaec866962bb4dc40ccaf5871f4c02791844034794fdf829",
       "mode": "100644"
     },
     "packages/flutter_markdown_plus/AUTHORS": {
@@ -2680,8 +2708,8 @@
       "sha256": "ca46113c51d38e8bbc033590acab2959030179ff401585105b183a848e32c623",
       "mode": "100644"
     },
-    "scripts/build-android-228.sh": {
-      "sha256": "537924a2973ae0a7991177f3f1a28293b10209aa08b1e0f9b3bf8d3f98b20aec",
+    "scripts/build-android-229.sh": {
+      "sha256": "8c500d1744acfb70030299b2253456c78ace106219e2dcaaacb6320684151112",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {

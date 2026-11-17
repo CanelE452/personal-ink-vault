@@ -9,7 +9,7 @@ import 'package:pdf/pdf.dart' show PdfColor, PdfColors;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:saber/pages/office/office_original_preview.dart';
 
-import 'office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show
         officePreviewPdf,
         officePreviewPdfiumAvailable,

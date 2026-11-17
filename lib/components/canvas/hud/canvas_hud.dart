@@ -4,7 +4,7 @@ import 'package:saber/components/canvas/hud/zoom_pill.dart';
 /// The zoom pill over a page canvas. It appears only while the zoom changes;
 /// the pan locks live in the toolbar settings.
 class CanvasHud extends StatefulWidget {
-  const CanvasHud({
+  const new({
     super.key,
     required this.transformationController,
     required this.zoomLock,

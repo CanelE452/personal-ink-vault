@@ -87,7 +87,7 @@ void main() {
     expect(find.byKey(const ValueKey('toolbar-dock-handle')), findsOneWidget);
   });
 
-  testWidgets('toolbar settings sheet moves the workspace toolbar', (
+  testWidgets('기타 설정 moves the workspace toolbar', (
     tester,
   ) async {
     final previous = stows.workspaceToolbarAlignment.value;
@@ -105,10 +105,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('툴바 설정'));
+    await tester.tap(find.byKey(const ValueKey('note-other-settings')));
     await tester.pumpAndSettle();
-    expect(find.text('툴바 설정'), findsWidgets);
-    await tester.tap(find.text('오른쪽'));
+    expect(find.byKey(const ValueKey('other-settings-panel')), findsOneWidget);
+    final right = find.byKey(const ValueKey('toolbar-position-right'));
+    await tester.ensureVisible(right);
+    await tester.pumpAndSettle();
+    await tester.tap(right);
     await tester.pumpAndSettle();
     expect(stows.workspaceToolbarAlignment.value, AxisDirection.right);
     expect(
@@ -168,10 +171,10 @@ void main() {
 
       expect(find.text('Workspace note'), findsOneWidget);
       expect(find.byType(SaveIndicator), findsNothing);
-      expect(find.byTooltip('쪽 관리'), findsOneWidget);
+      expect(find.byTooltip('문서 개요'), findsOneWidget);
       final editor = tester.state<EditorState>(find.byType(Editor));
       final count = editor.coreInfo.pages.length;
-      await tester.tap(find.byTooltip('쪽 추가'));
+      await tester.tap(find.byTooltip('페이지 추가'));
       expect(editor.coreInfo.pages.length, count + 1);
       await tester.pumpAndSettle();
       await tester.tap(find.byType(BackButton));

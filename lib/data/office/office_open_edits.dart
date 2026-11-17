@@ -10,15 +10,6 @@ enum OfficeEditorKind { office, hwp }
 /// (its work stays in the recovery records).
 enum OfficeEditorOutcome { saved, discarded, unchanged, failed }
 
-/// Where the app goes when the user leaves an editor or it closes: a document tab ([noteId]),
-/// or the library at [folderId] (null = the first screen).
-class OfficeEditorReturn {
-  const new({this.noteId, this.folderId});
-
-  final String? noteId;
-  final String? folderId;
-}
-
 /// One Office·한글 document whose editor is open behind the app's tabs.
 class OfficeOpenEdit {
   const new({
@@ -28,7 +19,6 @@ class OfficeOpenEdit {
     required this.kind,
     required this.workingPath,
     required this.inputSourceSha256,
-    this.returnTo = const OfficeEditorReturn(),
   });
 
   final String noteId;
@@ -37,17 +27,6 @@ class OfficeOpenEdit {
   final OfficeEditorKind kind;
   final String workingPath;
   final String inputSourceSha256;
-  final OfficeEditorReturn returnTo;
-
-  OfficeOpenEdit withReturn(OfficeEditorReturn returnTo) => OfficeOpenEdit(
-    noteId: noteId,
-    title: title,
-    sessionId: sessionId,
-    kind: kind,
-    workingPath: workingPath,
-    inputSourceSha256: inputSourceSha256,
-    returnTo: returnTo,
-  );
 
   Map<String, Object?> _toJson() => {
     'noteId': noteId,
@@ -56,21 +35,15 @@ class OfficeOpenEdit {
     'kind': kind.name,
     'workingPath': workingPath,
     'inputSourceSha256': inputSourceSha256,
-    'returnNoteId': returnTo.noteId,
-    'returnFolderId': returnTo.folderId,
   };
 
+  /// A list written by 227 also holds the screen to return to (returnNoteId, returnFolderId);
+  /// 228 opens editors over the current screen, so those fields are not read.
   static OfficeOpenEdit? _fromJson(Object? value) {
     if (value is! Map) return null;
     final kind = OfficeEditorKind.values.where((kind) => kind.name == value['kind']).singleOrNull;
     final fields = [value['noteId'], value['title'], value['sessionId'], value['workingPath'], value['inputSourceSha256']];
-    final returnNoteId = value['returnNoteId'], returnFolderId = value['returnFolderId'];
-    if (kind == null ||
-        fields.any((field) => field is! String) ||
-        (returnNoteId != null && returnNoteId is! String) ||
-        (returnFolderId != null && returnFolderId is! String)) {
-      return null;
-    }
+    if (kind == null || fields.any((field) => field is! String)) return null;
     return OfficeOpenEdit(
       noteId: fields[0] as String,
       title: fields[1] as String,
@@ -78,10 +51,6 @@ class OfficeOpenEdit {
       kind: kind,
       workingPath: fields[3] as String,
       inputSourceSha256: fields[4] as String,
-      returnTo: OfficeEditorReturn(
-        noteId: returnNoteId as String?,
-        folderId: returnFolderId as String?,
-      ),
     );
   }
 }

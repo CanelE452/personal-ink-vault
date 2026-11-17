@@ -154,7 +154,7 @@ void main() {
         final parentBack = find
             .ancestor(
               of: find.descendant(
-                of: find.byType(AppBar),
+                of: find.byKey(const ValueKey('note-function-row')),
                 matching: find.byTooltip('문서 목록으로'),
               ),
               matching: find.byType(IconButton),

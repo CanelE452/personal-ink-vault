@@ -13,7 +13,7 @@ import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/vault/library_store.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 
-import 'office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show officePreviewPdf, officePreviewPdfiumAvailable;
 
 Uint8List officeFile(String body, {bool slides = false}) => Uint8List.fromList(

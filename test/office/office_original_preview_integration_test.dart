@@ -26,10 +26,7 @@ import 'package:saber/pages/office/office_original_preview.dart';
 import 'package:saber/pages/office/office_workspace.dart';
 import 'package:saber/pages/workspace/workspace_controller.dart';
 
-import '../utils/test_editor.dart';
-import '../utils/test_mock_channel_handlers.dart';
-import 'annotation_store_test.dart' show annotationOfficeFile;
-import 'office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show
         OfficePreviewDocumentTracker,
         expectOfficePreviewColor,
@@ -39,6 +36,9 @@ import 'office_original_preview_test.dart'
         officePreviewRead,
         officePreviewUntil,
         withOfficePreviewPdfium;
+import '../utils/test_editor.dart';
+import '../utils/test_mock_channel_handlers.dart';
+import 'annotation_store_test.dart' show annotationOfficeFile;
 import 'office_workspace_test.dart' show FixtureOfficeEngine;
 
 Future<void>? _previewFonts;

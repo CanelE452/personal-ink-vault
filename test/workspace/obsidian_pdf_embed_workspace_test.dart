@@ -22,7 +22,7 @@ import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/workspace/markdown_editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
-import '../office/office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show
         OfficePreviewDocumentTracker,
         officePreviewDocumentsClosed,

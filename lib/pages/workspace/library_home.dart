@@ -1097,7 +1097,7 @@ class _LibraryHomeState extends State<LibraryHome>
 
 /// A folder outline with a tab, behind the folder covers.
 class _FolderShape extends CustomPainter {
-  const _FolderShape({required this.fill, required this.border});
+  const new({required this.fill, required this.border});
 
   final Color fill;
   final Color border;

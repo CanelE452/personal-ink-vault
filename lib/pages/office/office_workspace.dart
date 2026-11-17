@@ -12,9 +12,8 @@ import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart' show PdfDocument;
-import 'package:saber/components/user_error_text.dart';
-import 'package:saber/data/user_error.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
+import 'package:saber/components/user_error_text.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/office/android_hwp_editor.dart';
@@ -50,10 +49,12 @@ import 'package:saber/data/office/pptx_slide_layout.dart';
 import 'package:saber/data/office/pptx_slide_reorder.dart';
 import 'package:saber/data/office/pptx_text_box.dart';
 import 'package:saber/data/office/windows_office_engine.dart';
+import 'package:saber/data/user_error.dart';
 import 'package:saber/data/vault/note_link.dart';
 import 'package:saber/data/vault/pdf_import_state.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/pages/editor/editor.dart';
+import 'package:saber/pages/editor/editor_chrome.dart';
 import 'package:saber/pages/office/docx_body_text_dialog.dart';
 import 'package:saber/pages/office/docx_find_replace_dialog.dart';
 import 'package:saber/pages/office/docx_paragraph_dialog.dart';
@@ -258,6 +259,10 @@ class OfficeWorkspace extends StatefulWidget {
   final PptxShapeOrderEngine? pptxShapeOrder;
   final PptxShapeDeleteEngine? pptxShapeDelete;
   final bool showBackButton;
+
+  /// The host's function row and 기타 설정 panel, for the PDF handwriting's editor. Without one the editor draws
+  /// its own.
+  final EditorChromeController? editorChrome;
   const new({
     super.key,
     required this.repository,
@@ -307,6 +312,7 @@ class OfficeWorkspace extends StatefulWidget {
     this.pptxShapeOrder,
     this.pptxShapeDelete,
     this.showBackButton = true,
+    this.editorChrome,
   });
 
   static Future<OfficePageLinkRequest> preparePageLink({
@@ -6346,6 +6352,7 @@ class OfficeWorkspaceState extends State<OfficeWorkspace> {
       path: annotation.workingPath,
       customTitle: '${widget.note.title} · PDF 필기',
       showDocumentHeader: widget.showBackButton,
+      chrome: widget.editorChrome,
       pdfPath: annotation.revision == null ? _pdfPath : null,
       initialPdfBaselinePageId: annotation.revision == null
           ? (pageIndex) =>

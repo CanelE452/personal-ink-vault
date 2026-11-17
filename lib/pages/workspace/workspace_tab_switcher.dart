@@ -7,11 +7,19 @@ class WorkspaceTabSwitcher extends StatelessWidget {
     required this.tabs,
     required this.activeNoteId,
     required this.onSelected,
+    this.onHideTabBar,
+    this.onCloseOthers,
   });
 
   final List<WorkspaceDocumentTab> tabs;
   final String? activeNoteId;
   final ValueChanged<String>? onSelected;
+
+  /// "탭 줄 숨기기" at the top of the list.
+  final VoidCallback? onHideTabBar;
+
+  /// "다른 탭 닫기" at the top of the list.
+  final VoidCallback? onCloseOthers;
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +37,21 @@ class WorkspaceTabSwitcher extends StatelessWidget {
           if (id != activeNoteId) onSelected?.call(id);
         },
         itemBuilder: (context) => [
+          if (onHideTabBar case final hide?)
+            PopupMenuItem<String>(
+              key: const ValueKey('workspace-tab-bar-hide'),
+              onTap: hide,
+              child: const Text('탭 줄 숨기기'),
+            ),
+          if (onCloseOthers case final closeOthers?)
+            PopupMenuItem<String>(
+              key: const ValueKey('workspace-tab-close-others'),
+              enabled: tabs.length > 1,
+              onTap: closeOthers,
+              child: const Text('다른 탭 닫기'),
+            ),
+          if (onHideTabBar != null || onCloseOthers != null)
+            const PopupMenuDivider(),
           for (final tab in tabs)
             CheckedPopupMenuItem<String>(
               key: ValueKey('workspace-tab-switcher-item-${tab.noteId}'),

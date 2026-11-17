@@ -26,7 +26,7 @@ import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
-import '../office/office_original_preview_test.dart'
+import '../utils/office_preview.dart'
     show
         OfficePreviewDocumentTracker,
         officePreviewDocumentsClosed,
@@ -347,9 +347,8 @@ void main() {
         expect(oldLink?.pageId, controller.navigation.current.pageId);
         expect(oldLink?.pageId, persisted.current.pageId);
 
-        final linkButton = compact
-            ? find.byKey(const ValueKey('workspace-more-actions'))
-            : find.byTooltip('노트 링크 열기');
+        // An open note keeps 노트 링크 열기 in its function row's 더 많은 기능 on every screen.
+        final linkButton = find.byKey(const ValueKey('workspace-more-actions'));
         final linkField = find.descendant(
           of: find.byType(AlertDialog),
           matching: find.byType(TextField),
@@ -410,15 +409,13 @@ void main() {
             'The page link button must be reachable.',
           );
           await tester.runAsync(() => tester.tap(linkButton));
-          if (compact) {
-            final item = find.text('노트 링크 열기');
-            await officePreviewUntil(
-              tester,
-              () => item.hitTestable().evaluate().length == 1,
-              'The page link action must be reachable in the compact menu.',
-            );
-            await tester.runAsync(() => tester.tap(item));
-          }
+          final item = find.text('노트 링크 열기');
+          await officePreviewUntil(
+            tester,
+            () => item.hitTestable().evaluate().length == 1,
+            'The page link action must be reachable in 더 많은 기능.',
+          );
+          await tester.runAsync(() => tester.tap(item));
           await officePreviewUntil(
             tester,
             () => linkField.hitTestable().evaluate().length == 1,

@@ -4,23 +4,26 @@
 
 ## Android 휴대폰·태블릿에 설치
 
-**[Android 228 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.228/personal-ink-vault-android-0.2.0-build228-136228-arm64-release.apk)**
+**[Android 229 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.229/personal-ink-vault-android-0.2.0-build229-136229-arm64-release.apk)**
 
 1. Android 휴대폰 또는 태블릿에서 위 링크를 누릅니다.
 2. 다운로드한 APK를 열고 기존 Personal Ink Vault 앱을 업데이트합니다.
 3. 앱에서 새 노트, PDF 필기 또는 Office·한글 원본을 엽니다. Drive를 연결하려면 앱의 **Drive → Google 로그인 / 재연결**을 사용합니다.
 
-Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 396MB입니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.228) · [Android 228 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.228)
+Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 396MB입니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.229) · [Android 229 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.229)
 
-### 227 이후 바뀐 점
+### 228 이후 바뀐 점
 
-- Word·PPT·한글 카드나 "편집 중" 탭을 누르면 앱 화면은 그대로 두고 편집기만 열립니다. 들어갈 때 Office 화면이 잠깐 비치던 문제를 없앴습니다. 편집기가 뜨는 동안에는 진행 막대가 보입니다.
-- 편집기의 "← 탭"이나 기기의 뒤로 가기를 누르면 편집기를 열기 전 화면이 그대로 보입니다. "편집기에서 열려 있습니다 / 편집기로 돌아가기 / 닫기" 전체 화면은 없앴습니다.
-- Office 화면(판본 기록, 기존 PDF 필기, 보관한 편집 작업)은 카드 ⋮ 메뉴의 "기록·도구"로 엽니다. 편집기가 열려 있으면 이 화면 위에 "편집기에서 열려 있습니다 [편집기로 돌아가기]" 띠가 붙습니다.
-- 앱을 다시 열 때 마지막으로 보던 문서가 Word·PPT·한글이면 보관함이 열립니다.
-- 보던 탭을 닫으면 옆의 Word·PPT·한글 탭 대신 가장 가까운 노트 탭으로, 없으면 보관함으로 갑니다.
+필기 화면의 배치를 StarNote처럼 바꿨습니다.
 
-228은 PC에서 위젯 시험을 거쳤고 실기기 확인 전입니다. 227은 태블릿에 설치해 카드를 누르면 편집기가 열리는 것을 확인했습니다. 그때 잠깐 보이던 Office 화면과 "← 탭" 뒤에 남던 화면을 228에서 없앴고, 이 동작과 227의 닫을 때 묻는 조건, "← 탭"·"닫기" 단추 위치는 태블릿에서 확인할 예정입니다. 226의 스트로크 안정화, 217에서 남은 한글 저장·HWPX 편집 확인, 두 Android 기기의 Drive 왕복 검증도 남아 있습니다.
+- 위는 두 줄입니다. 탭 줄에는 열린 문서의 탭만 있습니다. 탭을 길게 누르면 "닫기"·"다른 탭 닫기"가 나오고, 탭 수 ▾ 목록에서 탭 줄을 숨길 수 있습니다.
+- 그 아래 기능 줄에는 뒤로, 바로가기, "문서 개요"·"기타 설정", ⋯ "더 많은 기능"이 있습니다. ⋯의 "사용자 지정 바로가기 막대"에서 막대에 둘 바로가기(최대 10개)와 순서를 고릅니다.
+- "기타 설정"은 오른쪽 패널입니다. 페이지 설정, 페이지로 이동, 문서 내보내기, 도구 모음 위치, 연속 스크롤, 쓰기 설정을 한곳에 모았습니다.
+- 펜 도구 바는 세 구간(실행 취소·다시 / 도구 / 고른 도구의 색·굵기)이고, 도구와 값은 따로 스크롤됩니다. "사용자 지정 도구 모음"에서 도구를 보이거나 숨기고 순서를 바꿉니다. 지우개는 크기 3단을, 올가미는 자유·사각형을 도구 바에서 바로 고릅니다.
+- 펜·형광펜 기본 5색과 형광펜 굵기 3단(25·35·50)을 StarNote 값으로 맞췄습니다. 이미 그린 획은 바뀌지 않습니다.
+- 전체 화면에서는 위 두 줄이 숨고, 도구 바 끝의 "전체 화면 끝내기"로 돌아옵니다.
+
+229는 PC에서 위젯 시험과 빌드 검사를 거쳤고 실기기 확인 전입니다. 228의 Office·한글 편집기 동작, 227의 닫을 때 묻는 조건, 226의 스트로크 안정화, 217에서 남은 한글 저장·HWPX 편집 확인, 두 Android 기기의 Drive 왕복 검증도 태블릿에서 확인할 예정입니다.
 
 "PDF 필기용"으로 저장한 노트는 일반 PDF 노트로 열리며, Office 편집용으로 바꿀 수 없습니다. Office·한글 문서에서 "PDF로 새 문서 만들기"를 누르면 같은 폴더에 별도 PDF 노트가 생기고, 원본은 그대로 남습니다.
 
@@ -66,10 +69,10 @@ Drive 자동 동기화와 독립 백업/복원을 함께 구현합니다. portab
 1. Flutter `3.47.7`의 [고정 소스](https://github.com/flutter/flutter/tree/abaf9c523780a608bd46686fd5e53740a07077f8), Dart `3.13.5`, JDK `25.0.4.1+1`, Android SDK 및 Python 3.11 이상을 준비합니다. Flutter SDK가 래퍼를 준비하고 `android/gradle/wrapper/gradle-wrapper.properties`에서 Gradle `9.5.0`을 선택합니다. Gradle 데몬에는 저장소의 JVM 설정에 따라 JetBrains JDK 21을 자동으로 준비하거나 기존 설치를 사용합니다.
 2. Android SDK의 `platforms;android-37.0`, `ndk;28.2.13676358`, `ndk;29.0.14206865`, `cmake;3.22.1`을 준비합니다. Rust `1.99.1`에 `aarch64-linux-android` 타깃을 추가합니다. Android SDK 경로를 `ANDROID_SDK_ROOT`로 지정하세요.
 3. 한글 PDF 엔진은 아직 출시되지 않은 rhwp 커밋을 씁니다. 먼저 [한글 엔진·편집 화면 빌드](docs/hwp-rhwp-build.md)에 따라 rhwp 원본을 받아 `packages/ink_hwp_native/Cargo.toml`의 임시 경로를 맞춥니다. 같은 문서에 따라 한글 편집 화면(rhwp-studio)을 빌드해 `android/app/src/main/assets/hwp-studio/`에 넣으면 APK의 `assets/hwp-studio/`로 들어갑니다.
-4. 소스 루트에서 `bash scripts/build-android-228.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
+4. 소스 루트에서 `bash scripts/build-android-229.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
 5. 사용자 본인의 서명 키로 설치용 APK를 만들려면 `android/key.properties`에 `storeFile`, `storePassword`, `keyAlias`, `keyPassword`를 로컬로 지정합니다. 서명 전 빌드만 하려면 이 파일 없이 빌드할 수 있습니다. 본인의 OAuth 공개 클라이언트 ID로 테스트하려면 `DRIVE_ANDROID_SERVER_CLIENT_ID`를 설정합니다.
 
-스크립트는 ARM64의 빌드 번호를 `136228`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
+스크립트는 ARM64의 빌드 번호를 `136229`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
 
 ## 고정된 업스트림 소스
 

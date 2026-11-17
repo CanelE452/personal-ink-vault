@@ -31,8 +31,8 @@ import 'package:saber/data/office/hwp_office_engine.dart';
 import 'package:saber/data/office/office_annotation_store.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/office_edit_recovery.dart';
-import 'package:saber/data/office/office_open_edits.dart';
 import 'package:saber/data/office/office_image_asset.dart';
+import 'package:saber/data/office/office_open_edits.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/office/office_view_state.dart';
@@ -2663,8 +2663,8 @@ void main() {
         final cleanPeer = await openPdf(peerKey);
         expect(under(localKey, find.byType(SaveIndicator)), findsNothing);
         expect(under(peerKey, find.byType(SaveIndicator)), findsOneWidget);
-        expect(under(localKey, find.byTooltip('쪽 관리')), findsOneWidget);
-        expect(under(peerKey, find.byTooltip('쪽 관리')), findsOneWidget);
+        expect(under(localKey, find.byTooltip('문서 개요')), findsOneWidget);
+        expect(under(peerKey, find.byTooltip('문서 개요')), findsOneWidget);
         await withPumping(tester, localKey.currentState!.save);
         await withPumping(tester, peerKey.currentState!.save);
 
