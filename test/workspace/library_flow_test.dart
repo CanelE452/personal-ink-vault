@@ -36,6 +36,7 @@ import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/office/office_workspace.dart';
+import 'package:saber/pages/workspace/library_cards.dart';
 import 'package:saber/pages/workspace/library_home.dart';
 import 'package:saber/pages/workspace/markdown_editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
@@ -69,6 +70,10 @@ void main() {
     await controller.refresh();
     controllerDisposed = false;
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    // The library keeps its grid/list choice and its order between visits; each test starts from the grid in the
+    // default order.
+    stows.libraryGrid.value = true;
+    stows.librarySort.value = 'default';
   });
   tearDown(() async {
     debugDefaultTargetPlatformOverride = null;
@@ -155,19 +160,57 @@ void main() {
     addTearDown(() => tester.pumpWidget(const SizedBox()));
   }
 
-  /// The library's search box is in the side bar, closed at first at 800 dp.
-  Future<void> showSideBar(WidgetTester tester) async {
-    if (find
-        .byKey(const ValueKey('library-search'))
-        .hitTestable()
-        .evaluate()
-        .isNotEmpty) {
+  /// The library's search box opens in its top bar, behind the search icon.
+  Future<void> openSearch(WidgetTester tester) async {
+    if (find.byKey(const ValueKey('library-search')).evaluate().isNotEmpty) {
       return;
     }
-    addTearDown(() => stows.libraryPanelOpen.value = null);
-    await tester.tap(find.byKey(const ValueKey('library-panel-toggle')));
+    await tester.tap(find.byKey(const ValueKey('library-search-toggle')));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  /// Opens a document from its library card: the cover opens it, while the title line under the cover is
+  /// the card's ⌄ menu.
+  Future<void> openCard(WidgetTester tester, String title) => tester.tap(
+    find
+        .descendant(
+          of: find.ancestor(
+            of: find.text(title),
+            matching: find.byType(LibraryCardCell),
+          ),
+          matching: find.byType(LibraryCover),
+        )
+        .first,
+  );
+
+  /// + opens the add menu; its 「새 노트…」 dialog lists the kinds of notes, and [action]'s row makes one.
+  Future<void> createFromDialog(
+    WidgetTester tester,
+    LibraryCreateAction action,
+  ) async {
+    // The menus settle only once the workspace's progress bar is gone.
+    for (
+      var i = 0;
+      i < 12 && find.byType(LinearProgressIndicator).evaluate().isNotEmpty;
+      i++
+    ) {
+      await drain(tester);
+    }
+    await tester.runAsync(
+      () => tester.tap(find.byKey(const ValueKey('library-create-button'))),
+    );
+    await tester.pumpAndSettle();
+    // + was pressed in real time, so its menu answers there: the dialog opens once real time runs on.
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const ValueKey('library-add-note')));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pumpAndSettle();
+    final row = find.byKey(ValueKey('library-new-${action.name}'));
+    expect(row, findsOneWidget);
+    await tester.ensureVisible(row);
+    await tester.runAsync(() => tester.tap(row));
+    await drain(tester);
   }
 
   Future<void> closeOfficeFlow(WidgetTester tester) async {
@@ -203,14 +246,14 @@ void main() {
       // Like StarNote's library: no top row, and no document tabs on it.
       expect(find.byType(AppBar), findsNothing);
       // Closed at first on an upright tablet, so the documents get the width;
-      // the button that shows it stands before the path above the documents.
+      // ☰, first in the library's top bar, shows it.
       expect(find.byKey(const ValueKey('library-panel')), findsNothing);
       expect(find.byTooltip('왼쪽 바 보이기'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('library-panel-toggle')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey('library-panel')), findsOneWidget);
-      // The bar's own head hides it again and holds the settings.
+      // The same ☰ hides it again; the settings stay in the top bar.
       expect(find.byTooltip('왼쪽 바 보이기'), findsNothing);
       expect(find.byTooltip('왼쪽 바 숨기기').hitTestable(), findsOneWidget);
       expect(
@@ -254,17 +297,32 @@ void main() {
       await mount(tester, thumbnailCache: _NoCoverCache.new);
       final panel = find.byKey(const ValueKey('library-panel'));
       expect(panel, findsOneWidget);
-      // Nothing overflows: below its head the bar is one scrolling list.
+      // Nothing overflows: below its tabs the drawer is one scrolling list.
       expect(tester.takeException(), isNull);
-      final folders = find.descendant(of: panel, matching: find.text('폴더'));
+      final last = find.descendant(
+        of: panel,
+        matching: find.byKey(const ValueKey('workspace-quick-switch')),
+      );
       await tester.scrollUntilVisible(
-        folders,
+        last,
         100,
         scrollable: find
             .descendant(of: panel, matching: find.byType(Scrollable))
             .first,
       );
-      expect(folders.hitTestable(), findsOneWidget);
+      expect(last.hitTestable(), findsOneWidget);
+      // Its 폴더 tab reaches the folders.
+      await tester.tap(
+        find.descendant(
+          of: panel,
+          matching: find.byKey(const ValueKey('library-drawer-folders')),
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('library-drawer-new-folder')).hitTestable(),
+        findsOneWidget,
+      );
       // With no top row, the library itself asks for dark status bar icons on
       // the light screen, as the AppBar used to.
       final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
@@ -314,7 +372,13 @@ void main() {
         calls.add(call.method);
         switch (call.method) {
           case 'choose':
-            expect(call.arguments, isNull);
+            // PPT 가져오기 asks the picker for presentations only.
+            expect(
+              (call.arguments as Map)['mimeTypes'],
+              contains(
+                'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+              ),
+            );
             return {'id': id, 'name': input.fileName};
           case 'stage':
             expect(call.arguments, {'id': id});
@@ -349,7 +413,8 @@ void main() {
         );
         await tester.tap(create);
         await drain(tester);
-        final option = find.text('Office·한글 가져오기');
+        // The file is a presentation: the + menu's PPT 가져오기.
+        final option = find.byKey(const ValueKey('library-add-importPpt'));
         await tester.ensureVisible(option);
         await tester.runAsync(() => tester.tap(option));
         await officePreviewUntil(
@@ -378,33 +443,33 @@ void main() {
       await pick();
       expect(calls, ['choose', 'release', 'choose']);
       await tester.runAsync(() => tester.tap(find.text('Office 편집용')));
+      // 「Office 편집용」 imports beside the library: the document is read and let go at once,
+      // stored, and listed as a card; nothing opens.
+      Iterable<VaultNote> offices() => controller.notes.where(
+        (entry) => entry.documentKind == VaultDocumentKind.office,
+      );
+      Finder card(VaultNote note) =>
+          find.byKey(ValueKey('library-note-${note.revision.revisionId}'));
       await officePreviewUntil(
         tester,
-        () => calls.length == 5 && controller.activeSession != null,
-        'The chosen Office document opens and the staging file is released.',
+        () =>
+            calls.length == 5 &&
+            offices().isNotEmpty &&
+            card(offices().single).evaluate().isNotEmpty,
+        'The chosen Office document is listed as a card and the staging file is released.',
       );
       expect(calls, ['choose', 'release', 'choose', 'stage', 'release']);
       expect(staged.existsSync(), isFalse);
-      final note = controller.activeSession!.note;
-      expect(note.documentKind, VaultDocumentKind.office);
+      expect(controller.activeSession, isNull);
+      final note = offices().single;
       final edition = await readWhilePumping(
         tester,
         () => OfficeDocumentStore(controller.repository).readLatest(note),
       );
       expect(edition.originalBytes, input.bytes);
+      // Only the original is stored: no cover conversion.
       expect(converter.calls, 0);
-      final back = find.byTooltip('문서 목록으로');
-      await officePreviewUntil(
-        tester,
-        () => back.hitTestable().evaluate().isNotEmpty && !controller.inkBusy,
-        'The saved Office document can return to the library.',
-      );
-      await tester.runAsync(() => tester.tap(back));
-      await officePreviewUntil(
-        tester,
-        () => find.byType(LibraryHome).evaluate().isNotEmpty,
-        'The library must reopen before selecting the same file for annotation.',
-      );
+      expect(find.byType(LibraryHome), findsOneWidget);
 
       calls.clear();
       await pick();
@@ -487,15 +552,13 @@ void main() {
     );
     await tester.runAsync(() => tester.tap(back.first));
     await drain(tester);
+    // The cover opens the document; its title line is the card's ⌄ menu.
+    final shared = controller.notes.singleWhere(
+      (note) => note.title == 'Shared Word',
+    );
     await tester.runAsync(
-      () => tester.tap(
-        find
-            .descendant(
-              of: find.byType(LibraryHome),
-              matching: find.text('Shared Word'),
-            )
-            .first,
-      ),
+      () =>
+          tester.tap(find.byKey(ValueKey('library-cover-${shared.id}')).first),
     );
     await officePreviewUntil(
       tester,
@@ -999,9 +1062,11 @@ void main() {
             folderId: source.id,
             documentKind: VaultDocumentKind.markdown,
           );
+          // A PDF stays under the PDF tab, out of the 메모 tab chosen below.
           final outside = await store.create(
-            'Unselected pen note',
+            'Unselected PDF note',
             folderId: source.id,
+            documentKind: VaultDocumentKind.pdf,
           );
           await controller.refresh();
           return (source, destination, first, second, outside);
@@ -1010,7 +1075,7 @@ void main() {
     Finder key(String key) => find.byKey(ValueKey(key));
     await tester.tap(key('library-select-mode'));
     await tester.pump();
-    await tester.tap(key('library-filter-markdown'));
+    await tester.tap(key('library-filter-notes'));
     await tester.pump();
     final alpha = key('library-select-note-${first.id}');
     final beta = key('library-select-note-${second.id}');
@@ -1018,8 +1083,14 @@ void main() {
     await tester.tap(alpha);
     await tester.pump();
     expect(find.text('1개 선택'), findsOneWidget);
-    await tester.tap(key('library-layout-toggle'));
+    // ⋯ › 목록형 keeps the selection.
+    await tester.tap(key('library-view-menu'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(key('library-view-list'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(key('library-list'), findsWidgets);
     expect(tester.widget<Checkbox>(alpha).value, isTrue);
     expect(key('library-select-note-${outside.id}'), findsNothing);
     await tester.tap(key('library-select-all'));
@@ -1077,7 +1148,7 @@ void main() {
       unorderedEquals([first.id, second.id]),
     );
 
-    final trash = find.widgetWithText(ListTile, '휴지통');
+    final trash = key('library-nav-trash');
     await tester.runAsync(() => tester.tap(trash));
     await drain(tester);
     expect(key('library-select-all'), findsNothing);
@@ -1252,7 +1323,7 @@ void main() {
       }
 
       // No editor on this machine: the card falls back to the Office screen and asks it nothing.
-      await tester.tap(find.text('강의 원본'));
+      await openCard(tester, '강의 원본');
       await officePreviewUntil(
         tester,
         () => find.byType(OfficeWorkspace).evaluate().isNotEmpty,
@@ -1358,7 +1429,7 @@ void main() {
     );
     await markOpen(tester, first);
     await drain(tester);
-    await tester.tap(find.text('다른 원본'));
+    await openCard(tester, '다른 원본');
     await officePreviewUntil(
       tester,
       () => find.text("'강의 원본' 문서를 먼저 닫아야 합니다.").evaluate().isNotEmpty,
@@ -1425,7 +1496,7 @@ void main() {
       officeEditor: engine,
       thumbnailCache: _NoCoverCache.new,
     );
-    await tester.tap(find.text('강의 원본'));
+    await openCard(tester, '강의 원본');
     await officePreviewUntil(
       tester,
       () => engine.calls.isNotEmpty,
@@ -1467,7 +1538,7 @@ void main() {
         expect(controller.currentFolderId, folder);
       }
 
-      await tester.tap(find.text('강의 원본'));
+      await openCard(tester, '강의 원본');
       for (var i = 0; i < 400 && engine.calls.isEmpty; i++) {
         await pumpShowingLibrary();
       }
@@ -1499,7 +1570,7 @@ void main() {
       );
       final engine = _WaitingOfficeEngine(temp);
       final (note, sessionId) = await leaveWaitingEditor(tester, engine);
-      await tester.tap(find.text('수업 메모장'));
+      await openCard(tester, '수업 메모장');
       final tab = find.byKey(ValueKey('document-tab-${note.id}'));
       await officePreviewUntil(
         tester,
@@ -1558,7 +1629,7 @@ void main() {
         officeEditor: engine,
         thumbnailCache: _NoCoverCache.new,
       );
-      await tester.tap(find.text('수업 메모장'));
+      await openCard(tester, '수업 메모장');
       final tab = find.byKey(ValueKey('document-tab-${note.id}'));
       await officePreviewUntil(
         tester,
@@ -1672,7 +1743,7 @@ void main() {
       );
       expect(controller.officeOpenEdits.forNote(note.id)?.sessionId, sessionId);
       // The library has no document tabs (like StarNote): its card is the way back.
-      await tester.tap(find.text('강의 원본'));
+      await openCard(tester, '강의 원본');
       await officePreviewUntil(
         tester,
         () => engine.shown.isNotEmpty,
@@ -1701,7 +1772,7 @@ void main() {
       );
       final engine = _WaitingOfficeEngine(temp);
       final (note, sessionId) = await leaveWaitingEditor(tester, engine);
-      await tester.tap(find.text('수업 메모장'));
+      await openCard(tester, '수업 메모장');
       final tab = find.byKey(ValueKey('document-tab-${note.id}'));
       await officePreviewUntil(
         tester,
@@ -1746,7 +1817,7 @@ void main() {
             find.byType(LinearProgressIndicator).evaluate().isEmpty,
         'The second document shows in the library.',
       );
-      await tester.tap(find.text('다른 원본'));
+      await openCard(tester, '다른 원본');
       await officePreviewUntil(
         tester,
         () => find.text('닫고 열기').evaluate().isNotEmpty,
@@ -1790,7 +1861,7 @@ void main() {
       largeView(tester);
       final engine = _WaitingOfficeEngine(temp);
       final (note, sessionId) = await leaveWaitingEditor(tester, engine);
-      await tester.tap(find.text('강의 원본'));
+      await openCard(tester, '강의 원본');
       await officePreviewUntil(
         tester,
         () => engine.shown.isNotEmpty,
@@ -1840,7 +1911,7 @@ void main() {
       await controller.refresh();
     });
     await mount(tester);
-    await showSideBar(tester);
+    await openSearch(tester);
     final field = find.byKey(const ValueKey('library-search'));
     final toggle = find.byKey(const ValueKey('library-search-expression'));
     final error = find.byKey(const ValueKey('library-search-error'));
@@ -1895,7 +1966,7 @@ void main() {
             return note;
           });
           await mount(tester);
-          await showSideBar(tester);
+          await openSearch(tester);
           final field = find.byKey(const ValueKey('library-search'));
           final toggle = find.byKey(
             const ValueKey('library-search-expression'),
@@ -2016,7 +2087,7 @@ void main() {
         await controller.refresh();
       });
       await mount(tester);
-      await showSideBar(tester);
+      await openSearch(tester);
       final field = find.byKey(const ValueKey('library-search'));
       final toggle = find.byKey(const ValueKey('library-search-expression'));
       final error = find.byKey(const ValueKey('library-search-error'));
@@ -2252,6 +2323,8 @@ void main() {
     }
     expect(controller.activeSession, isNull);
     expect(controller.currentFolderId, isNull);
+    // The top bar's search box opens with the saved search in it.
+    await openSearch(tester);
     final search = tester.widget<TextField>(
       find.byKey(const ValueKey('library-search')),
     );
@@ -2289,6 +2362,9 @@ void main() {
       tester.state<ScaffoldState>(find.byType(Scaffold).first).openDrawer();
     });
     await drain(tester);
+    // The folders are under the drawer's 폴더 tab.
+    await tester.tap(find.byKey(const ValueKey('library-drawer-folders')));
+    await tester.pump();
     await tester.runAsync(
       () async => tester.tap(find.widgetWithText(ListTile, folder.title)),
     );
@@ -2307,14 +2383,7 @@ void main() {
     expect(controller.activeSession, isNull);
     expect(controller.currentFolderId, folder.id);
     expect(create.hitTestable(), findsOneWidget);
-    await tester.runAsync(() async => tester.tap(create));
-    await drain(tester);
-    final quick = find.widgetWithText(
-      PopupMenuItem<LibraryCreateAction>,
-      '빠른 메모',
-    );
-    expect(quick, findsOneWidget);
-    await tester.runAsync(() async => tester.tap(quick));
+    await createFromDialog(tester, LibraryCreateAction.quickNote);
     for (var i = 0; i < 20 && find.byType(Editor).evaluate().isEmpty; i++) {
       await drain(tester);
     }
@@ -2393,20 +2462,11 @@ void main() {
           return note;
         });
         await mount(tester);
-        Future<void> choose(String label) async {
-          await tester.runAsync(
-            () =>
-                tester.tap(find.byKey(const ValueKey('library-create-button'))),
-          );
-          await tester.pumpAndSettle();
-          final action = find.text(label);
-          expect(action, findsOneWidget);
-          await tester.ensureVisible(action);
-          await tester.runAsync(() => tester.tap(action));
-          await drain(tester);
-        }
+        // 날짜별 노트 템플릿 and 오늘 노트 are rows of the 「새 노트」 dialog.
+        Future<void> choose(LibraryCreateAction action) =>
+            createFromDialog(tester, action);
 
-        await choose('날짜별 노트 템플릿');
+        await choose(LibraryCreateAction.dailyNoteTemplate);
         expect(
           find.byKey(const ValueKey('daily-note-template-settings')),
           findsOneWidget,
@@ -2456,7 +2516,7 @@ void main() {
           template.id,
         );
 
-        await choose('오늘 노트');
+        await choose(LibraryCreateAction.dailyNote);
         for (var i = 0; i < 20 && controller.activeSession == null; i++) {
           await drain(tester);
         }
@@ -2484,7 +2544,7 @@ void main() {
         }
         expect(home, findsOneWidget);
         expect(controller.activeSession, isNull);
-        await choose('날짜별 노트 템플릿');
+        await choose(LibraryCreateAction.dailyNoteTemplate);
         await tester.runAsync(
           () => tester.tap(
             find.byKey(const ValueKey('daily-note-template-clear')),
@@ -2499,7 +2559,7 @@ void main() {
           isNull,
         );
 
-        await choose('오늘 노트');
+        await choose(LibraryCreateAction.dailyNote);
         expect(controller.activeSession!.note.id, daily.id);
         expect(controller.markdown, '작성한 기록');
         expect(tester.takeException(), isNull);
@@ -2513,18 +2573,11 @@ void main() {
     tester,
   ) async {
     await mount(tester);
-    Future<void> choose(String label) async {
-      await tester.runAsync(
-        () async =>
-            tester.tap(find.byKey(const ValueKey('library-create-button'))),
-      );
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text(label));
-      await tester.runAsync(() async => tester.tap(find.text(label)));
-      await drain(tester);
-    }
+    // 오늘 노트 and 날짜별 노트 are rows of the 「새 노트」 dialog.
+    Future<void> choose(LibraryCreateAction action) =>
+        createFromDialog(tester, action);
 
-    await choose('오늘 노트');
+    await choose(LibraryCreateAction.dailyNote);
     for (
       var attempt = 0;
       attempt < 20 && find.byType(MarkdownEditor).evaluate().isEmpty;
@@ -2553,7 +2606,7 @@ void main() {
     await drain(tester);
     expect(find.byType(LibraryHome), findsOneWidget);
 
-    await choose('날짜별 노트');
+    await choose(LibraryCreateAction.datedNote);
     expect(find.byType(DatePickerDialog), findsOneWidget);
     await tester.runAsync(() async => tester.tap(find.text('열기')));
     await drain(tester);
@@ -2565,9 +2618,9 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
-  for (final (label, kind) in [
-    ('블록 페이지', VaultDocumentKind.page),
-    ('Word 문서 만들기', VaultDocumentKind.office),
+  for (final (action, kind) in [
+    (LibraryCreateAction.page, VaultDocumentKind.page),
+    (LibraryCreateAction.wordDocument, VaultDocumentKind.office),
   ]) {
     testWidgets('legacy vault creation upgrades before creating $kind', (
       tester,
@@ -2595,13 +2648,9 @@ void main() {
       }))!;
       await mount(tester);
 
+      // 블록 페이지 and 새 Word 문서 are rows of the 「새 노트」 dialog.
       Future<void> choose() async {
-        await tester.tap(find.byKey(const ValueKey('library-create-button')));
-        await tester.pumpAndSettle();
-        final option = find.text(label);
-        await tester.ensureVisible(option);
-        await tester.runAsync(() => tester.tap(option));
-        await drain(tester);
+        await createFromDialog(tester, action);
         expect(find.text('보관함 형식 업데이트'), findsOneWidget);
       }
 
@@ -2675,10 +2724,11 @@ void main() {
     });
   }
 
-  for (final (label, extension, mainPart) in [
-    ('Word 문서 만들기', '.docx', 'word/document.xml'),
-    ('프레젠테이션 만들기', '.pptx', 'ppt/slides/slide1.xml'),
-    ('한글 문서 만들기', '.hwpx', 'Contents/section0.xml'),
+  // 새 Word 문서, 새 프레젠테이션 and 새 한글 문서 are rows of the 「새 노트」 dialog.
+  for (final (action, extension, mainPart) in [
+    (LibraryCreateAction.wordDocument, '.docx', 'word/document.xml'),
+    (LibraryCreateAction.presentation, '.pptx', 'ppt/slides/slide1.xml'),
+    (LibraryCreateAction.hwpx, '.hwpx', 'Contents/section0.xml'),
   ]) {
     testWidgets(
       'home creates $extension in the selected folder and reopens its real original',
@@ -2688,12 +2738,7 @@ void main() {
         ))!;
         await tester.runAsync(() => controller.openFolder(folder.id));
         await mount(tester, thumbnailCache: _NoCoverCache.new);
-        await tester.tap(find.byKey(const ValueKey('library-create-button')));
-        await tester.pumpAndSettle();
-        expect(find.text(label), findsOneWidget);
-        await tester.ensureVisible(find.text(label));
-        await tester.runAsync(() async => tester.tap(find.text(label)));
-        await drain(tester);
+        await createFromDialog(tester, action);
         await tester.enterText(
           find.descendant(
             of: find.byType(AlertDialog),
@@ -2819,14 +2864,8 @@ void main() {
     (tester) async {
       await mount(tester);
       expect(find.byType(LibraryHome), findsOneWidget);
-      await tester.runAsync(() async {
-        await tester.tap(find.byKey(const ValueKey('library-create-button')));
-      });
-      await tester.pumpAndSettle();
-      await tester.runAsync(() async {
-        await tester.tap(find.text('Markdown').last);
-      });
-      await drain(tester);
+      // Markdown is a row of the 「새 노트」 dialog.
+      await createFromDialog(tester, LibraryCreateAction.markdown);
       for (
         var i = 0;
         i < 10 && find.byType(AlertDialog).evaluate().isEmpty;

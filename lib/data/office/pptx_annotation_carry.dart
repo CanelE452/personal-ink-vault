@@ -9,6 +9,7 @@ import 'package:pdfrx/pdfrx.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/page_link.dart';
 import 'package:saber/data/office/office_annotation_store.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/office_page_link.dart';
@@ -116,10 +117,18 @@ Future<({int copiedPages, int skippedPages})> carryPreviousPptxAnnotations({
           }
         }
         final carried = <int, EditorPage>{};
+        // A link to a page of this note follows that slide to its new page.
+        final newPageIds = <String, String>{};
         for (var index = 0; index < match.previousSlideCount; index++) {
           requireCurrent();
           final destination = match.previousToCurrent[index];
           final oldPage = pagesByBackground[sourcePages[index + 1]?.background];
+          if (destination != null && oldPage != null) {
+            newPageIds[oldPage.pageId] = officePdfBaselinePageId(
+              binding,
+              destination,
+            );
+          }
           if (destination == null || oldPage == null || !_hasInk(oldPage))
             continue;
           final before = oldDocument.pages[index];
@@ -157,6 +166,17 @@ Future<({int copiedPages, int skippedPages})> carryPreviousPptxAnnotations({
               strokes: oldPage?.strokes.map((stroke) => stroke.copy()).toList(),
               images: oldPage?.images.map((image) => image.copy()).toList(),
               quill: oldPage?.quill.cloneForScreenshot(),
+              links: [
+                for (final link in oldPage?.links ?? const <PageLink>[])
+                  PageLink(
+                    id: newId(),
+                    rect: link.rect,
+                    target: switch (newPageIds[link.pageId]) {
+                      final pageId? => '${PageLink.pagePrefix}$pageId',
+                      null => link.target,
+                    },
+                  ),
+              ],
               backgroundImage: PdfEditorImage(
                 id: target.nextImageId++,
                 assetCache: target.assetCache,
@@ -219,6 +239,7 @@ Future<({int copiedPages, int skippedPages})> carryPreviousPptxAnnotations({
 bool _hasInk(EditorPage page) =>
     page.strokes.isNotEmpty ||
     page.images.isNotEmpty ||
+    page.links.isNotEmpty ||
     !page.quill.controller.document.isEmpty();
 
 Future<bool> _samePage(

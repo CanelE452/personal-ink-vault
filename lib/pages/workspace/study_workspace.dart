@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as image;
+import 'package:ink_vault_core/drive.dart' show SyncPhase;
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
@@ -40,6 +41,10 @@ import 'package:saber/data/office/office_open_edits.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/office/pdf_note_original.dart';
+import 'package:saber/data/planner/handwriting_recognizer.dart';
+import 'package:saber/data/planner/planner_platform.dart';
+import 'package:saber/data/planner/planner_store.dart';
+import 'package:saber/data/planner/planner_widget_sync.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/block_page_document.dart';
 import 'package:saber/data/vault/card_canvas_document.dart';
@@ -52,8 +57,10 @@ import 'package:saber/data/vault/dataview_query.dart';
 import 'package:saber/data/vault/dataview_result.dart';
 import 'package:saber/data/vault/discussion_anchor.dart';
 import 'package:saber/data/vault/discussion_store.dart';
+import 'package:saber/data/vault/document_facts.dart';
 import 'package:saber/data/vault/infinite_document.dart';
 import 'package:saber/data/vault/knowledge_index.dart';
+import 'package:saber/data/vault/library_marks.dart';
 import 'package:saber/data/vault/library_store.dart';
 import 'package:saber/data/vault/note_link.dart';
 import 'package:saber/data/vault/obsidian_vault_export.dart';
@@ -71,15 +78,20 @@ import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/editor/editor_chrome.dart';
 import 'package:saber/pages/office/office_workspace.dart';
+import 'package:saber/pages/planner/calendar_page.dart';
+import 'package:saber/pages/planner/planner_screen.dart';
+import 'package:saber/pages/planner/reminder_page.dart';
 import 'package:saber/pages/workspace/block_page_editor.dart';
 import 'package:saber/pages/workspace/block_page_history_sheet.dart';
 import 'package:saber/pages/workspace/card_canvas.dart';
 import 'package:saber/pages/workspace/daily_note_template_settings_dialog.dart';
 import 'package:saber/pages/workspace/database_editor.dart';
 import 'package:saber/pages/workspace/database_history_sheet.dart';
+import 'package:saber/pages/workspace/import_jobs.dart';
 import 'package:saber/pages/workspace/infinite_canvas.dart';
 import 'package:saber/pages/workspace/knowledge_panel.dart';
 import 'package:saber/pages/workspace/library_home.dart';
+import 'package:saber/pages/workspace/library_menus.dart';
 import 'package:saber/pages/workspace/linked_database_block.dart';
 import 'package:saber/pages/workspace/markdown_editor.dart';
 import 'package:saber/pages/workspace/mcp_panel.dart';
@@ -156,6 +168,43 @@ class _DocumentNameDialogState extends State<_DocumentNameDialog> {
 
 enum _OfficeImportMode { pdf, office }
 
+/// The drawer's three tabs (설계 1.9절).
+enum _DrawerTab { browse, folders, labels }
+
+/// The + menu's imports of one Office·한글 format each (설계 2.2절): the
+/// extensions a chosen file must have and the types the Android picker offers.
+const _officeImportFormats = {
+  LibraryCreateAction.importPpt: (
+    label: 'PPT',
+    extensions: ['ppt', 'pptx', 'odp'],
+    mimeTypes: [
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.oasis.opendocument.presentation',
+    ],
+  ),
+  LibraryCreateAction.importWord: (
+    label: 'Word',
+    extensions: ['doc', 'docx', 'odt'],
+    mimeTypes: [
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.oasis.opendocument.text',
+    ],
+  ),
+  LibraryCreateAction.importHwp: (
+    label: '한글',
+    extensions: ['hwp', 'hwpx'],
+    mimeTypes: [
+      'application/x-hwp',
+      'application/haansofthwp',
+      'application/vnd.hancom.hwp',
+      'application/vnd.hancom.hwpx',
+      'application/octet-stream',
+    ],
+  ),
+};
+
 class StudyWorkspace extends StatefulWidget {
   static final pendingDocumentImport = SharedDocumentInbox();
   final WorkspaceController? controller;
@@ -168,6 +217,11 @@ class StudyWorkspace extends StatefulWidget {
   /// The Office documents' Android editor; tests inject one so nothing on
   /// the test machine is started.
   final AndroidOfficeEngine? officeEngine;
+
+  /// The planner's Android side: home-screen widgets, alarms and the screen a
+  /// widget tap opens. Android makes its own; a test injects one, which also
+  /// turns the widgets and alarms on off Android.
+  final PlannerPlatform? plannerPlatform;
   const new({
     super.key,
     this.controller,
@@ -176,6 +230,7 @@ class StudyWorkspace extends StatefulWidget {
     this.thumbnailCacheFactory = ThumbnailCache.new,
     this.officePreviewEngine,
     this.officeEngine,
+    this.plannerPlatform,
   });
   @override
   State<StudyWorkspace> createState() => _StudyWorkspaceState();
@@ -197,7 +252,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   NoteRepository? _mcpRepository;
   final _scaffold = GlobalKey<ScaffoldState>();
   // The open note's editor gives the function row its shortcuts and the 기타 설정 panel its sections.
+  // The ink editor and an Office PDF's editor share it; their page links open notes here.
   late final _editorChrome = EditorChromeController()
+    ..openLink = _openEditorLink
+    ..listNotes = _linkableNotes
     ..openOtherSettings = () => _scaffold.currentState?.openEndDrawer();
   _LibrarySelectionScope? _librarySelection;
   var _editor = GlobalKey<EditorState>();
@@ -217,6 +275,46 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   (NoteRepository, NoteSession, int, CardCanvasRasterReader)? _cardRaster;
   Future<InfiniteDocument>? _infiniteDocument;
   final _thumbnails = <String, ImageProvider>{};
+  final _coverFacts = <String, ({int? pages, double? aspect})>{};
+  // The listed documents' dates and formats, and the vault change and documents they were read for;
+  // only the last read is kept.
+  var _documentFacts = <String, DocumentFacts>{};
+  (NoteRepository, int)? _factsScope;
+  var _factsIds = const <String>[];
+  var _factsRequest = 0;
+  // Favourites, pins, labels and colour covers, read again when the vault or its contents change.
+  // Changes are written one after another, beside the screen's own work.
+  var _marks = LibraryMarks.empty;
+  (NoteRepository, int)? _marksScope;
+  var _marksRequest = 0;
+  var _marksWrites = Future<void>.value();
+  // The vault whose failed marks read was shown; each vault's is shown once.
+  NoteRepository? _marksFailureShown;
+  // Revision file times by revision id, for the facts reads of one vault: a committed revision file never
+  // changes, so its time is read once.
+  var _revisionTimes = <String, DateTime>{};
+  // The planner (설계 6·7절): its two screens over the workspace, the home-screen widgets and alarms fed from
+  // the open vault, and Google Calendar signed in with Drive's OAuth client.
+  late final PlannerPlatform _planner;
+  StreamSubscription<String>? _plannerOpens;
+  // The planner screen opened last; it is open while its route is in the navigator.
+  ({PlannerScreen screen, Route<void> route})? _plannerShown;
+  // A widget tap that came before a vault was open; only the latest waits.
+  PlannerScreen? _plannerWaiting;
+  var _plannerRequests = 0;
+  // The vault and change the planner last heard of. Open planner screens hear of each change.
+  (NoteRepository, int)? _plannerScope;
+  final _plannerChanges = ValueNotifier(0);
+  Timer? _plannerWidgetTimer;
+  // The home-screen widgets and alarms, and Google Calendar signed in with Drive's OAuth client.
+  late final PlannerWidgetSync _plannerWidgets;
+  // The drawer's tab, and what the library lists: a folder, 최근, 즐겨찾기 or a label.
+  var _drawerTab = _DrawerTab.browse;
+  var _libraryCollection = const LibraryCollection.folder();
+  // PDF·Office·image imports running beside the library, each a card in its folder (설계 4절);
+  // they belong to the vault they started in and end with it.
+  late final _importJobs = ImportJobs(trash: _trashImported);
+  NoteRepository? _importVault;
   NoteRepository? _thumbnailRepository;
   ThumbnailCache? _thumbnailCache;
   final _thumbnailKeys = <String, String>{};
@@ -272,9 +370,20 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   AppLifecycleState? _appliedLifecycle;
   Timer? _externalScreenGrace;
   static final _importLog = Logger('PIVImport');
+  static final _libraryLog = Logger('PIVLibrary');
+  static final _plannerLog = Logger('PIVPlanner');
   @override
   void initState() {
     super.initState();
+    _planner = widget.plannerPlatform ?? PlannerPlatform();
+    _plannerWidgets = PlannerWidgetSync(
+      platform: _planner,
+      drive: () => _driveConnection,
+    );
+    // A widget or alarm tapped while the app runs; the tap that started it is taken once a vault is open.
+    if (_plannerNative) {
+      _plannerOpens = _planner.openRequests.listen(_plannerRequested);
+    }
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _automationForeground =
         lifecycle == null || lifecycle == AppLifecycleState.resumed;
@@ -383,9 +492,12 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         );
         _automation!.start();
       }
+      _readLibraryInfo(value);
+      _plannerVaultChanged(value);
       setState(() {});
       _invalidateThumbnailScope();
       _sharedDocument();
+      if (_plannerNative) unawaited(_takePlannerLaunch());
     } catch (e) {
       if (mounted) setState(() => _startupError = e);
     }
@@ -425,6 +537,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         _officeOpenRequest = null;
       }
       _editorHosts.forgetOtherVaults(c?.repository);
+      if (!identical(_importVault, c?.repository)) {
+        // Imports end with the vault they were going into: nothing is written to another one.
+        _importVault = c?.repository;
+        _importJobs.cancelAll();
+      }
       if (_automation != null &&
           !identical(_automationRepository, c?.repository)) {
         _automationRepository = c?.repository;
@@ -444,6 +561,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           }),
         );
       }
+      if (c != null) _readLibraryInfo(c);
+      if (c != null) _plannerVaultChanged(c);
       setState(() {});
       _invalidateThumbnailScope();
       _sharedDocument();
@@ -737,6 +856,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
             Directory('${repo.root.path}/.cache/thumbnails'),
           );
     _thumbnails.clear();
+    _coverFacts.clear();
     _thumbnailKeys.clear();
     _thumbnailAttempts.clear();
   }
@@ -783,6 +903,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       if (_thumbnailAttempts[note.id] == (key, generation)) return;
       final file = key == null ? null : await cache.getOrCreate(repo, note);
       if (!current()) return;
+      final facts = file == null
+          ? null
+          : await ThumbnailCache.readCoverFacts(file);
+      if (!current()) return;
       final currentKey = await cache.coverKey(repo, note);
       if (!current() || currentKey != key) return;
       _thumbnailAttempts[note.id] = (key, generation);
@@ -790,11 +914,17 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         setState(() {
           _thumbnailKeys[note.id] = key!;
           _thumbnails[note.id] = FileImage(file);
+          if (facts == null) {
+            _coverFacts.remove(note.id);
+          } else {
+            _coverFacts[note.id] = facts;
+          }
         });
       } else if (_thumbnails.containsKey(note.id)) {
         setState(() {
           _thumbnailKeys.remove(note.id);
           _thumbnails.remove(note.id);
+          _coverFacts.remove(note.id);
         });
       }
     } finally {
@@ -813,6 +943,220 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         if (latest != null) unawaited(_requestThumbnail(latest));
       }
     }
+  }
+
+  /// Reads the vault's library marks when the vault or its contents change (a change event moves
+  /// [WorkspaceController.repositoryGeneration]), and the facts of the listed documents when those
+  /// change or other documents are listed, while the library shows: with a note open, a change is read
+  /// when the library returns. A refresh that lists the same documents reads nothing. A later read
+  /// replaces one still running.
+  void _readLibraryInfo(WorkspaceController c) {
+    final repository = c.repository;
+    final scope = (repository, c.repositoryGeneration);
+    final sameVault = identical(_marksScope?.$1, repository);
+    if (_marksScope != scope && !(sameVault && c.activeSession != null)) {
+      if (!sameVault) {
+        // Another vault: nothing of the last one stays.
+        _marks = LibraryMarks.empty;
+        _documentFacts = {};
+        _factsScope = null;
+        _revisionTimes = {};
+        _libraryCollection = const LibraryCollection.folder();
+      }
+      _marksScope = scope;
+      final request = ++_marksRequest;
+      _readInBackground(
+        () => LibraryMarksStore(repository).read().then(
+          (marks) {
+            if (mounted && request == _marksRequest) {
+              setState(() => _marks = marks);
+            }
+          },
+          onError: (Object error) {
+            _libraryLog.warning('Library marks were not read: $error');
+            // Shown once for each vault; later reads fail quietly.
+            if (mounted &&
+                request == _marksRequest &&
+                !identical(_marksFailureShown, repository)) {
+              _marksFailureShown = repository;
+              showUserErrorSnackBar(context, error);
+            }
+          },
+        ),
+      );
+    }
+    if (c.activeSession != null) return;
+    final notes = c.notes;
+    final ids = [for (final note in notes) note.id];
+    if (_factsScope != scope || !listEquals(_factsIds, ids)) {
+      // The same vault change with other documents listed: their facts join the ones already read.
+      final merge = _factsScope == scope;
+      _factsScope = scope;
+      _factsIds = ids;
+      final request = ++_factsRequest;
+      _readInBackground(
+        () => readDocumentFacts(repository, notes, times: _revisionTimes).then(
+          (facts) {
+            if (mounted &&
+                request == _factsRequest &&
+                identical(controller?.repository, repository)) {
+              setState(
+                () => _documentFacts = merge
+                    ? {..._documentFacts, ...facts}
+                    : facts,
+              );
+            }
+          },
+          onError: (Object error) {
+            _libraryLog.warning('Document facts were not read: $error');
+          },
+        ),
+      );
+    }
+  }
+
+  /// Runs a library read beside the screen, in the root zone: the read takes its turn in the
+  /// vault's queue of reads and writes, and it must not wait there for whatever zone noticed the
+  /// change (in a widget test, the fake clock's next frame, which would hold every later vault
+  /// call made in real time).
+  static void _readInBackground(Future<void> Function() read) =>
+      unawaited(Zone.root.run(read));
+
+  /// What the cards show: the vault's dates and formats, with the page count
+  /// and shape each cover found.
+  Map<String, DocumentFacts> _libraryFacts() {
+    if (_coverFacts.isEmpty) return _documentFacts;
+    return {
+      ..._documentFacts,
+      for (final MapEntry(key: id, value: cover) in _coverFacts.entries)
+        id: (_documentFacts[id] ?? const DocumentFacts()).withCover(
+          pages: cover.pages,
+          aspect: cover.aspect,
+        ),
+    };
+  }
+
+  /// Applies [change] to the marks as the vault holds them now and shows the
+  /// result. Changes are written one after another, beside the screen's own
+  /// work, so a heart never waits for it; a failure is shown.
+  Future<void> _changeMarks(LibraryMarks Function(LibraryMarks marks) change) {
+    final repository = controller!.repository;
+    bool current() =>
+        mounted && identical(controller?.repository, repository);
+    return _marksWrites = _marksWrites
+        .then((_) async {
+          if (!current()) return;
+          final store = LibraryMarksStore(repository);
+          final marks = await store.write(change(await store.read()));
+          if (!current()) return;
+          // A read that started before this write would bring the old marks back.
+          _marksRequest++;
+          setState(() => _marks = marks);
+        })
+        .catchError((Object error) {
+          if (mounted) showUserErrorSnackBar(context, error);
+        });
+  }
+
+  /// Hearts, pins, labels and covers are kept in vault format 2: on a format-1 vault the first one asks
+  /// to upgrade it, as the + menu's documents do. True when the marks can be written now.
+  Future<bool> _marksWritable(WorkspaceController c) async {
+    if (c.repository.formatVersion >= 2) return true;
+    var upgraded = false;
+    await _run(() async {
+      upgraded = await _upgradeLegacyVault(c);
+    });
+    return upgraded && mounted && identical(controller, c);
+  }
+
+  /// A heart or a pin.
+  Future<void> _mark(LibraryMarks Function(LibraryMarks marks) change) async {
+    final c = controller;
+    if (c != null && await _marksWritable(c)) await _changeMarks(change);
+  }
+
+  /// 라벨 추가 for [targetId], or the label list alone when it is empty (⋯ ›
+  /// 라벨 색상, the drawer's 새 라벨). Labels added, renamed or recoloured in the
+  /// dialog are stored with the time of this change, so they win a merge with
+  /// an older copy from another device; a deleted one leaves every document
+  /// (and its view closes); of [targetId]'s labels only the ones ticked or
+  /// unticked here change.
+  Future<void> _editLabels(String targetId) async {
+    final c = controller;
+    if (c == null || !await _marksWritable(c) || !mounted) return;
+    final repository = c.repository;
+    final shown = _marks;
+    final choice = await showLibraryLabelsDialog(
+      context,
+      labels: shown.labels,
+      selected: targetId.isEmpty
+          ? null
+          : shown.labelsOf[targetId] ?? const <String>{},
+    );
+    if (choice == null || !mounted || !identical(c.repository, repository)) {
+      return;
+    }
+    final before = {for (final label in shown.labels) label.id: label};
+    final changed = [
+      for (final label in choice.labels)
+        if (before[label.id]?.name != label.name ||
+            before[label.id]?.color != label.color)
+          label,
+    ];
+    final kept = {for (final label in choice.labels) label.id};
+    final deleted = [
+      for (final id in before.keys)
+        if (!kept.contains(id)) id,
+    ];
+    final had = shown.labelsOf[targetId] ?? const <String>{};
+    final added = choice.selected.difference(had);
+    final removed = had.difference(choice.selected);
+    await _changeMarks((marks) {
+      final now = DateTime.now().microsecondsSinceEpoch;
+      var next = marks;
+      for (final id in deleted) {
+        next = next.removeLabel(id);
+      }
+      for (final label in changed) {
+        next = next.putLabel(
+          LibraryLabel(
+            id: label.id,
+            name: label.name,
+            color: label.color,
+            changedAt: now,
+          ),
+        );
+      }
+      if (targetId.isEmpty) return next;
+      // A label another device gave the document while the dialog was open stays.
+      return next.setLabels(
+        targetId,
+        {...?next.labelsOf[targetId], ...added}.difference(removed),
+      );
+    });
+    if (mounted && deleted.contains(_libraryCollection.labelId)) {
+      setState(() => _libraryCollection = const LibraryCollection.folder());
+    }
+  }
+
+  /// 표지 변경: the first page again, an Office·한글 original's format cover, or one of eight colours.
+  Future<void> _changeCover(String targetId) async {
+    final c = controller;
+    if (c == null || !await _marksWritable(c) || !mounted) return;
+    final repository = c.repository;
+    final office = c.notes.any(
+      (note) =>
+          note.id == targetId && note.documentKind == VaultDocumentKind.office,
+    );
+    final choice = await showLibraryCoverDialog(
+      context,
+      current: _marks.covers[targetId]?.color,
+      format: office ? _documentFacts[targetId]?.format : null,
+    );
+    if (choice == null || !mounted || !identical(c.repository, repository)) {
+      return;
+    }
+    await _changeMarks((marks) => marks.setCover(targetId, choice.color));
   }
 
   void _sharedDocument() {
@@ -934,13 +1278,144 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     return true;
   }
 
-  Future<void> _importOfficeFile(
+  /// Starts an import beside the library (설계 4절): its card shows in the current folder while the
+  /// file is read and stored, and the rest of the screen stays usable. [write] stores the file in the
+  /// vault and folder the import started in.
+  void _startImport(
+    WorkspaceController c, {
+    required String title,
+    required ImportRead read,
+    required Future<VaultNote> Function(
+      NoteRepository repository,
+      String? folderId,
+      Uint8List bytes,
+    )
+    write,
+  }) {
+    // The screen closed while the picker was open: there is nothing to import into.
+    if (!mounted) return;
+    final repository = c.repository;
+    final folderId = c.currentFolderId;
+    _importVault = repository;
+    _importJobs.start(
+      title: title,
+      folderId: folderId,
+      read: read,
+      write: (bytes) => write(repository, folderId, bytes),
+      done: _imported,
+    );
+  }
+
+  /// Imports [fileName] as a new [kind] document that keeps only the original; its pages or its
+  /// cover are made later (설계 13절).
+  void _importOriginal(
+    WorkspaceController c, {
+    required String fileName,
+    required VaultDocumentKind kind,
+    required ImportRead read,
+  }) {
+    final title = p.basenameWithoutExtension(fileName);
+    _startImport(
+      c,
+      title: title,
+      read: read,
+      write: (repository, folderId, bytes) => c.createDocumentQuietly(
+        expectedRepository: repository,
+        title: title,
+        fileName: fileName,
+        bytes: bytes,
+        kind: kind,
+        folderId: folderId,
+      ),
+    );
+  }
+
+  /// Reads a chosen file for an import in chunks, telling how far it got; a cancelled import
+  /// stops reading.
+  static Future<Uint8List> _readForImport(
+    Future<int?> Function() length,
+    Stream<List<int>> Function() openRead,
+    void Function(double) progress,
+    bool Function() cancelled,
+  ) async {
+    final total = await length();
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in openRead()) {
+      // The cancelled import drops what was read.
+      if (cancelled()) break;
+      bytes.add(chunk);
+      if (total != null && total > 0) progress(bytes.length / total);
+    }
+    return bytes.takeBytes();
+  }
+
+  /// A finished import opens nothing: the library lists it, and the message offers to open it. 열기
+  /// tapped while the workspace is busy (another note opening, a save) waits for that work.
+  void _imported(VaultNote note) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(importDoneMessage(note.title)),
+        persist: false,
+        action: SnackBarAction(
+          label: '열기',
+          onPressed: () {
+            if (mounted) unawaited(_runWhenIdle(() => _openImported(note.id)));
+          },
+        ),
+      ),
+    );
+  }
+
+  /// 「열기」 on an import's message: the document opens as its card would open it.
+  Future<void> _openImported(String id) async {
+    final note = (await controller!.store.list())
+        .where((n) => n.id == id)
+        .firstOrNull;
+    if (note == null) throw StateError('문서를 찾을 수 없습니다. 수신 상태나 휴지통을 확인하세요.');
+    await _open(
+      note,
+      officeAction: note.documentKind == VaultDocumentKind.office
+          ? OfficeOpenAction.edit
+          : null,
+    );
+  }
+
+  /// An import cancelled while it was stored: the document, which was never opened, goes straight to
+  /// the trash of the vault the imports belong to, so an unsaved note does not hold it up. If it cannot,
+  /// the message names it.
+  Future<void> _trashImported(VaultNote note) async {
+    final repository = _importVault;
+    try {
+      if (repository == null || note.revision.vaultId != repository.vaultId)
+        throw StateError('The imported document is not in this vault');
+      await WorkspaceStore(
+        repository,
+        native: controller?.native,
+      ).setDeleted(note, true);
+    } catch (error) {
+      _importLog.warning('A cancelled import was not trashed: $error');
+      if (mounted) {
+        showUserErrorSnackBar(
+          context,
+          StateError('‘${note.title}’ 가져오기를 취소했지만 휴지통으로 옮기지 못했습니다.'),
+        );
+      }
+    }
+  }
+
+  /// Asks how to store an Office·한글 original and imports it; 「PDF 필기용」 converts it and opens
+  /// the PDF. With [readInBackground] (the + menu's imports), 「Office 편집용」 becomes an import
+  /// beside the library that stores only the original (설계 4절, 13절): it reads the file with
+  /// [readInBackground] itself, and true is returned.
+  Future<bool> _importOfficeFile(
     WorkspaceController c, {
     required String fileName,
     required Future<Uint8List?> Function() readOriginal,
     required bool Function() isCurrent,
     String? Function()? staleReason,
     String? sharedRequestId,
+    ImportRead? readInBackground,
   }) async {
     final repository = c.repository;
     Future<void> requireCurrent() async {
@@ -954,7 +1429,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     if (sharedRequestId != null) {
       bytes = await readOriginal();
       await requireCurrent();
-      if (bytes == null) return;
+      if (bytes == null) return false;
       final prior = await c.store.readSharedOfficeImport(sharedRequestId, (
         fileName: fileName,
         bytes: bytes,
@@ -967,11 +1442,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           await c.openNote(prior);
         }
         _finishOfficeImport(c, repository, prior);
-        return;
+        return false;
       }
     }
 
-    if (!mounted) return;
+    if (!mounted) return false;
     final mode = await showDialog<_OfficeImportMode>(
       context: context,
       builder: (context) => AlertDialog(
@@ -997,11 +1472,25 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         ],
       ),
     );
-    if (mode == null) return;
+    if (mode == null) return false;
     await requireCurrent();
+    if (mode == _OfficeImportMode.office && readInBackground != null) {
+      _importOriginal(
+        c,
+        fileName: fileName,
+        kind: VaultDocumentKind.office,
+        read: (progress, cancelled) async {
+          final original = await readInBackground(progress, cancelled);
+          if (original.isEmpty && !cancelled())
+            throw const FormatException('빈 Office·한글 파일은 가져올 수 없습니다.');
+          return original;
+        },
+      );
+      return true;
+    }
     bytes ??= await readOriginal();
     await requireCurrent();
-    if (bytes == null) return;
+    if (bytes == null) return false;
     if (bytes.isEmpty)
       throw const FormatException('빈 Office·한글 파일은 가져올 수 없습니다.');
     final title = p.basenameWithoutExtension(fileName);
@@ -1011,7 +1500,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           await (widget.officePreviewEngine ?? OfficePreviewEngine())
               .convertToPdf(fileName: fileName, original: bytes);
       await requireCurrent();
-      if (converted == null) return;
+      if (converted == null) return false;
       note = await _importConvertedOfficePdf(
         c,
         title: title,
@@ -1037,7 +1526,18 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         sharedRequestId: sharedRequestId,
       );
       if (!note.trashed && isCurrent()) {
-        await _makeOfficeCover(repository, note, fileName: fileName, bytes: bytes);
+        // The edition [bytes] were stored as, so the kept PDF stays with it even if a newer one arrives.
+        final source = note.sourceEntityId;
+        final edition = source == null
+            ? null
+            : (await repository.heads(source)).singleOrNull;
+        await _makeOfficeCover(
+          repository,
+          note,
+          fileName: fileName,
+          bytes: bytes,
+          revisionId: edition?.revisionId,
+        );
         if (await _settledAfterExternalScreen(isCurrent)) {
           if (_opensInEditor(note)) {
             await _openInEditor(c, note);
@@ -1048,36 +1548,81 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       }
     }
     _finishOfficeImport(c, repository, note);
+    return false;
   }
 
   /// An Office original imported on Android is converted once so the library shows its first page as the cover
-  /// (HWP and Windows covers are made in the background). Cancelling or a failure only leaves the cover out.
-  Future<void> _makeOfficeCover(
+  /// (HWP and Windows covers are made in the background). Cancelling or a failure only leaves the cover out;
+  /// the result says whether a cover was kept. [revisionId] names the edition [bytes] came from, so the PDF stays
+  /// with that edition even when a newer one arrives during the conversion (the latest edition when null).
+  Future<bool> _makeOfficeCover(
     NoteRepository repository,
     VaultNote note, {
     required String fileName,
     required Uint8List bytes,
+    String? revisionId,
   }) async {
     final engine = widget.officePreviewEngine ?? OfficePreviewEngine();
     if (defaultTargetPlatform != TargetPlatform.android ||
         engine.supportsBackgroundPreview(fileName)) {
-      return;
+      return false;
     }
     try {
       final converted = await engine.convertToPdf(
         fileName: fileName,
         original: bytes,
       );
-      if (converted == null) return;
+      if (converted == null) return false;
       await OfficeDocumentStore(repository).keepFirstPdf(
         note,
         pdfBytes: converted.bytes,
         pageCount: converted.pageCount,
+        revisionId: revisionId,
       );
+      return true;
     } catch (error) {
       _importLog.warning('Office cover was not made: $error');
+      return false;
     }
   }
+
+  /// 「첫 쪽 표지 만들기」: the conversion an Android import used to make, run for a card without a first-page
+  /// picture. The conversion screen shows because the user asked; then the card's cover is drawn again.
+  Future<void> _makeCover(VaultNote note) => _run(() async {
+    final c = controller;
+    if (c == null) return;
+    final repository = c.repository;
+    final documents = OfficeDocumentStore(repository);
+    final edition = await documents.readLatest(note);
+    final kept =
+        edition.pdfBytes != null ||
+        (await documents.readPdfVariants(note, edition)).isNotEmpty;
+    if (!mounted || !identical(c.repository, repository)) return;
+    if (kept) {
+      // Its first page is already kept: draw it again instead of converting a PDF nobody would keep.
+      _readInBackground(() => _requestThumbnail(note));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('이미 첫 쪽 표지가 있습니다')));
+      return;
+    }
+    final made = await _makeOfficeCover(
+      repository,
+      note,
+      fileName: edition.originalFileName,
+      bytes: edition.originalBytes,
+      revisionId: edition.revision.revisionId,
+    );
+    if (mounted && identical(c.repository, repository)) {
+      if (made) {
+        _readInBackground(() => _requestThumbnail(note));
+      } else {
+        // Only this row says so; an import without a cover goes on quietly.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('첫 쪽 표지를 만들지 못했습니다')),
+        );
+      }
+    }
+  });
 
   static const _officeImportMaxBytes = 128 * 1024 * 1024;
   static const _officeImportTooLarge = FormatException(
@@ -1558,6 +2103,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         if (!busy) setState(() => _librarySelection = null);
         return;
       }
+      // From 최근, 즐겨찾기 or a label, back returns to the folders.
+      if (_libraryCollection.kind != LibraryCollectionKind.folder) {
+        setState(() => _libraryCollection = const LibraryCollection.folder());
+        return;
+      }
       if (c?.currentFolderId != null) {
         final folder = c!.folders
             .where((f) => f.id == c.currentFolderId)
@@ -1938,21 +2488,21 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     },
   );
 
-  /// What stands before the path above the documents (the library has no top
-  /// row): on a tablet, the button that brings the hidden side bar back; on a
-  /// phone, the drawer button.
+  /// The first button of the library's top bar, ☰ as in Notein: on a tablet it
+  /// shows and hides the side panel; on a phone it opens the drawer.
   Widget _libraryLeading({required bool panel}) {
     if (!panel) return const DrawerButton();
     return ValueListenableBuilder(
       valueListenable: stows.libraryPanelOpen,
-      builder: (context, _, _) => _libraryPanelOpen()
-          ? const SizedBox.shrink()
-          : IconButton(
-              key: const ValueKey('library-panel-toggle'),
-              tooltip: '왼쪽 바 보이기',
-              icon: const Icon(Icons.view_sidebar_outlined),
-              onPressed: () => stows.libraryPanelOpen.value = true,
-            ),
+      builder: (context, _, _) {
+        final open = _libraryPanelOpen();
+        return IconButton(
+          key: const ValueKey('library-panel-toggle'),
+          tooltip: open ? '왼쪽 바 숨기기' : '왼쪽 바 보이기',
+          icon: const Icon(Icons.menu),
+          onPressed: () => stows.libraryPanelOpen.value = !open,
+        );
+      },
     );
   }
 
@@ -1960,7 +2510,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       stows.libraryPanelOpen.value ?? MediaQuery.sizeOf(context).width >= 1000;
 
   /// The library's side panel sits beside the documents instead of covering them, so both stay usable; the top
-  /// row's menu button opens and closes it.
+  /// bar's ☰ opens and closes it. In light mode it is white, as Notein's drawer.
   Widget _libraryPanel(WorkspaceController c) => ValueListenableBuilder(
     valueListenable: stows.libraryPanelOpen,
     builder: (context, _, _) => AnimatedSize(
@@ -1972,8 +2522,14 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
               key: const ValueKey('library-panel'),
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(width: 300, child: _library(c, panel: true)),
-                const VerticalDivider(width: 1),
+                SizedBox(
+                  width: 260,
+                  child: Material(
+                    color: _drawerBackground(context),
+                    child: _library(c),
+                  ),
+                ),
+                VerticalDivider(width: 1, color: libraryLine(context)),
               ],
             )
           // Keeps the full height so only the width animates.
@@ -2244,6 +2800,9 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         !identical(c.repository, repository))
       return;
     await c.openFolder(id);
+    if (mounted) {
+      setState(() => _libraryCollection = const LibraryCollection.folder());
+    }
     if (c.searchesAcrossFolders) {
       c.query = '';
       await c.refresh();
@@ -2265,8 +2824,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       builder: (context) => AlertDialog(
         title: const Text('보관함 형식 업데이트'),
         content: const Text(
-          '이 문서를 만들려면 보관함 형식 2가 필요합니다. '
-          '현재 기기에 저장된 문서와 이력을 새 보관함에 복사한 뒤 문서 생성을 이어갑니다. '
+          '이 기능을 쓰려면 보관함 형식 2가 필요합니다. '
+          '현재 기기에 저장된 문서와 이력을 새 보관함에 복사한 뒤 하던 일을 이어갑니다. '
           '기존 보관함과 Drive 원본은 그대로 유지됩니다. '
           '복사본도 동기화하려면 Drive에서 ‘현재 로컬 vault를 Drive에 만들기’를 선택하세요.',
         ),
@@ -2334,6 +2893,9 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       LibraryCreateAction.image ||
       LibraryCreateAction.camera ||
       LibraryCreateAction.office ||
+      LibraryCreateAction.importPpt ||
+      LibraryCreateAction.importWord ||
+      LibraryCreateAction.importHwp ||
       LibraryCreateAction.wordDocument ||
       LibraryCreateAction.presentation ||
       LibraryCreateAction.hwpx ||
@@ -2432,9 +2994,18 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     }
     await _save();
     if (action == LibraryCreateAction.pdf) return _create(pdf: true);
+    if (action == LibraryCreateAction.handwriting ||
+        action == LibraryCreateAction.pageNoteWithPattern) {
+      // As in Notein, the pencil and 「새 노트」's 만들기 make a page note at once; it takes the
+      // last page pattern, which the dialog has just stored.
+      await controller!.createNote('새 노트');
+      markdownTab = false;
+      _scaffold.currentState?.closeDrawer();
+      return;
+    }
     if (action == LibraryCreateAction.image ||
         action == LibraryCreateAction.camera) {
-      final Uint8List bytes;
+      final ImportRead read;
       final String name;
       if (action == LibraryCreateAction.camera) {
         final captured = await const NativeImageCapture().capture();
@@ -2442,7 +3013,12 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         if (await captured.length() > 64 * 1024 * 1024)
           throw StateError('사진이 너무 큽니다(최대 64 MiB).');
         name = p.basename(captured.path);
-        bytes = await captured.readAsBytes();
+        read = (progress, cancelled) => _readForImport(
+          captured.length,
+          captured.openRead,
+          progress,
+          cancelled,
+        );
       } else {
         final file = await FilePicker.pickFile(
           type: FileType.custom,
@@ -2452,25 +3028,53 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         if ((await file.length() ?? 0) > 64 * 1024 * 1024)
           throw StateError('이미지가 너무 큽니다(최대 64 MiB).');
         name = p.basename(file.name);
-        bytes = await file.readAsBytes();
+        read = (progress, cancelled) => _readForImport(
+          file.length,
+          file.readAsByteStream,
+          progress,
+          cancelled,
+        );
       }
       final c = controller!;
-      final note = await ImageNoteImporter(c.repository).import(
-        title: action == LibraryCreateAction.camera
-            ? '촬영한 사진'
-            : p.basenameWithoutExtension(name),
-        fileName: name,
-        bytes: bytes,
-        folderId: c.currentFolderId,
+      final title = action == LibraryCreateAction.camera
+          ? '촬영한 사진'
+          : p.basenameWithoutExtension(name);
+      // Beside the library like the other imports; the importer stores the image with its page.
+      _startImport(
+        c,
+        title: title,
+        read: read,
+        write: (repository, folderId, bytes) async {
+          void requireVault() {
+            if (!identical(c.repository, repository))
+              throw StateError('가져오기 대상 보관함이 바뀌었습니다.');
+          }
+
+          requireVault();
+          final note = await ImageNoteImporter(repository).import(
+            title: title,
+            fileName: name,
+            bytes: bytes,
+            folderId: folderId,
+          );
+          requireVault();
+          return note;
+        },
       );
-      await c.openNote(note);
-      markdownTab = false;
-      _pendingPdf = null;
-      _targetPage = null;
-      _scaffold.currentState?.closeDrawer();
       return;
     }
-    if (action == LibraryCreateAction.office) {
+    // Any Office·한글 original, or one format from the + menu: its picker offers
+    // only that format, and a file of another one is refused before it is read.
+    final officeFormat = _officeImportFormats[action];
+    if (action == LibraryCreateAction.office || officeFormat != null) {
+      void requireFormat(String fileName) {
+        final name = fileName.toLowerCase();
+        if (officeFormat != null &&
+            !officeFormat.extensions.any((ext) => name.endsWith('.$ext'))) {
+          throw FormatException('${officeFormat.label} 파일을 고르세요.');
+        }
+      }
+
       final c = controller!;
       final repository = c.repository;
       final session = c.activeSession;
@@ -2490,44 +3094,72 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       bool current() => stale() == null;
       if (defaultTargetPlatform == TargetPlatform.android) {
         const source = AndroidDocumentSource.office;
-        final selection = await source.choose();
+        final selection = await source.choose(
+          mimeTypes: officeFormat?.mimeTypes,
+        );
         if (selection == null) return;
+        // An import that takes the document over lets it go itself.
+        var handedOver = false;
         try {
+          requireFormat(selection.name);
           if (!await _settledAfterExternalScreen(current)) {
             _importLog.warning('Office import stopped after the picker: ${stale()}');
             return;
           }
-          await _importOfficeFile(
+          Future<Uint8List?> readStaged(
+            bool Function() wanted, [
+            void Function(double)? progress,
+          ]) async {
+            final staged = await source.stage(selection);
+            return _readExternalDocument(
+              staged.file.length,
+              staged.file.openRead,
+              expectedLength: staged.bytes,
+              maxBytes: _officeImportMaxBytes,
+              tooLarge: _officeImportTooLarge,
+              current: wanted,
+              progress: progress,
+            );
+          }
+
+          handedOver = await _importOfficeFile(
             c,
             fileName: selection.name,
             staleReason: stale,
-            readOriginal: () async {
-              final staged = await source.stage(selection);
-              return _readExternalDocument(
-                staged.file.length,
-                staged.file.openRead,
-                expectedLength: staged.bytes,
-                maxBytes: _officeImportMaxBytes,
-                tooLarge: _officeImportTooLarge,
-                current: current,
-              );
+            readOriginal: () => readStaged(current),
+            readInBackground: (progress, cancelled) async {
+              try {
+                return await readStaged(() => !cancelled(), progress) ??
+                    (throw StateError('가져오기를 취소했습니다.'));
+              } finally {
+                // The picker holds one document at a time: it is let go as soon as it is read.
+                await source.release(selection.id);
+              }
             },
             isCurrent: current,
           );
         } finally {
-          await source.release(selection.id);
+          if (!handedOver) await source.release(selection.id);
         }
       } else {
         final file = await FilePicker.pickFile(
           type: FileType.custom,
-          allowedExtensions: OfficeDocumentStore.supportedExtensions,
+          allowedExtensions:
+              officeFormat?.extensions ??
+              OfficeDocumentStore.supportedExtensions,
         );
         if (file == null) return;
-        final bytes = await file.readAsBytes();
+        requireFormat(file.name);
         await _importOfficeFile(
           c,
           fileName: p.basename(file.name),
-          readOriginal: () async => bytes,
+          readOriginal: file.readAsBytes,
+          readInBackground: (progress, cancelled) => _readForImport(
+            file.length,
+            file.readAsByteStream,
+            progress,
+            cancelled,
+          ),
           isCurrent: current,
         );
       }
@@ -2917,6 +3549,23 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       if (picked == null) return;
       path = picked.path;
       if (path == null) throw StateError('PDF 파일을 읽을 수 없습니다.');
+      final c = controller!;
+      if (c.repository.formatVersion >= 2) {
+        // Read in chunks beside the library; only the original is stored, and its pages are
+        // made when it is first opened.
+        _importOriginal(
+          c,
+          fileName: p.basename(path),
+          kind: VaultDocumentKind.pdf,
+          read: (progress, cancelled) => _readForImport(
+            picked.length,
+            picked.readAsByteStream,
+            progress,
+            cancelled,
+          ),
+        );
+        return;
+      }
     }
     if (path != null) {
       await _importPdfPath(path);
@@ -3033,6 +3682,25 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     } else {
       await _openLink(NoteLink(id).toString(), canvasSubpath: subpath);
     }
+  }
+
+  /// A link on a handwritten page (the ink editor's or an Office PDF's): another note opens here, a
+  /// web page outside. One followed while the workspace is busy opens after that work.
+  Future<void> _openEditorLink(String link) =>
+      _runWhenIdle(() => _openLink(link));
+
+  /// The link dialog's 「노트」 tab: the vault's notes outside the trash, the open one too, by title.
+  Future<List<({String id, String title})>> _linkableNotes() async {
+    final c = controller;
+    if (c == null) return const [];
+    final store = c.store;
+    final notes = await Zone.root.run(store.list);
+    final seen = <String>{};
+    return [
+      for (final note in notes)
+        if (!note.trashed && seen.add(note.id))
+          (id: note.id, title: note.title),
+    ]..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
   }
 
   Future<void> _openLink(
@@ -4536,6 +5204,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     required int maxBytes,
     required FormatException tooLarge,
     required bool Function() current,
+    void Function(double)? progress,
   }) async {
     if (expectedLength != null && expectedLength > maxBytes) throw tooLarge;
     const lengthMismatch = FormatException('선택한 문서의 파일 크기를 확인하지 못했습니다.');
@@ -4553,6 +5222,9 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         throw lengthMismatch;
       }
       bytes.add(chunk);
+      if (progress != null && length != null && length > 0) {
+        progress(bytes.length / length);
+      }
     }
     if (expectedLength != null && bytes.length != expectedLength)
       throw lengthMismatch;
@@ -4606,7 +5278,15 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     unawaited(c.refresh());
   }
 
-  Widget _library(WorkspaceController c, {bool panel = false}) {
+  static Color _drawerBackground(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.light
+      ? Colors.white
+      : Theme.of(context).colorScheme.surface;
+
+  /// The library's drawer, as Notein's (설계 1.9절): three tabs on top — 둘러보기 (the library's
+  /// views, then bookmarks, tags, backlinks, graph and the quick switch), 폴더 (the folder tree)
+  /// and 라벨 — and the Drive state at the bottom. Search and settings are in the library's top bar.
+  Widget _library(WorkspaceController c) {
     final folders = [
       for (final folder in c.folders)
         if (!folder.trashed || folder.deletionConflict) folder,
@@ -4623,13 +5303,12 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     // Documents per folder, counting the folders inside it.
     final parents = {for (final folder in folders) folder.id: folder.parentId};
     final counts = <String, int>{};
-    var live = 0, trashed = 0;
+    var trashed = 0;
     for (final note in c.notes) {
       if (note.trashed) {
         trashed++;
         continue;
       }
-      live++;
       var id = note.folderId;
       final seen = <String>{};
       while (id != null && seen.add(id)) {
@@ -4693,7 +5372,10 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              selected: folder.id == c.currentFolderId,
+              selected:
+                  !c.showDeleted &&
+                  _libraryCollection.kind == LibraryCollectionKind.folder &&
+                  folder.id == c.currentFolderId,
               onTap: busy ? null : () => _run(() => _goFolder(folder.id)),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -4726,9 +5408,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       }
     }
 
-    addFolders(null, 0, <String>{});
-
-    // A row in the drawer closes it first; the tablet's side bar stays.
+    // A row in the drawer closes it first; the tablet's side panel stays.
     void tap(VoidCallback action) {
       if (_scaffold.currentState?.isDrawerOpen ?? false) {
         _scaffold.currentState!.closeDrawer();
@@ -4736,167 +5416,518 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
       action();
     }
 
+    final scheme = Theme.of(context).colorScheme;
+    final light = Theme.of(context).brightness == Brightness.light;
+    // Notein's rows: an icon and a name, the chosen one on a pale blue pill.
     Widget row(
       String label,
       IconData icon,
       VoidCallback? action, {
       Key? key,
+      Color? iconColor,
       Widget? trailing,
       bool selected = false,
-    }) => ListTile(
-      key: key,
-      dense: true,
-      enabled: action != null,
-      leading: Icon(icon),
-      title: Text(label),
-      trailing: trailing,
-      selected: selected,
-      onTap: action == null ? null : () => tap(action),
+    }) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      child: ListTile(
+        key: key,
+        enabled: action != null,
+        minTileHeight: 48,
+        shape: const StadiumBorder(),
+        selectedTileColor: light
+            ? const Color(0xFFDCE8FC)
+            : scheme.secondaryContainer,
+        selectedColor: scheme.onSurface,
+        leading: Icon(icon, color: iconColor),
+        title: Text(label),
+        trailing: trailing,
+        selected: selected,
+        onTap: action == null ? null : () => tap(action),
+      ),
     );
 
     final repository = c.repository;
     final ready = !busy && !c.externalBusy;
-    // StarNote's side bar: its head (hide the bar, settings), then search,
-    // the documents, bookmarks, tags, backlinks, graph, trash and folders.
+    final shown = c.showDeleted ? null : _libraryCollection;
+    final List<Widget> items;
+    switch (_drawerTab) {
+      case _DrawerTab.browse:
+        items = [
+          row(
+            '모두',
+            Icons.archive_outlined,
+            busy
+                ? null
+                : () => _run(() async {
+                    c.showDeleted = false;
+                    await c.refresh();
+                    await _goFolder(null);
+                  }),
+            key: const ValueKey('library-nav-all'),
+            selected: shown?.kind == LibraryCollectionKind.folder,
+          ),
+          row(
+            '최근',
+            Icons.history,
+            busy
+                ? null
+                : () => _run(
+                    () => _openCollection(const LibraryCollection.recent([])),
+                  ),
+            key: const ValueKey('library-nav-recent'),
+            selected: shown?.kind == LibraryCollectionKind.recent,
+          ),
+          row(
+            '즐겨찾기',
+            Icons.favorite_border,
+            busy
+                ? null
+                : () => _run(
+                    () => _openCollection(const LibraryCollection.favorites()),
+                  ),
+            key: const ValueKey('library-nav-favorites'),
+            selected: shown?.kind == LibraryCollectionKind.favorites,
+          ),
+          row(
+            '리마인더',
+            Icons.alarm,
+            busy
+                ? null
+                : () => _run(() => _openPlanner(PlannerScreen.reminder)),
+            key: const ValueKey('library-nav-reminder'),
+          ),
+          row(
+            '달력',
+            Icons.calendar_month_outlined,
+            busy
+                ? null
+                : () => _run(() => _openPlanner(PlannerScreen.calendar)),
+            key: const ValueKey('library-nav-calendar'),
+          ),
+          row(
+            '휴지통',
+            Icons.delete_outline,
+            busy
+                ? null
+                : () => _run(() async {
+                    await _goFolder(null);
+                    c.showDeleted = true;
+                    await c.refresh();
+                  }),
+            key: const ValueKey('library-nav-trash'),
+            trailing: count(trashed),
+            selected: c.showDeleted,
+          ),
+          Divider(indent: 16, endIndent: 16, color: libraryLine(context)),
+          if (repository.formatVersion >= 2)
+            row(
+              '북마크',
+              Icons.bookmark_border,
+              ready ? _bookmarks : null,
+              key: const ValueKey('workspace-bookmarks'),
+            ),
+          if (c.native != null) ...[
+            row(
+              '태그',
+              Icons.tag,
+              busy ? null : () => unawaited(_knowledge(tab: 1)),
+              key: const ValueKey('library-tags'),
+            ),
+            row(
+              '역링크',
+              Icons.link,
+              busy ? null : () => unawaited(_knowledge()),
+              key: const ValueKey('library-backlinks'),
+            ),
+            row(
+              '그래프',
+              Icons.hub_outlined,
+              busy ? null : () => unawaited(_knowledge(tab: 2)),
+              key: const ValueKey('library-graph'),
+            ),
+          ],
+          row(
+            '빠른 문서 전환',
+            Icons.manage_search,
+            ready ? _quickSwitch : null,
+            key: const ValueKey('workspace-quick-switch'),
+          ),
+        ];
+      case _DrawerTab.folders:
+        addFolders(null, 0, <String>{});
+        items = [
+          row(
+            '새 폴더',
+            Icons.add,
+            busy
+                ? null
+                : () => _run(() => _createDocument(LibraryCreateAction.folder)),
+            key: const ValueKey('library-drawer-new-folder'),
+          ),
+          ...rows,
+        ];
+      case _DrawerTab.labels:
+        items = [
+          for (final label in _marks.labels)
+            row(
+              label.name,
+              Icons.label,
+              busy
+                  ? null
+                  : () => _run(
+                      () => _openCollection(
+                        LibraryCollection.label(label.id, label.name),
+                      ),
+                    ),
+              key: ValueKey('library-drawer-label-${label.id}'),
+              iconColor: Color(label.color),
+              selected:
+                  shown?.kind == LibraryCollectionKind.label &&
+                  shown?.labelId == label.id,
+            ),
+          row(
+            '새 라벨',
+            Icons.add,
+            () => unawaited(_editLabels('')),
+            key: const ValueKey('library-drawer-new-label'),
+          ),
+        ];
+    }
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-          child: Row(
-            children: [
-              if (panel)
-                IconButton(
-                  key: const ValueKey('library-panel-toggle'),
-                  tooltip: '왼쪽 바 숨기기',
-                  icon: const Icon(Icons.view_sidebar_outlined),
-                  onPressed: () => stows.libraryPanelOpen.value = false,
-                ),
-              const Spacer(),
-              IconButton(
-                key: const ValueKey('library-settings'),
-                tooltip: '설정',
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: busy
-                    ? null
-                    : () => tap(() => unawaited(_settings(c))),
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: _drawerTabs(),
         ),
-        // Below the head everything scrolls together, so a short screen (a
-        // tablet held sideways with the keyboard up) still reaches the folders.
+        // Below the tabs everything scrolls together, so a short screen (a
+        // tablet held sideways with the keyboard up) still reaches every row.
+        // Each tab keeps its own place in the list.
         Expanded(
           child: ListView(
-            children: [
-            // On the library, its search box (it used to sit over the
-            // documents). With a note open the documents are not shown, so
-            // the bar keeps the quick switch there, as before.
-            if (c.activeSession != null)
-              row(
-                '검색',
-                Icons.search,
-                ready ? _quickSwitch : null,
-                key: const ValueKey('workspace-quick-switch'),
-              )
-            else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-              child: LibrarySearchField(
-                query: c.query,
-                expression: c.searchesWithOperators,
-                enabled:
-                    !(_librarySelection == _librarySelectionScope(c) &&
-                        (busy || c.externalBusy)),
-                onChanged: (query) => _searchLibrary(c, query),
-                onExpressionChanged: c.showDeleted
-                    ? null
-                    : (enabled) {
-                        setState(() {
-                          c.setSearchQuery(
-                            c.query,
-                            bookmark: c.searchesFromBookmark,
-                            expression: enabled,
-                          );
-                        });
-                        unawaited(c.refresh());
-                      },
-                // In the drawer, Enter closes it to show what was found.
-                onSubmitted: () => tap(() {}),
-              ),
-            ),
-            row(
-              '내 문서',
-              Icons.library_books_outlined,
-              busy
-                  ? null
-                  : () => _run(() async {
-                      c.showDeleted = false;
-                      await c.refresh();
-                      await _goFolder(null);
-                    }),
-              trailing: count(live),
-              selected: c.currentFolderId == null && !c.showDeleted,
-            ),
-            if (repository.formatVersion >= 2)
-              row(
-                '북마크',
-                Icons.bookmark_border,
-                ready ? _bookmarks : null,
-                key: const ValueKey('workspace-bookmarks'),
-              ),
-            if (c.native != null) ...[
-              row(
-                '태그',
-                Icons.tag,
-                busy ? null : () => unawaited(_knowledge(tab: 1)),
-                key: const ValueKey('library-tags'),
-              ),
-              row(
-                '역링크',
-                Icons.link,
-                busy ? null : () => unawaited(_knowledge()),
-                key: const ValueKey('library-backlinks'),
-              ),
-              row(
-                '그래프',
-                Icons.hub_outlined,
-                busy ? null : () => unawaited(_knowledge(tab: 2)),
-                key: const ValueKey('library-graph'),
-              ),
-            ],
-            row(
-              '휴지통',
-              Icons.delete_outline,
-              busy
-                  ? null
-                  : () => _run(() async {
-                      await _goFolder(null);
-                      c.showDeleted = true;
-                      await c.refresh();
-                    }),
-              trailing: count(trashed),
-              selected: c.showDeleted,
-            ),
-            const Divider(),
-            ListTile(
-              dense: true,
-              leading: const Icon(Icons.folder_outlined),
-              title: const Text('폴더'),
-              trailing: IconButton(
-                tooltip: '새 폴더',
-                onPressed: busy
-                    ? null
-                    : () => _run(() => _createDocument(LibraryCreateAction.folder)),
-                icon: const Icon(Icons.create_new_folder_outlined),
-              ),
-            ),
-              ...rows,
-            ],
+            key: PageStorageKey<_DrawerTab>(_drawerTab),
+            children: items,
           ),
         ),
         if (_driveConnection case final drive?) DrivePanel(controller: drive),
       ],
     );
+  }
+
+  /// The drawer's head: 둘러보기, 폴더 and 라벨 in a grey pill, the chosen one
+  /// white, as Notein's (사진 1000319965).
+  Widget _drawerTabs() {
+    final scheme = Theme.of(context).colorScheme;
+    final light = Theme.of(context).brightness == Brightness.light;
+    Widget cell(_DrawerTab tab, String label) {
+      final chosen = _drawerTab == tab;
+      return Expanded(
+        child: Semantics(
+          selected: chosen,
+          child: InkWell(
+            key: ValueKey('library-drawer-${tab.name}'),
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => setState(() => _drawerTab = tab),
+            child: DecoratedBox(
+              decoration: chosen
+                  ? BoxDecoration(
+                      color: light ? Colors.white : scheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x24000000),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    )
+                  : const BoxDecoration(),
+              child: SizedBox(
+                height: 32,
+                child: Center(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: chosen ? FontWeight.w600 : FontWeight.normal,
+                      color: chosen ? scheme.onSurface : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Material(
+      color: light ? const Color(0xFFEFEFF1) : scheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(18),
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Row(
+          children: [
+            cell(_DrawerTab.browse, '둘러보기'),
+            cell(_DrawerTab.folders, '폴더'),
+            cell(_DrawerTab.labels, '라벨'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The drawer's 최근, 즐겨찾기 and labels: the open document is saved and
+  /// closed and the trash left, then the library lists [collection] from every
+  /// folder.
+  Future<void> _openCollection(LibraryCollection collection) async {
+    final c = controller!;
+    final repository = c.repository;
+    bool current() =>
+        mounted &&
+        identical(controller, c) &&
+        identical(c.repository, repository);
+    await _save();
+    if (!current()) return;
+    final session = c.activeSession;
+    if (session != null) await c.closeNote(session: session);
+    if (!current()) return;
+    if (c.showDeleted || c.searchesAcrossFolders) {
+      c.showDeleted = false;
+      if (c.searchesAcrossFolders) c.query = '';
+      await c.refresh();
+      if (!current()) return;
+    }
+    setState(() {
+      _libraryCollection = collection;
+      _librarySelection = null;
+    });
+    _scaffold.currentState?.closeDrawer();
+  }
+
+  /// What the library lists now: 최근 is the 50 documents opened last that are still in the vault
+  /// and out of the trash, and a label shows its current name.
+  LibraryCollection _collectionFor(WorkspaceController c) {
+    final collection = _libraryCollection;
+    switch (collection.kind) {
+      case LibraryCollectionKind.recent:
+        final live = {
+          for (final note in c.notes)
+            if (!note.trashed || note.deletionConflict) note.id,
+        };
+        return LibraryCollection.recent(
+          c.recentDocumentIds.where(live.contains).take(50).toList(),
+        );
+      case LibraryCollectionKind.label:
+        final label = _marks.labels
+            .where((label) => label.id == collection.labelId)
+            .firstOrNull;
+        return label == null
+            ? collection
+            : LibraryCollection.label(label.id, label.name);
+      case LibraryCollectionKind.folder:
+      case LibraryCollectionKind.favorites:
+        return collection;
+    }
+  }
+
+  /// Widgets, alarms and widget taps go through Android; a test injects them.
+  bool get _plannerNative => widget.plannerPlatform != null || Platform.isAndroid;
+
+  /// The drawer's 리마인더 and 달력, and a widget or alarm tap (설계 6·7절). Each screen exists once:
+  /// the one asked for stays when it is open, and takes the other's place when that one is.
+  /// A format-1 vault is upgraded first, as for the + menu's documents.
+  Future<void> _openPlanner(PlannerScreen screen) async {
+    final c = controller;
+    if (c == null || !mounted) return;
+    final shown = _plannerShown;
+    if (shown != null && shown.route.isActive && shown.screen == screen) return;
+    if (c.repository.formatVersion == 1 && !await _upgradeLegacyVault(c)) return;
+    if (!mounted || !identical(controller, c)) return;
+    final google = screen == PlannerScreen.calendar
+        ? await _plannerWidgets.googleCalendar()
+        : null;
+    if (!mounted || !identical(controller, c)) return;
+    final store = PlannerStore(c.repository);
+    final route = MaterialPageRoute<void>(
+      builder: (_) => switch (screen) {
+        PlannerScreen.reminder => ReminderPage(
+          store: store,
+          platform: _planner,
+          changes: _plannerChanges,
+        ),
+        PlannerScreen.calendar => CalendarPage(
+          store: store,
+          platform: _planner,
+          sync: google?.sync,
+          // One for the app, so a model download outlives the calendar screen.
+          recognizer: PlatformHandwritingRecognizer.shared,
+          onConnectGoogle: google == null
+              ? null
+              : () async {
+                  try {
+                    await google.auth.connect();
+                  } catch (error) {
+                    if (mounted) showUserErrorSnackBar(context, error);
+                  }
+                },
+          onDisconnectGoogle: google == null
+              ? null
+              : () async {
+                  await google.auth.disconnect();
+                  await google.sync.clear();
+                },
+          changes: _plannerChanges,
+        ),
+      },
+    );
+    // A phone's drawer closes first, as for the drawer's other rows.
+    _scaffold.currentState?.closeDrawer();
+    final navigator = Navigator.of(context);
+    final other = _plannerShown;
+    _plannerShown = (screen: screen, route: route);
+    if (other != null && other.route.isActive) {
+      // The other screen gives its place, with whatever was opened over it.
+      navigator.popUntil((open) => identical(open, other.route));
+      unawaited(navigator.pushReplacement(route));
+    } else {
+      unawaited(navigator.push(route));
+    }
+  }
+
+  /// A widget or alarm tapped while the app runs: its screen opens over what is shown, after the
+  /// workspace's current work, or once a vault is open.
+  void _plannerRequested(String target) {
+    final screen = PlannerScreen.values.asNameMap()[target];
+    if (screen == null || !mounted) return;
+    _plannerRequests++;
+    if (controller == null) {
+      _plannerWaiting = screen;
+      return;
+    }
+    unawaited(_runWhenIdle(() => _openPlanner(screen)));
+  }
+
+  /// The screen of the widget or alarm tap that started the app, taken once the first vault is open.
+  /// A tap that came while the vault was opening is newer, and one handled meanwhile wins.
+  Future<void> _takePlannerLaunch() async {
+    final requests = _plannerRequests;
+    String? target;
+    try {
+      target = await _planner.takeLaunchTarget();
+    } catch (error) {
+      _plannerLog.warning('The planner launch target was not read: $error');
+    }
+    final waiting = _plannerWaiting;
+    _plannerWaiting = null;
+    final screen = waiting ?? PlannerScreen.values.asNameMap()[target];
+    // A tap handled while the target was read is newer than both.
+    if (screen == null || !mounted || requests != _plannerRequests) return;
+    unawaited(_runWhenIdle(() => _openPlanner(screen)));
+  }
+
+  /// Another vault (or the first) sends its widgets at once, and an open planner screen, which works
+  /// on the vault left, closes. A change in the vault tells the open planner screen, and sends the
+  /// widgets two seconds after the last change when what they show changed.
+  void _plannerVaultChanged(WorkspaceController c) {
+    final scope = (c.repository, c.repositoryGeneration);
+    final last = _plannerScope;
+    if (last == scope) return;
+    _plannerScope = scope;
+    _plannerWidgetTimer?.cancel();
+    if (last == null || !identical(last.$1, scope.$1)) {
+      if (last != null) _closePlannerScreen();
+      _sendPlannerWidgets();
+      return;
+    }
+    // The screens read the vault in the root zone, as the library's reads do (see _readInBackground).
+    Zone.root.run(() => _plannerChanges.value++);
+    if (_plannerNative) {
+      _plannerWidgetTimer = Timer(
+        const Duration(seconds: 2),
+        _sendPlannerWidgets,
+      );
+    }
+  }
+
+  /// The open planner screen, with whatever was opened over it.
+  void _closePlannerScreen() {
+    final shown = _plannerShown;
+    _plannerShown = null;
+    if (shown == null || !shown.route.isActive) return;
+    Navigator.of(context)
+      ..popUntil((route) => identical(route, shown.route))
+      ..pop();
+  }
+
+  /// The open vault's reminders and calendar for the home-screen widgets, and its alarms
+  /// ([PlannerWidgetSync]), in the root zone like the library's reads.
+  void _sendPlannerWidgets() {
+    final c = controller;
+    if (!mounted || c == null || !_plannerNative) return;
+    final repository = c.repository;
+    _readInBackground(
+      () => _plannerWidgets.send(
+        repository,
+        isCurrent: () =>
+            mounted && identical(controller?.repository, repository),
+      ),
+    );
+  }
+
+  /// The top bar's cloud: Drive's state, and a tap opens the drawer or side panel, where the Drive
+  /// panel is. Null without Drive, which leaves the library's own crossed-out cloud.
+  Widget? _driveCloud({required bool panel}) {
+    final drive = _driveConnection;
+    if (drive == null) return null;
+    return ListenableBuilder(
+      listenable: drive,
+      builder: (context, _) {
+        final (icon, state) = _driveState(drive);
+        return IconButton(
+          key: const ValueKey('library-sync'),
+          tooltip: state,
+          icon: Icon(icon),
+          iconSize: 22,
+          style: libraryBarButtonStyle,
+          onPressed: () {
+            if (panel) {
+              stows.libraryPanelOpen.value = true;
+            } else {
+              _scaffold.currentState?.openDrawer();
+            }
+          },
+        );
+      },
+    );
+  }
+
+  /// The cloud's icon and words, as the Drive panel says them: not set up or signed out, connected and
+  /// at rest, working, or a problem (an error, or another sync holding the lease).
+  static (IconData, String) _driveState(DriveConnectionController drive) {
+    if (drive.error != null) {
+      return (Icons.sync_problem_outlined, 'Drive 연결 확인 필요');
+    }
+    if (drive.waitingForLease) {
+      return (Icons.sync_problem_outlined, '다른 Drive 동기화 작업 대기 중');
+    }
+    if (!drive.ready || drive.busy) {
+      return (Icons.cloud_sync_outlined, 'Drive 준비 중');
+    }
+    if (!drive.connected) return (Icons.cloud_off_outlined, 'Drive 미연결');
+    return switch (drive.status.phase) {
+      SyncPhase.pending => (Icons.cloud_sync_outlined, '업로드 대기'),
+      SyncPhase.syncing => (Icons.cloud_sync_outlined, 'Drive 송수신 중'),
+      SyncPhase.conflict => (Icons.sync_problem_outlined, '충돌 확인 필요'),
+      SyncPhase.retryWaiting => (Icons.sync_problem_outlined, '연결 복구 후 재시도'),
+      SyncPhase.authenticationRequired => (
+        Icons.sync_problem_outlined,
+        'Drive 재로그인 필요',
+      ),
+      SyncPhase.error => (Icons.sync_problem_outlined, 'Drive 오류'),
+      SyncPhase.synced => (Icons.cloud_done_outlined, 'Drive 반영 완료'),
+      SyncPhase.idle ||
+      SyncPhase.closed => (Icons.cloud_done_outlined, 'Drive 연결됨'),
+    };
   }
 
   /// Dark status bar icons on a light screen and light ones on a dark screen,
@@ -5254,10 +6285,13 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     Widget body;
     if (session == null) {
       _dataview = null;
-      body = LibraryHome(
+      Widget libraryHome() => LibraryHome(
         leading: _libraryLeading(panel: libraryPanel),
         thumbnails: _thumbnails,
-        onPreviewRequested: (note) => unawaited(_requestThumbnail(note)),
+        // In the root zone, like the marks and facts: a cover's vault reads take turns with every other vault
+        // call, and must not wait for the zone that built the card (a widget test's paused clock).
+        onPreviewRequested: (note) =>
+            _readInBackground(() => _requestThumbnail(note)),
         notes: c.notes,
         folders: c.folders,
         currentFolderId: c.currentFolderId,
@@ -5274,9 +6308,12 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         onBatchAction: _batchNoteAction,
         availableCreateActions: {
           LibraryCreateAction.handwriting,
+          LibraryCreateAction.pageNoteWithPattern,
           if (c.canCreateDocument) LibraryCreateAction.quickNote,
           LibraryCreateAction.infinite,
-          LibraryCreateAction.office,
+          LibraryCreateAction.importPpt,
+          LibraryCreateAction.importWord,
+          LibraryCreateAction.importHwp,
           LibraryCreateAction.wordDocument,
           LibraryCreateAction.presentation,
           LibraryCreateAction.hwpx,
@@ -5317,13 +6354,58 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         onNoteAction: (note, action) => _run(() => _noteAction(note, action)),
         onFolderAction: (folder, action) =>
             _run(() => _folderAction(folder, action)),
-        // The search box is in the side bar; the title's × clears it.
+        // The search box opens in the top bar; the title's × clears it.
         onSearchChanged: (query) => _searchLibrary(c, query),
+        onSearchExpressionChanged: (enabled) {
+          setState(() {
+            c.setSearchQuery(
+              c.query,
+              bookmark: c.searchesFromBookmark,
+              expression: enabled,
+            );
+          });
+          unawaited(c.refresh());
+        },
         searchQuery: c.query,
         searchAcrossFolders: c.searchesAcrossFolders,
         searchExpression: c.searchesWithOperators,
         searchPending: c.searchPending,
         searchError: c.searchError,
+        onOpenSettings: () {
+          if (!busy) unawaited(_settings(c));
+        },
+        settingsEnabled: !busy,
+        syncButton: _driveCloud(panel: libraryPanel),
+        facts: _libraryFacts(),
+        marks: _marks,
+        collection: _collectionFor(c),
+        // Marks are written beside the screen's work, not through it.
+        onToggleFavorite: (id) =>
+            unawaited(_mark((marks) => marks.toggleFavorite(id))),
+        onTogglePin: (id) => unawaited(_mark((marks) => marks.togglePin(id))),
+        onEditLabels: (id) => unawaited(_editLabels(id)),
+        onChangeCover: (id) => unawaited(_changeCover(id)),
+        // Only Android has no Office engine for covers in the background.
+        onMakeCover: defaultTargetPlatform == TargetPlatform.android
+            ? (note) => unawaited(_makeCover(note))
+            : null,
+        // The imports going into this folder; × cancels one, or closes a failed one's card.
+        importJobs: [
+          for (final job in _importJobs.jobs)
+            if (job.folderId == c.currentFolderId)
+              LibraryImportJobView(
+                id: job.id,
+                title: job.title,
+                progress: job.progress,
+                error: job.error,
+              ),
+        ],
+        onCancelImport: _importJobs.cancel,
+      );
+      // An import's progress builds the library again, not the whole workspace.
+      body = ListenableBuilder(
+        listenable: _importJobs,
+        builder: (context, _) => libraryHome(),
       );
     } else {
       final identity = '${session.note.id}/${c.editorGeneration}';
@@ -5892,6 +6974,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           !selectingLibrary &&
           session == null &&
           c.currentFolderId == null &&
+          _libraryCollection.kind == LibraryCollectionKind.folder &&
           !busy &&
           !c.dirty &&
           c.officeOpenEdits.entries.isEmpty,
@@ -5925,7 +7008,13 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         endDrawerEnableOpenDragGesture: false,
         // The drawer stays in the tree even where the library uses its side panel: removing it while it closes
         // would leave the Scaffold remembering it as open, and the next note would show it open again.
-        drawer: wide ? null : Drawer(child: SafeArea(child: _library(c))),
+        drawer: wide
+            ? null
+            : Drawer(
+                width: 260,
+                backgroundColor: _drawerBackground(context),
+                child: SafeArea(child: _library(c)),
+              ),
         drawerEnableOpenDragGesture: !libraryPanel,
         // Without a top row the library starts below the status bar.
         body: SafeArea(
@@ -6182,9 +7271,16 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     if (Platform.isWindows) windowManager.removeListener(this);
     StudyWorkspace.pendingDocumentImport.removeListener(_sharedDocument);
     stows.noteTabBarHidden.removeListener(_tabBarHiddenChanged);
+    _plannerWidgetTimer?.cancel();
+    unawaited(_plannerOpens?.cancel());
+    _plannerChanges.dispose();
+    _plannerWidgets.dispose();
     _editorChrome.dispose();
     _editorHosts
       ..removeListener(_editorHostsChanged)
+      ..dispose();
+    _importJobs
+      ..cancelAll()
       ..dispose();
     unawaited(_editorFinishedEvents?.cancel());
     final workspace = controller;

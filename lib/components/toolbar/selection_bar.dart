@@ -7,10 +7,14 @@ class SelectionBar extends StatelessWidget {
   final VoidCallback duplicateSelection;
   final VoidCallback deleteSelection;
 
+  /// 「링크」: a link over the selected strokes and pictures.
+  final VoidCallback? linkSelection;
+
   const new({
     super.key,
     required this.duplicateSelection,
     required this.deleteSelection,
+    this.linkSelection,
   });
 
   @override
@@ -44,6 +48,18 @@ class SelectionBar extends StatelessWidget {
             cupertinoIcon: CupertinoIcons.delete,
           ),
         ),
+        if (linkSelection != null)
+          IconButton(
+            key: const ValueKey('selection-link'),
+            onPressed: linkSelection,
+            style: TextButton.styleFrom(
+              foregroundColor: ColorScheme.of(context).secondary,
+              backgroundColor: Colors.transparent,
+              shape: const CircleBorder(),
+            ),
+            tooltip: '링크',
+            icon: const Icon(Icons.link),
+          ),
       ],
     );
   }

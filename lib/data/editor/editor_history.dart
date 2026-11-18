@@ -3,6 +3,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/page_link.dart';
 import 'package:sbn/canvas_background_pattern.dart';
 import 'package:sbn/change.dart';
 
@@ -153,9 +154,16 @@ class EditorHistoryItem {
     this.quillChange,
     this.colorChange,
     this.backgroundPatternChange,
+    this.link,
+    this.replacedLink,
   }) : assert(
          type != .move || offset != null,
          'Offset must be provided for move',
+       ),
+       assert(
+         (type != .addLink && type != .removeLink) ||
+             (page != null && link != null),
+         'Page and link must be provided for addLink and removeLink',
        ),
        assert(
          type != .deletePage || page != null,
@@ -192,6 +200,14 @@ class EditorHistoryItem {
   final Map<Stroke, Change<Color>>? colorChange;
   final Change<CanvasBackgroundPattern>? backgroundPatternChange;
 
+  /// The link [EditorHistoryItemType.addLink] added or
+  /// [EditorHistoryItemType.removeLink] removed, on [page].
+  final PageLink? link;
+
+  /// The link an edit replaced with [link] (an [EditorHistoryItemType.addLink]
+  /// in its place): undoing the edit puts it back.
+  final PageLink? replacedLink;
+
   EditorHistoryItem copyWith({
     EditorHistoryItemType? type,
     int? pageIndex,
@@ -202,6 +218,8 @@ class EditorHistoryItem {
     DocChange? quillChange,
     Map<Stroke, Change<Color>>? colorChange,
     Change<CanvasBackgroundPattern>? backgroundPatternChange,
+    PageLink? link,
+    PageLink? replacedLink,
   }) {
     return EditorHistoryItem(
       type: type ?? this.type,
@@ -214,6 +232,8 @@ class EditorHistoryItem {
       colorChange: colorChange ?? this.colorChange,
       backgroundPatternChange:
           backgroundPatternChange ?? this.backgroundPatternChange,
+      link: link ?? this.link,
+      replacedLink: replacedLink ?? this.replacedLink,
     );
   }
 }
@@ -228,4 +248,6 @@ enum EditorHistoryItemType {
   quillUndoneChange,
   changeColor,
   backgroundPattern,
+  addLink,
+  removeLink,
 }

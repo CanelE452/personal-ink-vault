@@ -44,6 +44,8 @@ const noteShortcutItems = <ShortcutItem>[
   ShortcutItem('copyPageLink', '현재 페이지 링크 복사', .more, Icons.link),
   ShortcutItem('openNoteLink', '노트 링크 열기', .more, Icons.open_in_new),
   ShortcutItem('vaultExport', 'Obsidian 보관함 ZIP', .more, Icons.archive_outlined),
+  // Last, so the rows above keep their places in 더 많은 기능.
+  ShortcutItem('linkAdd', '링크 추가', .more, Icons.add_link),
 ];
 
 /// The page actions that were switches of the 228 pen toolbar and are

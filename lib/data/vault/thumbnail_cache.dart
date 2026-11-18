@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:archive/archive.dart'
+    show InputMemoryStream, ZipDirectory, ZipFileHeader, getCrc32;
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
@@ -24,6 +26,7 @@ import 'package:saber/data/vault/pdf_import_state.dart';
 import 'package:saber/data/vault/saber_ink_adapter.dart';
 import 'package:saber/data/vault/workspace_database.dart';
 import 'package:saber/data/vault/workspace_store.dart';
+import 'package:xml/xml.dart' show XmlDocument;
 
 class RenderedSnapshotPage {
   final Uint8List png;
@@ -55,13 +58,17 @@ class ThumbnailCache {
     }
   }
 
-  static const rendererVersion = 2;
+  static const rendererVersion = 3;
   static const _width = 240;
   static const _maxHeight = 320;
   static const _maxPngBytes = 1024 * 1024;
   static const _maxSnapshotBytes = 64 * 1024 * 1024;
   static const _maxBodyBytes = 16 * 1024 * 1024;
   static const _maxAssetBytes = 48 * 1024 * 1024;
+  static const _maxOfficeBytes = 128 * 1024 * 1024;
+  static const _maxPictureBytes = 8 * 1024 * 1024;
+  static const _thumbnailRelationship =
+      'http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail';
   final Directory root;
   final _inFlight = <String, Future<File?>>{};
   final _officeBindings = <String, Future<String?>>{};
@@ -70,10 +77,12 @@ class ThumbnailCache {
   var _retired = false;
   final OfficePreviewEngine officePreviewEngine;
   final Future<void> Function(File, Uint8List)? _writePng;
+  final Future<void> Function(File, String)? _writeFacts;
   new(
     this.root, {
     OfficePreviewEngine? officePreviewEngine,
     @visibleForTesting this._writePng,
+    @visibleForTesting this._writeFacts,
   }) : officePreviewEngine = officePreviewEngine ?? OfficePreviewEngine();
 
   /// Stops new cover work and drains only PNG publication already in progress.
@@ -99,6 +108,29 @@ class ThumbnailCache {
     }
   }
 
+  /// Reads the page count and first-page aspect saved next to a cover PNG.
+  /// Covers rendered before these facts existed have no sidecar and read null.
+  static Future<({int? pages, double? aspect})?> readCoverFacts(
+    File png,
+  ) async {
+    try {
+      final decoded = jsonDecode(await _factsFile(png).readAsString());
+      if (decoded is! Map) return null;
+      final pages = decoded['pages'];
+      final aspect = decoded['aspect'];
+      final validPages = pages is int && pages > 0 ? pages : null;
+      final validAspect = aspect is num && aspect.isFinite && aspect > 0
+          ? aspect.toDouble()
+          : null;
+      if (validPages == null && validAspect == null) return null;
+      return (pages: validPages, aspect: validAspect);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static File _factsFile(File png) => File('${png.path}.facts.json');
+
   String _key(
     VaultNote note,
     RevisionRecord revision, {
@@ -111,6 +143,7 @@ class ThumbnailCache {
       RevisionRecord body,
       RevisionRecord? annotation,
       OfficePdfVariant? officePdf,
+      bool pdfSource,
     })?
   >
   _coverRevision(NoteRepository repository, VaultNote note) async {
@@ -123,6 +156,25 @@ class ThumbnailCache {
     if (entity == null) return null;
     final heads = await repository.heads(entity);
     if (_retired) return null;
+    if (heads.isEmpty &&
+        note.documentKind == VaultDocumentKind.pdf &&
+        note.sourceEntityId != null) {
+      // An imported PDF that was never opened has no ink yet; its cover is
+      // the first page of the original.
+      final sources = await repository.heads(note.sourceEntityId!);
+      if (_retired) return null;
+      if (sources.length == 1 &&
+          _matchesRevision(repository, note, sources.single, pdfSource: true) &&
+          sources.single.blobs.length == 1 &&
+          sources.single.blobs.keys.single.toLowerCase().endsWith('.pdf')) {
+        return (
+          body: sources.single,
+          annotation: null,
+          officePdf: null,
+          pdfSource: true,
+        );
+      }
+    }
     if (heads.length != 1) {
       _reportCover(note, '${heads.length} heads');
       return null;
@@ -163,7 +215,12 @@ class ThumbnailCache {
           return null;
       }
     }
-    return (body: revision, annotation: annotation, officePdf: officePdf);
+    return (
+      body: revision,
+      annotation: annotation,
+      officePdf: officePdf,
+      pdfSource: false,
+    );
   }
 
   Future<String?> _officeBinding(
@@ -190,9 +247,12 @@ class ThumbnailCache {
   bool _matchesRevision(
     NoteRepository repository,
     VaultNote note,
-    RevisionRecord revision,
-  ) {
-    final (entity, kind) = switch (note.documentKind) {
+    RevisionRecord revision, {
+    bool pdfSource = false,
+  }) {
+    final (entity, kind) = pdfSource
+        ? (note.sourceEntityId, EntityKind.attachment)
+        : switch (note.documentKind) {
       VaultDocumentKind.markdown => (
         note.markdownEntityId,
         EntityKind.markdown,
@@ -328,6 +388,7 @@ class ThumbnailCache {
         revision.body,
         annotation: revision.annotation,
         officePdf: revision.officePdf,
+        pdfSource: revision.pdfSource,
       );
     } catch (error, stack) {
       _reportCover(note, 'cover failed', error, stack);
@@ -369,8 +430,12 @@ class ThumbnailCache {
     RevisionRecord revision, {
     RevisionRecord? annotation,
     OfficePdfVariant? officePdf,
+    bool pdfSource = false,
   }) async {
-    if (_retired || !_matchesRevision(repository, note, revision)) return null;
+    if (_retired ||
+        !_matchesRevision(repository, note, revision, pdfSource: pdfSource)) {
+      return null;
+    }
     final coverRevision = officePdf?.revision ?? revision;
     for (final id in [
       repository.vaultId,
@@ -393,6 +458,7 @@ class ThumbnailCache {
         destination,
         annotation: annotation,
         officePdf: officePdf,
+        pdfSource: pdfSource,
       ),
     );
     _renderQueue = rendering.then<void>(
@@ -413,8 +479,10 @@ class ThumbnailCache {
     File destination, {
     RevisionRecord? annotation,
     OfficePdfVariant? officePdf,
+    bool pdfSource = false,
   }) async {
     if (_retired) return null;
+    final facts = _CoverFacts();
     EditorCoreInfo? core;
     ui.Image? image;
     final pinnedImages = <_PinnedImage>[];
@@ -422,7 +490,13 @@ class ThumbnailCache {
       final cached = await _validCachedFile(destination);
       if (_retired) return null;
       if (cached) return destination;
-      if (_inkCover(note) || annotation != null) {
+      if (pdfSource) {
+        final reference = revision.blobs.values.single;
+        if (reference.length > 128 * 1024 * 1024) return null;
+        final bytes = await repository.readBlob(reference.hash);
+        if (_retired) return null;
+        image = await _renderPdfBytes(bytes, facts);
+      } else if (_inkCover(note) || annotation != null) {
         final snapshot = annotation ?? revision;
         if (!await _validSnapshot(repository, snapshot)) {
           _reportCover(
@@ -446,6 +520,8 @@ class ThumbnailCache {
             size.width > 100000 ||
             size.height > 100000)
           return null;
+        facts.pages = core.pages.length;
+        facts.aspect = size.width / size.height;
         final pageImages = [?page.backgroundImage, ...page.images];
         if (pageImages.length > 16) return null;
         for (final pageImage in pageImages) {
@@ -492,7 +568,7 @@ class ThumbnailCache {
         );
       } else {
         image = note.documentKind == VaultDocumentKind.office
-            ? await _renderOffice(repository, note, revision, officePdf)
+            ? await _renderOffice(repository, note, revision, officePdf, facts)
             : await _renderBody(repository, note, revision);
       }
       if (_retired || image == null) return null;
@@ -503,7 +579,7 @@ class ThumbnailCache {
         encoded.lengthInBytes,
       );
       if (!_validPngHeader(bytes) || bytes.length > _maxPngBytes) return null;
-      return await _publishPng(destination, bytes);
+      return await _publishPng(destination, bytes, facts);
     } catch (error, stack) {
       _reportCover(note, 'render failed', error, stack);
       return null;
@@ -516,7 +592,43 @@ class ThumbnailCache {
     }
   }
 
-  Future<File?> _publishPng(File destination, Uint8List bytes) async {
+  /// Written right after the PNG inside the same publication window, so
+  /// retirement waits for it. A failure here must never stop the cover itself.
+  Future<void> _publishFacts(File destination, _CoverFacts facts) async {
+    if (_retired || (facts.pages == null && facts.aspect == null)) return;
+    File? temporary;
+    try {
+      await destination.parent.create(recursive: true);
+      final target = _factsFile(destination);
+      temporary = File('${target.path}.${newId()}.tmp');
+      final json = jsonEncode({
+        if (facts.pages != null) 'pages': facts.pages,
+        if (facts.aspect != null) 'aspect': facts.aspect,
+      });
+      final writeFacts = _writeFacts;
+      if (writeFacts == null) {
+        await temporary.writeAsString(json, flush: true);
+      } else {
+        await writeFacts(temporary, json);
+      }
+      await temporary.rename(target.path);
+      temporary = null;
+    } catch (_) {
+      // The cover remains valid without its facts.
+    } finally {
+      try {
+        if (temporary != null && temporary.existsSync()) {
+          await temporary.delete();
+        }
+      } catch (_) {}
+    }
+  }
+
+  Future<File?> _publishPng(
+    File destination,
+    Uint8List bytes,
+    _CoverFacts facts,
+  ) async {
     if (_retired) return null;
     // The render queue serializes publication. Admit it before the first I/O.
     final finished = Completer<void>();
@@ -533,6 +645,7 @@ class ThumbnailCache {
       }
       await temporary.rename(destination.path);
       temporary = null;
+      await _publishFacts(destination, facts);
       return _retired ? null : destination;
     } finally {
       try {
@@ -885,11 +998,11 @@ class ThumbnailCache {
     VaultNote note,
     RevisionRecord revision,
     OfficePdfVariant? officePdf,
+    _CoverFacts facts,
   ) async {
-    const maxOfficeBytes = 128 * 1024 * 1024;
     if (revision.blobs.length > 3 ||
         revision.blobs.values.fold<int>(0, (sum, blob) => sum + blob.length) >
-            maxOfficeBytes)
+            _maxOfficeBytes)
       return null;
     final documents = OfficeDocumentStore(repository);
     final edition = await documents.readLatest(
@@ -897,6 +1010,31 @@ class ThumbnailCache {
       revisionId: revision.revisionId,
     );
     if (_retired) return null;
+    // The first page of the stored PDF or of the headless engine's PDF; when
+    // neither gives one (Word·PowerPoint on Android), the original's picture.
+    try {
+      final page = await _renderOfficePage(
+        documents,
+        note,
+        edition,
+        officePdf,
+        facts,
+      );
+      if (page != null || _retired) return page;
+    } catch (error, stack) {
+      if (_retired) return null;
+      _reportCover(note, 'first page failed', error, stack);
+    }
+    return _renderOfficePicture(note, edition, facts);
+  }
+
+  Future<ui.Image?> _renderOfficePage(
+    OfficeDocumentStore documents,
+    VaultNote note,
+    OfficeEdition edition,
+    OfficePdfVariant? officePdf,
+    _CoverFacts facts,
+  ) async {
     var bytes = officePdf == null
         ? edition.pdfBytes
         : await documents.readPdfVariantBytes(note, edition, officePdf);
@@ -926,63 +1064,11 @@ class ThumbnailCache {
         if (p.equals(p.absolute(pdf.path), original.absolute.path) ||
             FileSystemEntity.typeSync(pdf.path, followLinks: false) !=
                 FileSystemEntityType.file ||
-            await pdf.length() > maxOfficeBytes)
+            await pdf.length() > _maxOfficeBytes)
           return null;
         bytes = await pdf.readAsBytes();
       }
-      if (bytes.length < 10 ||
-          bytes.length > maxOfficeBytes ||
-          !ascii
-              .decode(bytes.sublist(0, 5), allowInvalid: true)
-              .startsWith('%PDF-'))
-        return null;
-      final document = await PdfDocument.openData(bytes);
-      try {
-        if (document.pages.isEmpty || document.pages.length > 10000)
-          return null;
-        final page = document.pages.first;
-        await page.ensureLoaded();
-        if (!page.width.isFinite ||
-            !page.height.isFinite ||
-            page.width <= 0 ||
-            page.height <= 0)
-          return null;
-        final scale = math.min(_width / page.width, _maxHeight / page.height);
-        final height = math.max(1, (page.height * scale).round());
-        final width = math.max(1, (page.width * scale).round());
-        final rendered = await page.render(
-          width: width,
-          height: height,
-          fullWidth: width.toDouble(),
-          fullHeight: height.toDouble(),
-        );
-        if (rendered == null) return null;
-        try {
-          final image = await rendered.createImage();
-          try {
-            final recorder = ui.PictureRecorder();
-            final canvas = ui.Canvas(recorder)
-              ..drawColor(const ui.Color(0xffffffff), ui.BlendMode.src);
-            canvas.drawImage(
-              image,
-              ui.Offset((_width - width) / 2, 0),
-              ui.Paint(),
-            );
-            final picture = recorder.endRecording();
-            try {
-              return await picture.toImage(_width, height);
-            } finally {
-              picture.dispose();
-            }
-          } finally {
-            image.dispose();
-          }
-        } finally {
-          rendered.dispose();
-        }
-      } finally {
-        await document.dispose();
-      }
+      return await _renderPdfBytes(bytes, facts);
     } finally {
       try {
         await preview?.dispose();
@@ -993,6 +1079,274 @@ class ThumbnailCache {
           } catch (_) {}
         }
       }
+    }
+  }
+
+  /// The preview picture saved inside an Office·한글 original, drawn as a
+  /// first page would be. Its facts are the picture's shape; the page count
+  /// stays unknown. A missing or unreadable picture gives no cover.
+  Future<ui.Image?> _renderOfficePicture(
+    VaultNote note,
+    OfficeEdition edition,
+    _CoverFacts facts,
+  ) async {
+    final bytes = _officePicture(
+      note,
+      edition.originalFileName,
+      edition.originalBytes,
+    );
+    if (bytes == null || _retired) return null;
+    ui.Codec? codec;
+    ui.Image? picture;
+    try {
+      // Decoded no larger than the cover; the facts keep the picture's shape.
+      var natural = (width: 1, height: 1);
+      codec = await ui.instantiateImageCodecWithSize(
+        await ui.ImmutableBuffer.fromUint8List(bytes),
+        getTargetSize: (width, height) {
+          natural = (width: width, height: height);
+          final scale = math.min(
+            1.0,
+            math.min(_width / width, _maxHeight / height),
+          );
+          return ui.TargetImageSize(
+            width: math.max(1, (width * scale).round()),
+            height: math.max(1, (height * scale).round()),
+          );
+        },
+      );
+      if (_retired) return null;
+      picture = (await codec.getNextFrame()).image;
+      if (_retired) return null;
+      final scale = math.min(
+        _width / natural.width,
+        _maxHeight / natural.height,
+      );
+      final width = math.max(1, (natural.width * scale).round());
+      final height = math.max(1, (natural.height * scale).round());
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(recorder)
+        ..drawColor(const ui.Color(0xffffffff), ui.BlendMode.src)
+        ..drawImageRect(
+          picture,
+          ui.Rect.fromLTWH(
+            0,
+            0,
+            picture.width.toDouble(),
+            picture.height.toDouble(),
+          ),
+          ui.Rect.fromLTWH(
+            (_width - width) / 2,
+            0,
+            width.toDouble(),
+            height.toDouble(),
+          ),
+          ui.Paint()..filterQuality = ui.FilterQuality.medium,
+        );
+      final drawing = recorder.endRecording();
+      try {
+        final cover = await drawing.toImage(_width, height);
+        facts.aspect = natural.width / natural.height;
+        return cover;
+      } finally {
+        drawing.dispose();
+      }
+    } catch (error, stack) {
+      _reportCover(note, 'preview picture unreadable', error, stack);
+      return null;
+    } finally {
+      picture?.dispose();
+      codec?.dispose();
+    }
+  }
+
+  /// The JPEG or PNG an Office·한글 original keeps as its preview: the part
+  /// an OOXML package's relationships name as its thumbnail (else
+  /// docProps/thumbnail.*), ODF's Thumbnails/thumbnail.png or HWPX's
+  /// Preview/PrvImage.png. Null when there is none, it is larger than 8 MiB
+  /// or another format (WMF, EMF), or the package cannot be read (logged).
+  Uint8List? _officePicture(
+    VaultNote note,
+    String fileName,
+    Uint8List original,
+  ) {
+    final extension = p.extension(fileName).toLowerCase();
+    final ooxml = const {
+      '.pptx',
+      '.pptm',
+      '.ppsx',
+      '.potx',
+      '.docx',
+      '.docm',
+      '.dotx',
+      '.xlsx',
+      '.xlsm',
+      '.xltx',
+    }.contains(extension);
+    if (!ooxml &&
+        !const {'.odt', '.odp', '.ods', '.hwpx'}.contains(extension)) {
+      return null;
+    }
+    try {
+      // Only the central directory is read: no file is read or inflated until
+      // it is asked for (ZipDecoder inflates every link entry while decoding).
+      final directory = ZipDirectory()..read(InputMemoryStream(original));
+      if (directory.fileHeaders.isEmpty) {
+        throw const FormatException('No ZIP directory in the original');
+      }
+      final entries = <String, ZipFileHeader>{};
+      for (final header in directory.fileHeaders) {
+        entries.putIfAbsent(header.filename.toLowerCase(), () => header);
+      }
+      final parts = ooxml
+          ? [
+              ?_ooxmlThumbnail(entries),
+              'docProps/thumbnail.jpeg',
+              'docProps/thumbnail.jpg',
+              'docProps/thumbnail.png',
+            ]
+          : extension == '.hwpx'
+          ? const ['Preview/PrvImage.png']
+          : const ['Thumbnails/thumbnail.png'];
+      for (final part in parts) {
+        final bytes = _zipPart(entries, part, _maxPictureBytes);
+        if (bytes != null &&
+            (_isPng(bytes) || _isJpeg(bytes)) &&
+            _safeRasterHeader(bytes)) {
+          return bytes;
+        }
+      }
+      return null;
+    } catch (error, stack) {
+      _reportCover(note, 'preview picture not read', error, stack);
+      return null;
+    }
+  }
+
+  /// The part that `_rels/.rels` names as the package's thumbnail.
+  static String? _ooxmlThumbnail(Map<String, ZipFileHeader> entries) {
+    try {
+      final rels = _zipPart(entries, '_rels/.rels', 1024 * 1024);
+      if (rels == null) return null;
+      final xml = XmlDocument.parse(
+        utf8.decode(rels).replaceFirst('\uFEFF', ''),
+      );
+      for (final relation in xml.rootElement.childElements) {
+        final target = relation.getAttribute('Target');
+        if (relation.name.local != 'Relationship' ||
+            relation.getAttribute('Type') != _thumbnailRelationship ||
+            relation.getAttribute('TargetMode') == 'External' ||
+            target == null) {
+          continue;
+        }
+        final part = p.posix.normalize(
+          target.startsWith('/') ? target.substring(1) : target,
+        );
+        if (part != '..' && !part.startsWith('../')) return part;
+      }
+    } catch (_) {
+      // Without the relationships the usual names are still tried.
+    }
+    return null;
+  }
+
+  /// The bytes of the file [name] (any letter case) among [entries], the
+  /// package's directory by lower-case name, when it is a plain stored or
+  /// deflated file (not a folder, link or encrypted file) of at most [limit]
+  /// bytes that matches its checksum. The limit holds while the file is
+  /// inflated, whatever its ZIP header claims.
+  static Uint8List? _zipPart(
+    Map<String, ZipFileHeader> entries,
+    String name,
+    int limit,
+  ) {
+    final header = entries[name.toLowerCase()];
+    final file = header?.file;
+    if (header == null ||
+        file == null ||
+        header.filename.endsWith('/') ||
+        // A Unix symbolic link: made on host 3 with file type 0xA000.
+        ((header.versionMadeBy >> 8) == 3 &&
+            ((header.externalFileAttributes >> 16) & 0xf000) == 0xa000) ||
+        (header.generalPurposeBitFlag & 1) != 0 ||
+        header.uncompressedSize > limit) {
+      return null;
+    }
+    final stored = file.getStream(decompress: false).toUint8List();
+    final sink = _LimitedBytes(limit);
+    switch (header.compressionMethod) {
+      case 0: // stored
+        sink.add(stored);
+      case 8: // deflated
+        ZLibDecoder(raw: true).startChunkedConversion(sink)
+          ..add(stored)
+          ..close();
+      default:
+        return null;
+    }
+    final bytes = sink.bytes.takeBytes();
+    return bytes.length == header.uncompressedSize &&
+            getCrc32(bytes) == header.crc32
+        ? bytes
+        : null;
+  }
+
+  Future<ui.Image?> _renderPdfBytes(Uint8List bytes, _CoverFacts facts) async {
+    const maxPdfBytes = 128 * 1024 * 1024;
+    if (bytes.length < 10 ||
+        bytes.length > maxPdfBytes ||
+        !ascii
+            .decode(bytes.sublist(0, 5), allowInvalid: true)
+            .startsWith('%PDF-'))
+      return null;
+    final document = await PdfDocument.openData(bytes);
+    try {
+      if (document.pages.isEmpty || document.pages.length > 10000)
+        return null;
+      final page = document.pages.first;
+      await page.ensureLoaded();
+      if (!page.width.isFinite ||
+          !page.height.isFinite ||
+          page.width <= 0 ||
+          page.height <= 0)
+        return null;
+      facts.pages = document.pages.length;
+      facts.aspect = page.width / page.height;
+      final scale = math.min(_width / page.width, _maxHeight / page.height);
+      final height = math.max(1, (page.height * scale).round());
+      final width = math.max(1, (page.width * scale).round());
+      final rendered = await page.render(
+        width: width,
+        height: height,
+        fullWidth: width.toDouble(),
+        fullHeight: height.toDouble(),
+      );
+      if (rendered == null) return null;
+      try {
+        final image = await rendered.createImage();
+        try {
+          final recorder = ui.PictureRecorder();
+          final canvas = ui.Canvas(recorder)
+            ..drawColor(const ui.Color(0xffffffff), ui.BlendMode.src);
+          canvas.drawImage(
+            image,
+            ui.Offset((_width - width) / 2, 0),
+            ui.Paint(),
+          );
+          final picture = recorder.endRecording();
+          try {
+            return await picture.toImage(_width, height);
+          } finally {
+            picture.dispose();
+          }
+        } finally {
+          image.dispose();
+        }
+      } finally {
+        rendered.dispose();
+      }
+    } finally {
+      await document.dispose();
     }
   }
 
@@ -1160,6 +1514,12 @@ class ThumbnailCache {
     return true;
   }
 
+  bool _isJpeg(Uint8List bytes) =>
+      bytes.length >= 3 &&
+      bytes[0] == 0xff &&
+      bytes[1] == 0xd8 &&
+      bytes[2] == 0xff;
+
   bool _safeRasterHeader(Uint8List bytes) {
     if (_isPng(bytes)) {
       if (bytes.length < 33) return false;
@@ -1240,4 +1600,28 @@ class _PinnedImage {
     image?.dispose();
     image = null;
   }
+}
+
+class _CoverFacts {
+  int? pages;
+  double? aspect;
+}
+
+/// Collects a ZIP file's inflated bytes and stops past [limit].
+final class _LimitedBytes implements Sink<List<int>> {
+  new(this.limit);
+
+  final int limit;
+  final bytes = BytesBuilder(copy: false);
+
+  @override
+  void add(List<int> chunk) {
+    if (bytes.length + chunk.length > limit) {
+      throw const FormatException('The picture is larger than its limit');
+    }
+    bytes.add(chunk);
+  }
+
+  @override
+  void close() {}
 }

@@ -125,14 +125,10 @@ void main() {
           () => find.byType(LibraryHome).evaluate().length == 1,
           'Study must show its real document home.',
         );
+        // + → 새 노트… → 데이터베이스 (the new note dialog's list).
         await tap(tester, find.byKey(const ValueKey('library-create-button')));
-        await tap(
-          tester,
-          find.descendant(
-            of: find.byType(PopupMenuItem<LibraryCreateAction>),
-            matching: find.text('데이터베이스'),
-          ),
-        );
+        await tap(tester, find.byKey(const ValueKey('library-add-note')));
+        await tap(tester, find.byKey(const ValueKey('library-new-database')));
         await waitFor(
           tester,
           () => find.byType(AlertDialog).evaluate().length == 1,

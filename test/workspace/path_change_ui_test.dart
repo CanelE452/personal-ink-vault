@@ -34,6 +34,8 @@ void main() {
     }
   }
 
+  const ioTimeout = Duration(seconds: 8);
+
   Future<void> waitFor(WidgetTester tester, bool Function() ready) async {
     for (var i = 0; i < 80 && !ready(); i++) await drain(tester, 1);
     expect(ready(), isTrue);
@@ -64,9 +66,11 @@ void main() {
       repository.releaseIfBlocked();
       await tester.pumpWidget(const SizedBox());
       await tester.runAsync(() async {
-        await controller.flush().timeout(const Duration(seconds: 8));
+        await controller.flush().timeout(ioTimeout);
         controller.dispose();
-        await repository.close();
+        // After a failure the repository queue can wait on work the fake clock
+        // never finishes; without a limit close() then never returns.
+        await repository.close().timeout(ioTimeout);
         final actual = await temp.resolveSymbolicLinks();
         final parent = await Directory.systemTemp.resolveSymbolicLinks();
         expect(
@@ -174,6 +178,9 @@ void main() {
     (tester) async {
       try {
         final (_, repository, controller) = await initialize(tester);
+        // With a note open, a 1000+ px Android screen shows no library; an
+        // upright tablet reaches the folders through the drawer.
+        tester.view.physicalSize = const Size(824, 1200);
         late VaultNote target, source;
         late String folderId;
         await tester.runAsync(() async {
@@ -202,8 +209,22 @@ void main() {
         );
         expect(input, findsOneWidget);
         repository.block(source.markdownEntityId);
+        final scaffold = tester.state<ScaffoldState>(
+          find.byType(Scaffold).first,
+        );
+        scaffold.openDrawer();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.byKey(const ValueKey('library-drawer-folders')));
+        await tester.pump();
         final folderTile = find
-            .ancestor(of: find.text('Course'), matching: find.byType(ListTile))
+            .ancestor(
+              of: find.descendant(
+                of: find.byType(Drawer),
+                matching: find.text('Course'),
+              ),
+              matching: find.byType(ListTile),
+            )
             .first;
         await tester.runAsync(
           () => tester.tap(
@@ -229,6 +250,12 @@ void main() {
         await tester.runAsync(() => tester.tap(find.text('확인').last));
         await waitFor(tester, () => repository.entered.isCompleted);
         await tester.pump();
+        // The rename leaves the drawer open; closing it uncovers the note, so
+        // only the workspace's own guard can keep the typing out.
+        scaffold.closeDrawer();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(scaffold.isDrawerOpen, isFalse);
         await tester.tap(input, warnIfMissed: false);
         await tester.pump();
         if (tester.testTextInput.hasAnyClients)
@@ -245,9 +272,13 @@ void main() {
           ),
         );
         await drain(tester);
-        await tester.runAsync(controller.flush);
+        // Once the normalized heads are loaded the same field takes taps
+        // again, so the refusal above was the guard, not a covered field.
+        await waitFor(tester, () => !controller.externalBusy);
+        expect(input.hitTestable(), findsOneWidget);
+        await tester.runAsync(() => controller.flush().timeout(ioTimeout));
         final heads = await tester.runAsync(
-          () => repository.heads(source.markdownEntityId),
+          () => repository.heads(source.markdownEntityId).timeout(ioTimeout),
         );
 
         expect(typedDuringChange, isFalse);
@@ -258,7 +289,7 @@ void main() {
               'A late old-path buffer must not publish a second source branch',
         );
         final files = await tester.runAsync(
-          () => repository.readFiles(heads!.single),
+          () => repository.readFiles(heads!.single).timeout(ioTimeout),
         );
         expect(
           utf8.decode(files!['summary.md']!),

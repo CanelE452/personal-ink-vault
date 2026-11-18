@@ -133,6 +133,7 @@ dependencies {
     implementation(project(":office_engine"))
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.10")
     implementation("com.google.android.material:material:1.14.0")
+    implementation("com.google.mlkit:digital-ink-recognition:19.0.0")
 }
 
 val abiCodes = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86_64" to 3)
@@ -143,5 +144,12 @@ android.applicationVariants.configureEach {
         if (abiVersionCode != null) {
             (output as ApkVariantOutputImpl).versionCodeOverride = variant.versionCode * 10 + abiVersionCode
         }
+    }
+}
+
+// 231: keep the 209/230 resource ids (ML Kit adds strings that would shift them; the build reuses 209's res files).
+android {
+    androidResources {
+        additionalParameters += listOf("--stable-ids", file("aapt-stable-ids.txt").absolutePath)
     }
 }

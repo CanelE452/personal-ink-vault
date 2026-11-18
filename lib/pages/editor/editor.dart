@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show min;
 
 import 'package:collapsible/collapsible.dart';
 import 'package:file_picker/file_picker.dart';
@@ -10,6 +11,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as flutter_quill;
+import 'package:ink_vault_core/ink_vault_core.dart' show newId;
 import 'package:keybinder/keybinder.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
@@ -20,6 +22,7 @@ import 'package:saber/components/canvas/canvas.dart';
 import 'package:saber/components/canvas/canvas_gesture_detector.dart';
 import 'package:saber/components/canvas/canvas_image.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
+import 'package:saber/components/canvas/page_link_layer.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
 import 'package:saber/components/editor/read_only_banner.dart';
 import 'package:saber/components/theming/adaptive_alert_dialog.dart';
@@ -43,6 +46,7 @@ import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/page_link.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -58,10 +62,12 @@ import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor_chrome.dart';
+import 'package:saber/pages/editor/link_dialog.dart';
 import 'package:saber/pages/home/whiteboard.dart';
 import 'package:sbn/canvas_background_pattern.dart';
 import 'package:sbn/change.dart';
 import 'package:stow_plain/stow_plain.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 typedef _PhotoInfo = ({Uint8List bytes, String extension});
 
@@ -210,6 +216,15 @@ class EditorState extends State<Editor> {
   late var _initialImportPending = widget.pdfPath != null;
   var _pdfImported = false;
   var _editorDisposed = false;
+
+  /// 「링크 추가」 without a selection: the next tap on a page puts a link
+  /// icon there, and drags do not draw.
+  var _placingLink = false;
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _placingHint;
+
+  /// Whether [_placingHint] has reached the screen (it may wait behind
+  /// another message).
+  var _placingHintShown = false;
 
   void _reportBusy() => widget.onBusyChanged?.call(
     _drawing || _initialImportPending || _snapshotSave != null,
@@ -428,7 +443,9 @@ class EditorState extends State<Editor> {
     for (int i = coreInfo.pages.length - 1; i >= 1; --i) {
       final thisPage = coreInfo.pages[i];
       final prevPage = coreInfo.pages[i - 1];
-      if (thisPage.isEmpty && prevPage.isEmpty) {
+      // Links are not content (isEmpty), but a page carrying one is kept:
+      // removing it here would lose the link without an undo step.
+      if (thisPage.isEmpty && thisPage.links.isEmpty && prevPage.isEmpty) {
         final page = coreInfo.pages.removeAt(i);
         page.dispose();
         removedAPage = true;
@@ -552,6 +569,20 @@ class EditorState extends State<Editor> {
 
         case .backgroundPattern:
           coreInfo.backgroundPattern = item.backgroundPatternChange!.previous;
+
+        case .addLink:
+          _replaceLink(
+            _linkPageOf(item),
+            remove: item.link,
+            put: item.replacedLink,
+          );
+
+        case .removeLink:
+          _replaceLink(
+            _linkPageOf(item),
+            remove: item.replacedLink,
+            put: item.link,
+          );
       }
 
       if (item.type != .move) {
@@ -605,6 +636,10 @@ class EditorState extends State<Editor> {
             backgroundPatternChange: item.backgroundPatternChange!.reverse(),
           ),
         );
+      case .addLink:
+        undo(item.copyWith(type: .removeLink));
+      case .removeLink:
+        undo(item.copyWith(type: .addLink));
     }
   }
 
@@ -636,7 +671,10 @@ class EditorState extends State<Editor> {
   PointerDeviceKind? currentPointerKind;
   double? currentPressure;
   bool isDrawGesture(ScaleStartDetails details) {
-    if (coreInfo.readOnly || _initialImportPending || _loadingSnapshot)
+    if (coreInfo.readOnly ||
+        _initialImportPending ||
+        _loadingSnapshot ||
+        _placingLink)
       return false;
 
     CanvasImage.activeListener
@@ -1770,6 +1808,7 @@ class EditorState extends State<Editor> {
               autosaveAfterDelay();
             });
           },
+          linkSelection: () => unawaited(_linkSelection()),
           setColor: (color) {
             setState(() {
               updateColorBar(color);
@@ -2021,6 +2060,7 @@ class EditorState extends State<Editor> {
       DynamicMaterialApp.isFullscreen,
       stows.editorFingerDrawing.value,
       _alignmentStow.value,
+      _placingLink,
     );
     if (signature == _chromeSignature) return;
     _chromeSignature = signature;
@@ -2136,6 +2176,14 @@ class EditorState extends State<Editor> {
           cupertinoIcon: CupertinoIcons.share,
         ),
         onPressed: _showPageActions ? _openExportDialog : null,
+      ),
+      NoteShortcut(
+        id: 'linkAdd',
+        label: '링크 추가',
+        icon: const Icon(Icons.add_link),
+        buttonKey: const ValueKey('editor-link-add'),
+        selected: _placingLink,
+        onPressed: _showPageActions ? _linkAdd : null,
       ),
     ];
   }
@@ -2427,7 +2475,31 @@ class EditorState extends State<Editor> {
       },
       currentTool: currentTool,
       currentScale: _transformationController.value.approxScale,
+      linkLayer: PageLinkLayer(
+        links: page.links,
+        pageSize: page.size,
+        screenScale: _screenScale(page),
+        readOnly: coreInfo.readOnly,
+        ignoring: currentTool is Select || currentTool == Tool.textEditing,
+        onAction: (link, action) =>
+            unawaited(_onLinkAction(page, link, action)),
+        onPlace: _placingLink
+            ? (point) => unawaited(_placeLink(page, point))
+            : null,
+      ),
     );
+  }
+
+  /// Logical pixels on screen per unit of [page]: the page fitted to the
+  /// canvas width, never enlarged (as CanvasGestureDetector lays pages out),
+  /// times the zoom. Pages are built again whenever either changes.
+  double _screenScale(EditorPage page) {
+    final width =
+        _canvasGestureDetectorKey.currentState?.containerBounds.maxWidth;
+    final fit = width != null && width.isFinite && width > 0
+        ? min(1.0, width / page.size.width)
+        : 1.0;
+    return fit * _transformationController.value.approxScale;
   }
 
   Widget pageManager(BuildContext context) {
@@ -2624,6 +2696,263 @@ class EditorState extends State<Editor> {
         (_canvasGestureDetectorKey.currentState?.scrollToPage(index) ?? false);
   }
 
+  /// Shows the page with [pageId] (a link to a page of this note). False
+  /// when the note has no such page.
+  bool revealPageId(String pageId) {
+    final index = coreInfo.pages.indexWhere((page) => page.pageId == pageId);
+    if (index < 0) return false;
+    _scrollToPage(index);
+    return true;
+  }
+
+  List<({String pageId, int number})> _linkablePages() => [
+    for (final (index, page) in coreInfo.pages.indexed)
+      (pageId: page.pageId, number: index + 1),
+  ];
+
+  /// The rectangle around the lassoed strokes and pictures (not the loop).
+  static Rect? _selectionArea(SelectResult selection) {
+    Rect? area;
+    for (final rect in [
+      for (final stroke in selection.strokes) stroke.lowQualityPath.getBounds(),
+      for (final image in selection.images) image.dstRect,
+    ]) {
+      area = area?.expandToInclude(rect) ?? rect;
+    }
+    return area;
+  }
+
+  /// The selection bar's 「링크」: a link over the lassoed strokes and pictures.
+  Future<void> _linkSelection() async {
+    final select = Select.currentSelect;
+    if (currentTool is! Select || !select.doneSelecting) return;
+    final page = coreInfo.pages.elementAtOrNull(select.selectResult.pageIndex);
+    final area = _selectionArea(select.selectResult);
+    if (page == null || area == null) return;
+    if (await _addLink(page, area) && mounted) setState(select.unselect);
+  }
+
+  /// 「링크 추가」: a link over the lasso's selection or, without one,
+  /// Notein's way: the next tap on a page puts a link icon there.
+  void _linkAdd() {
+    if (coreInfo.readOnly) return;
+    if (currentTool is Select && Select.currentSelect.doneSelecting) {
+      unawaited(_linkSelection());
+      return;
+    }
+    if (_placingLink) return _stopPlacingLink();
+    setState(() => _placingLink = true);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    // Shown after any message already on screen, which it never hides.
+    late final ScaffoldFeatureController<SnackBar, SnackBarClosedReason> hint;
+    hint = messenger.showSnackBar(
+      SnackBar(
+        content: const Text('링크를 둘 곳을 누르세요'),
+        duration: const Duration(seconds: 10),
+        action: SnackBarAction(label: '취소', onPressed: () {}),
+        onVisible: () => _placingHintVisible(hint),
+      ),
+    );
+    _placingHint = hint;
+    _placingHintShown = false;
+    // The wait lasts as long as its hint: 취소, a swipe or the timeout end it.
+    unawaited(
+      hint.closed.then((_) {
+        if (!identical(_placingHint, hint)) return;
+        _placingHint = null;
+        _placingHintShown = false;
+        if (mounted) setState(() => _placingLink = false);
+      }),
+    );
+  }
+
+  /// A SnackBar's controller may close it only while it is the one on screen
+  /// (otherwise it would hide another app message). So a hint that is no
+  /// longer wanted when its turn comes closes itself then.
+  void _placingHintVisible(
+    ScaffoldFeatureController<SnackBar, SnackBarClosedReason> hint,
+  ) {
+    if (mounted && identical(_placingHint, hint)) {
+      _placingHintShown = true;
+    } else {
+      hint.close();
+    }
+  }
+
+  /// Closes the hint if it is on screen; a hint still waiting behind another
+  /// message closes itself when it shows ([_placingHintVisible]).
+  void _closePlacingHint() {
+    final hint = _placingHint;
+    final shown = _placingHintShown;
+    _placingHint = null;
+    _placingHintShown = false;
+    if (hint != null && shown) hint.close();
+  }
+
+  void _stopPlacingLink() {
+    _closePlacingHint();
+    if (_placingLink) setState(() => _placingLink = false);
+  }
+
+  Future<void> _placeLink(EditorPage page, Offset point) async {
+    _stopPlacingLink();
+    await _addLink(page, point & Size.zero);
+  }
+
+  /// Asks where a link over [area] of [page] goes, then adds it. False when
+  /// the dialog was cancelled or the note changed meanwhile.
+  Future<bool> _addLink(EditorPage page, Rect area) async {
+    final note = coreInfo;
+    final index = note.pages.indexOf(page);
+    if (note.readOnly || index < 0) return false;
+    final target = await showPageLinkDialog(
+      context,
+      pages: _linkablePages(),
+      listNotes: widget.chrome?.listNotes,
+      current: index + 1,
+    );
+    if (target == null ||
+        target.isEmpty ||
+        !mounted ||
+        !identical(coreInfo, note)) {
+      return false;
+    }
+    return _changeLink(
+      page,
+      added: PageLink(id: newId(), rect: area, target: target),
+    );
+  }
+
+  Future<void> _editLink(EditorPage page, PageLink link) async {
+    final note = coreInfo;
+    final index = note.pages.indexOf(page);
+    if (note.readOnly || index < 0) return;
+    final target = await showPageLinkDialog(
+      context,
+      pages: _linkablePages(),
+      listNotes: widget.chrome?.listNotes,
+      initial: link.target,
+      current: index + 1,
+    );
+    if (target == null || !mounted || !identical(coreInfo, note)) return;
+    if (target.isEmpty) {
+      _changeLink(page, removed: link);
+    } else if (target != link.target) {
+      _changeLink(
+        page,
+        removed: link,
+        added: PageLink(id: link.id, rect: link.rect, target: target),
+      );
+    }
+  }
+
+  /// Adds [added], removes [removed], or with both edits a link, as one undo
+  /// step. False when [page] has left the note or the note is read-only.
+  bool _changeLink(EditorPage page, {PageLink? added, PageLink? removed}) {
+    final pageIndex = coreInfo.pages.indexOf(page);
+    if (pageIndex < 0 || coreInfo.readOnly) return false;
+    setState(() {
+      _replaceLink(page, remove: removed, put: added);
+      history.recordChange(
+        EditorHistoryItem(
+          type: added != null ? .addLink : .removeLink,
+          pageIndex: pageIndex,
+          strokes: const [],
+          images: const [],
+          page: page,
+          link: added ?? removed,
+          replacedLink: added != null ? removed : null,
+        ),
+      );
+      // The last change is no longer a stroke that a pinch may take back.
+      _lastDrawRecorded = false;
+    });
+    autosaveAfterDelay();
+    return true;
+  }
+
+  /// The page of a link change: the same page wherever it is now, or, when
+  /// that empty page was tidied away and made again (removeExcessPages, then
+  /// createPage), the page in its place, as strokes come back by index.
+  EditorPage _linkPageOf(EditorHistoryItem item) {
+    final page = item.page!;
+    if (coreInfo.pages.contains(page)) return page;
+    if (item.pageIndex >= coreInfo.pages.length) createPage(item.pageIndex);
+    return coreInfo.pages[item.pageIndex];
+  }
+
+  /// Takes [remove] off [page] and puts [put] in its place (or last).
+  static void _replaceLink(
+    EditorPage page, {
+    PageLink? remove,
+    PageLink? put,
+  }) {
+    final links = page.links;
+    final index = remove == null
+        ? -1
+        : links.indexWhere((link) => link.id == remove.id);
+    if (index >= 0) links.removeAt(index);
+    if (put != null) links.insert(index < 0 ? links.length : index, put);
+  }
+
+  Future<void> _onLinkAction(
+    EditorPage page,
+    PageLink link,
+    PageLinkAction action,
+  ) async {
+    switch (action) {
+      case .open:
+        await _followLink(link);
+      case .edit:
+        await _editLink(page, link);
+      case .copy:
+        await Clipboard.setData(ClipboardData(text: link.target));
+        _linkMessage('링크를 복사했습니다');
+      case .delete:
+        _changeLink(page, removed: link);
+    }
+  }
+
+  /// A page of this note opens here; other notes and web addresses through
+  /// the host (the workspace's link opener). Without a host the editor opens
+  /// web addresses itself.
+  Future<void> _followLink(PageLink link) async {
+    final open = widget.chrome?.openLink;
+    try {
+      switch (PageLink.kindOf(link.target)) {
+        case PageLinkKind.page:
+          if (!revealPageId(link.pageId!)) _linkMessage('링크한 페이지가 없습니다');
+        case PageLinkKind.note:
+          if (open == null) {
+            _linkMessage('이 화면에서는 다른 노트를 열 수 없습니다');
+          } else {
+            await open(link.target);
+          }
+        case PageLinkKind.web:
+          if (open != null) {
+            await open(link.target);
+          } else if (!await launchUrl(
+            Uri.parse(link.target),
+            mode: LaunchMode.externalApplication,
+          )) {
+            _linkMessage('링크를 열 수 없습니다');
+          }
+        case null:
+          _linkMessage('링크를 열 수 없습니다');
+      }
+    } catch (error) {
+      _linkMessage('링크를 열 수 없습니다: $error');
+    }
+  }
+
+  void _linkMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
   /// The index of the page that is currently centered on screen.
   int get currentPageIndex {
     if (!mounted) return _lastCurrentPageIndex;
@@ -2668,6 +2997,8 @@ class EditorState extends State<Editor> {
 
     DynamicMaterialApp.removeFullscreenListener(_setState);
     widget.chrome?.detach(this);
+    // The hint lives in the app's messenger, which outlives the editor.
+    _closePlacingHint();
 
     _delayedSaveTimer?.cancel();
     _watchServerTimer?.cancel();

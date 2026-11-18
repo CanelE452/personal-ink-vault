@@ -179,6 +179,20 @@ class Stows {
     volatile: !_isOnMainIsolate,
   );
 
+  /// The library shows covers in a grid (true) or a list (the ⋯ menu).
+  final libraryGrid = PlainStow(
+    'libraryGrid',
+    true,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// The library's order: `default`, `title`, `changed` or `created`.
+  final librarySort = PlainStow(
+    'librarySort',
+    'default',
+    volatile: !_isOnMainIsolate,
+  );
+
   /// The tool panels (tap the chosen tool again). The eraser and lasso read
   /// these while they act, so a change applies to the tool in hand.
   final eraserSize = PlainStow<double>(

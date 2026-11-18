@@ -315,7 +315,13 @@ Future<void> _withWorkspace(
 Future<void> _chooseStarNote(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('library-create-button')));
   await tester.pumpAndSettle();
-  final action = find.byKey(const ValueKey('library-create-starnote'));
+  // The + menu keeps the StarNote import under 「다른 앱에서 가져오기 ›」.
+  final other = find.byKey(const ValueKey('library-add-other'));
+  await tester.ensureVisible(other);
+  await tester.pumpAndSettle();
+  await tester.tap(other.hitTestable());
+  await tester.pumpAndSettle();
+  final action = find.byKey(const ValueKey('library-import-starnote'));
   await tester.ensureVisible(action);
   await tester.pumpAndSettle();
   expect(action.hitTestable(), findsOneWidget);

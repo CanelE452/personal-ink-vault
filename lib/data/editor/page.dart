@@ -12,6 +12,7 @@ import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/inner_canvas.dart';
 import 'package:saber/components/canvas/pencil_shader.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
+import 'package:saber/data/editor/page_link.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:sbn/has_size.dart';
 
@@ -50,6 +51,10 @@ class EditorPage extends ChangeNotifier implements HasSize {
   final List<LaserStroke> laserStrokes;
   final List<EditorImage> images;
   final QuillStruct quill;
+
+  /// Notein's hyperlinks on this page. They are not page content, so
+  /// [isEmpty] does not look at them.
+  final List<PageLink> links;
 
   EditorImage? backgroundImage;
 
@@ -110,6 +115,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
     List<Stroke>? strokes,
     List<EditorImage>? images,
     QuillStruct? quill,
+    List<PageLink>? links,
     this.backgroundImage,
   }) : assert(
          (size == null) || (width == null && height == null),
@@ -120,6 +126,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
        strokes = strokes ?? [],
        laserStrokes = [],
        images = images ?? [],
+       links = links ?? [],
        quill =
            quill ??
            QuillStruct(
@@ -163,6 +170,10 @@ class EditorPage extends ChangeNotifier implements HasSize {
             : QuillController.basic(),
         focusNode: FocusNode(debugLabel: 'Quill Focus Node'),
       ),
+      links: [
+        if (json['lk'] case final List entries)
+          for (final entry in entries) ?PageLink.fromJson(entry),
+      ],
       backgroundImage: json['b'] != null
           ? parseImageJson(
               json['b'],
@@ -186,6 +197,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
     if (!quill.controller.document.isEmpty())
       'q': quill.controller.document.toDelta().toJson(),
     if (backgroundImage != null) 'b': backgroundImage?.toJson(assets),
+    if (links.isNotEmpty) 'lk': links.map((link) => link.toJson()).toList(),
   };
 
   /// Inserts a stroke, while keeping the strokes sorted by
@@ -327,12 +339,21 @@ class EditorPage extends ChangeNotifier implements HasSize {
     List<EditorImage>? images,
     QuillStruct? quill,
     EditorImage? backgroundImage,
+    List<PageLink>? links,
   }) => EditorPage(
     pageId: newIdentity ? newId() : pageId ?? this.pageId,
     size: size ?? this.size,
     strokes: strokes ?? this.strokes,
     images: images ?? this.images,
     quill: quill ?? this.quill,
+    // A copy's links are its own: new ids, so undoing a change to one never
+    // touches the other page's.
+    links:
+        links ??
+        [
+          for (final link in this.links)
+            PageLink(id: newId(), rect: link.rect, target: link.target),
+        ],
     backgroundImage: backgroundImage ?? this.backgroundImage,
   );
 

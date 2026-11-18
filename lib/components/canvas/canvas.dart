@@ -24,6 +24,7 @@ class Canvas extends StatelessWidget {
     required this.currentTool,
     required this.currentScale,
     this.placeholder = false,
+    this.linkLayer,
   });
 
   final String path;
@@ -41,6 +42,9 @@ class Canvas extends StatelessWidget {
   final Tool currentTool;
   final double currentScale;
   final bool placeholder;
+
+  /// The page's links, handed to [InnerCanvas.linkLayer].
+  final Widget? linkLayer;
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +82,7 @@ class Canvas extends StatelessWidget {
                       currentToolIsSelect: currentTool.toolId == ToolId.select,
                       selectionErases: currentTool.toolId == ToolId.eraser,
                       currentScale: currentScale,
+                      linkLayer: linkLayer,
                     ),
                   ),
                 )

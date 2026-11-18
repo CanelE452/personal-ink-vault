@@ -12,6 +12,7 @@ import 'package:pdfrx/pdfrx.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/page_link.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/office/office_annotation_store.dart';
@@ -170,6 +171,127 @@ void main() {
       skip: !officePreviewPdfiumAvailable,
     );
   }
+
+  testWidgets(
+    'links come along with their slide, with new ids and page links moved to its new page',
+    (tester) => withOfficePreviewPdfium(tester, () async {
+      await officePreviewRead(tester, () async {
+        final dir = await Directory.systemTemp.createTemp('pptx-carry-test-');
+        await FileManager.init(
+          documentsDirectory: p.join(dir.path, 'documents'),
+          shouldWatchRootDirectory: false,
+        );
+        final repository = await NoteRepository.open(
+          Directory(p.join(dir.path, 'vault')),
+          createFormatVersion: 2,
+        );
+        try {
+          final documents = OfficeDocumentStore(repository);
+          final note = await documents.importDocument(
+            title: 'Presentation',
+            fileName: 'slides.pptx',
+            bytes: _package('original'),
+          );
+          Future<OfficeEdition> save(String name, Uint8List pdf) async =>
+              documents.commitEdited(
+                await documents.beginEdit(note),
+                originalBytes: _package(name),
+                pdfBytes: pdf,
+                engineVersion: 'test',
+                pageCount: 2,
+              );
+          final oldPdf = await officePreviewPdf(
+            PdfColors.red,
+            second: PdfColors.blue,
+          );
+          final previous = await save('before', oldPdf);
+          final old = await OfficeAnnotationStore(repository).open(note, previous);
+          final core = EditorCoreInfo(filePath: old.workingPath)
+            ..nextImageId = 1;
+          const natural = Size(200, 300);
+          final size = Size(1000, 1000 * natural.height / natural.width);
+          final linked = EditorPage(
+            size: size,
+            backgroundImage: PdfEditorImage(
+              id: 0,
+              assetCache: core.assetCache,
+              pdfBytes: oldPdf,
+              pdfFile: null,
+              pdfPage: 1,
+              pageIndex: 1,
+              pageSize: size,
+              naturalSize: natural,
+              onMoveImage: null,
+              onDeleteImage: null,
+              onMiscChange: null,
+            ),
+          );
+          // Nothing but links on the slide.
+          final web = PageLink(
+            id: newId(),
+            rect: const Rect.fromLTWH(10, 20, 300, 40),
+            target: 'https://example.com/slide',
+          );
+          final self = PageLink(
+            id: newId(),
+            rect: const Rect.fromLTWH(400, 500, 0, 0),
+            target: 'page:${linked.pageId}',
+          );
+          linked.links.addAll([web, self]);
+          try {
+            core.pages.addAll([EditorPage(size: size), linked]);
+            await old.saveSnapshot(core, 1);
+          } finally {
+            core.dispose();
+          }
+          final newPdf = await officePreviewPdf(
+            PdfColors.blue,
+            second: PdfColors.red,
+          );
+          final current = await save('after', newPdf);
+          final result = await carryPreviousPptxAnnotations(
+            repository: repository,
+            note: note,
+            edition: current,
+            isCurrent: () => true,
+            slideIdentity: _ReorderedSlides(
+              previous.originalSha256,
+              current.originalSha256,
+            ),
+          );
+          expect(result, (copiedPages: 1, skippedPages: 0));
+          final loaded = await (await OfficeAnnotationStore(
+            repository,
+          ).open(note, current)).load();
+          try {
+            final links = loaded.pages.first.links;
+            expect(links.map((link) => link.rect), [web.rect, self.rect]);
+            expect(links.first.target, web.target);
+            // The slide moved to the first page; its link to itself moved too.
+            expect(
+              links.last.target,
+              'page:${officePdfBaselinePageId(current.bindingId!, 0)}',
+            );
+            for (final link in links) {
+              expect(link.id, isNot(anyOf(web.id, self.id)));
+            }
+          } finally {
+            loaded.dispose();
+          }
+        } finally {
+          await repository.close();
+          final owned = await dir.resolveSymbolicLinks();
+          expect(
+            p.dirname(owned),
+            await Directory.systemTemp.resolveSymbolicLinks(),
+          );
+          expect(p.basename(owned), startsWith('pptx-carry-test-'));
+          await Directory(owned).delete(recursive: true);
+        }
+      });
+    }),
+    skip: !officePreviewPdfiumAvailable,
+  );
 
   final native = Platform.environment['PIV_CARRY_TEST_DLL'];
   final fixture = Platform.environment['PIV_CARRY_TEST_IMPRESS_FIXTURE'];

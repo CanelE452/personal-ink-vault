@@ -31,6 +31,7 @@ void main() {
           'copyPageLink',
           'openNoteLink',
           'vaultExport',
+          'linkAdd',
         ]),
       );
       expect(l.barCount, maxBarShortcuts);

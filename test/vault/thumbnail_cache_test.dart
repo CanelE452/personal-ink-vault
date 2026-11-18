@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:ink_vault_core/ink_vault_core.dart';
+import 'package:logging/logging.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfrx/pdfrx.dart';
@@ -226,6 +230,49 @@ void main() {
       },
     );
   }
+
+  testWidgets('retirement waits for an admitted cover facts write', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final writing = Completer<File>();
+      final release = Completer<void>();
+      cache = ThumbnailCache(
+        cache.root,
+        writeFacts: (temporary, json) async {
+          await temporary.writeAsString(json, flush: true);
+          writing.complete(temporary);
+          await release.future;
+        },
+      );
+      final note = await store.create('Facts publishing');
+      final drawing = core(ink: Colors.red);
+      await commit(note, drawing);
+      drawing.dispose();
+      final pending = cache.getOrCreate(repository, note);
+      final temporary = await writing.future.timeout(
+        const Duration(seconds: 8),
+      );
+      var retired = false;
+      final retirement = cache.retire().then<void>((_) => retired = true);
+      await Future<void>.delayed(Duration.zero);
+      expect(temporary.existsSync(), isTrue);
+      expect(retired, isFalse);
+      release.complete();
+      await retirement;
+      final cover = await pending;
+      expect(cover, isNull);
+      final names = (await cache.root
+              .list(recursive: true)
+              .where((entry) => entry is File)
+              .toList())
+          .map((entry) => entry.path)
+          .toList();
+      expect(names.where((n) => n.endsWith('.tmp')), isEmpty);
+      expect(names.where((n) => n.endsWith('.png')), hasLength(1));
+      expect(names.where((n) => n.endsWith('.facts.json')), hasLength(1));
+    });
+  });
 
   testWidgets('retirement skips a late Office result and a queued cover', (
     tester,
@@ -530,6 +577,72 @@ void main() {
         !File('build/windows/x64/runner/Release/pdfium.dll').existsSync(),
   );
 
+  test('a handwriting cover records its page count and first-page aspect', () async {
+    final note = await store.create('Three pages');
+    final drawing = core(ink: Colors.red);
+    drawing.pages.add(EditorPage(size: const Size(1000, 1400)));
+    drawing.pages.add(EditorPage(size: const Size(1000, 1400)));
+    await commit(note, drawing);
+    drawing.dispose();
+    final thumbnail = await cache.getOrCreate(repository, note);
+    expect(thumbnail, isNotNull);
+    final facts = await ThumbnailCache.readCoverFacts(thumbnail!);
+    expect(facts, isNotNull);
+    expect(facts!.pages, 3);
+    expect(facts.aspect, closeTo(1000 / 1400, 0.001));
+  });
+
+  test('a cover written without facts reads as unknown', () async {
+    final png = File('${temp.path}/plain.png')..writeAsBytesSync([1, 2, 3]);
+    expect(await ThumbnailCache.readCoverFacts(png), isNull);
+    File('${png.path}.facts.json').writeAsStringSync('not json');
+    expect(await ThumbnailCache.readCoverFacts(png), isNull);
+  });
+
+  testWidgets(
+    'a pdf note without ink gets its first pdf page as cover',
+    (tester) async {
+      await tester.runAsync(() async {
+        final previousModulePath = Pdfrx.pdfiumModulePath;
+        Pdfrx.pdfiumModulePath = File(
+          'build/windows/x64/runner/Release/pdfium.dll',
+        ).absolute.path;
+        try {
+          await pdfrxInitialize(tmpPath: temp.path);
+          final pdf = pw.Document();
+          for (var i = 0; i < 2; i++) {
+            pdf.addPage(
+              pw.Page(
+                pageFormat: const PdfPageFormat(400, 200),
+                margin: pw.EdgeInsets.zero,
+                build: (_) =>
+                    pw.Container(width: 400, height: 200, color: PdfColors.red),
+              ),
+            );
+          }
+          final note = await store.createWithSource(
+            'Source only',
+            fileName: 'source.pdf',
+            bytes: await pdf.save(),
+            documentKind: VaultDocumentKind.pdf,
+          );
+          final thumbnail = await cache.getOrCreate(repository, note);
+          expect(thumbnail, isNotNull);
+          expect((await inspectPng(thumbnail!)).$3, greaterThan(1000));
+          final facts = await ThumbnailCache.readCoverFacts(thumbnail);
+          expect(facts, isNotNull);
+          expect(facts!.pages, 2);
+          expect(facts.aspect, greaterThan(1));
+        } finally {
+          Pdfrx.pdfiumModulePath = previousModulePath;
+        }
+      });
+    },
+    skip:
+        !Platform.isWindows ||
+        !File('build/windows/x64/runner/Release/pdfium.dll').existsSync(),
+  );
+
   test('a cover snapshot still refuses files other than the body, its assets and the PDF marker', () async {
     final note = await store.create(
       'Extra file',
@@ -775,6 +888,303 @@ void main() {
     }
     expect(await cache.getOrCreate(repository, note), isNull);
   });
+
+  /// An Office·한글 original as a ZIP of [parts]; the [stored] ones are kept
+  /// uncompressed, as PowerPoint keeps its thumbnail.
+  Uint8List officeZip(
+    Map<String, List<int>> parts, {
+    Set<String> stored = const {},
+  }) {
+    final archive = Archive();
+    for (final MapEntry(key: name, value: bytes) in parts.entries) {
+      archive.addFile(
+        stored.contains(name)
+            ? ArchiveFile.noCompress(name, bytes.length, bytes)
+            : ArchiveFile(name, bytes.length, bytes),
+      );
+    }
+    return Uint8List.fromList(ZipEncoder().encode(archive));
+  }
+
+  List<int> redPicture(int width, int height, {bool png = false}) {
+    final picture = img.Image(width: width, height: height);
+    img.fill(picture, color: img.ColorRgb8(230, 20, 20));
+    return png ? img.encodePng(picture) : img.encodeJpg(picture);
+  }
+
+  List<int> thumbnailRels(String target) => utf8.encode(
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>'
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail" Target="$target"/>'
+    '</Relationships>',
+  );
+
+  Future<VaultNote> office(String fileName, Uint8List bytes) =>
+      OfficeDocumentStore(repository)
+          .importDocument(title: fileName, fileName: fileName, bytes: bytes);
+
+  test('an office original with an embedded preview gets that picture as its cover when no engine can convert', () async {
+    final engine = _NoBackgroundOfficePreview();
+    cache = ThumbnailCache(
+      Directory('${temp.path}/picture-covers'),
+      officePreviewEngine: engine,
+    );
+    // The relationship names the picture, whatever it is called.
+    final note = await office(
+      'slides.pptx',
+      officeZip(
+        {
+          '[Content_Types].xml': utf8.encode('<Types/>'),
+          '_rels/.rels': thumbnailRels('/docProps/first-slide.jpeg'),
+          'ppt/presentation.xml': utf8.encode('<presentation/>'),
+          'docProps/first-slide.jpeg': redPicture(256, 144),
+        },
+        stored: {'docProps/first-slide.jpeg'},
+      ),
+    );
+    final cover = await cache.getOrCreate(repository, note);
+    expect(cover, isNotNull);
+    final (width, height, red) = await inspectPng(cover!);
+    expect(width, 240);
+    expect(height, 135);
+    expect(red, greaterThan(240 * 135 * 9 ~/ 10));
+    final facts = await ThumbnailCache.readCoverFacts(cover);
+    expect(facts!.aspect, closeTo(256 / 144, 1e-9));
+    expect(facts.pages, isNull);
+    expect(engine.calls, 0);
+    // Kept like any other cover.
+    expect((await cache.getOrCreate(repository, note))!.path, cover.path);
+
+    // A picture larger than the cover is drawn at the cover's size, and the
+    // facts keep the picture's own shape.
+    final large = await office(
+      'large.pptx',
+      officeZip({'docProps/thumbnail.jpeg': redPicture(1600, 900)}),
+    );
+    final largeCover = await cache.getOrCreate(repository, large);
+    final (largeWidth, largeHeight, largeRed) = await inspectPng(largeCover!);
+    expect((largeWidth, largeHeight), (240, 135));
+    expect(largeRed, greaterThan(240 * 135 * 9 ~/ 10));
+    expect(
+      (await ThumbnailCache.readCoverFacts(largeCover))!.aspect,
+      closeTo(1600 / 900, 1e-9),
+    );
+  });
+
+  /// [zip] with its entry [name] marked as a Unix symbolic link, as a ZIP
+  /// made on Linux or macOS stores one: host 3 in "version made by" and file
+  /// type 0xA000 in the external attributes of its central directory record.
+  Uint8List asSymlink(Uint8List zip, String name) {
+    final data = ByteData.sublistView(zip);
+    for (var at = 0; at + 46 <= zip.length; at++) {
+      if (data.getUint32(at, Endian.little) != 0x02014b50) continue;
+      final length = data.getUint16(at + 28, Endian.little);
+      if (utf8.decode(zip.sublist(at + 46, at + 46 + length)) != name) {
+        continue;
+      }
+      zip[at + 5] = 3;
+      data.setUint32(at + 38, 0xA1FF << 16, Endian.little);
+    }
+    return zip;
+  }
+
+  test(
+    'a symbolic link entry is never read while the preview picture is found',
+    () async {
+      final engine = _NoBackgroundOfficePreview();
+      cache = ThumbnailCache(
+        Directory('${temp.path}/link-covers'),
+        officePreviewEngine: engine,
+      );
+      // 1 MiB that is no text. Decoding the whole package inflates every
+      // link entry and fails on this one; reading the directory touches none.
+      final note = await office(
+        'linked.odp',
+        asSymlink(
+          officeZip({
+            'link': Uint8List(1 << 20)..fillRange(0, 1 << 20, 0xff),
+            'Thumbnails/thumbnail.png': redPicture(70, 100, png: true),
+          }),
+          'link',
+        ),
+      );
+      final cover = await cache.getOrCreate(repository, note);
+      expect(cover, isNotNull);
+      expect((await inspectPng(cover!)).$3, greaterThan(1000));
+    },
+  );
+
+  testWidgets(
+    'an office original with both a kept PDF and an embedded preview gets its cover from the PDF',
+    (tester) async {
+      await tester.runAsync(() async {
+        final previous = Pdfrx.pdfiumModulePath;
+        Pdfrx.pdfiumModulePath = File(
+          'build/windows/x64/runner/Release/pdfium.dll',
+        ).absolute.path;
+        try {
+          await pdfrxInitialize(tmpPath: temp.path);
+          final engine = _NoBackgroundOfficePreview();
+          cache = ThumbnailCache(
+            Directory('${temp.path}/pdf-before-picture'),
+            officePreviewEngine: engine,
+          );
+          final note = await office(
+            'both.pptx',
+            officeZip({
+              '_rels/.rels': thumbnailRels('docProps/thumbnail.jpeg'),
+              'docProps/thumbnail.jpeg': redPicture(256, 144),
+            }),
+          );
+          final pdf = pw.Document()
+            ..addPage(
+              pw.Page(
+                pageFormat: const PdfPageFormat(200, 300),
+                margin: pw.EdgeInsets.zero,
+                build: (_) => pw.Container(
+                  width: 200,
+                  height: 300,
+                  color: PdfColors.blue,
+                ),
+              ),
+            );
+          expect(
+            await OfficeDocumentStore(repository)
+                .keepFirstPdf(note, pdfBytes: await pdf.save(), pageCount: 1),
+            isTrue,
+          );
+          final cover = await cache.getOrCreate(repository, note);
+          expect(cover, isNotNull);
+          // The PDF's blue page with its page count and shape, not the red
+          // 16:9 picture.
+          expect((await inspectPng(cover!)).$3, 0);
+          final facts = await ThumbnailCache.readCoverFacts(cover);
+          expect(facts!.pages, 1);
+          expect(facts.aspect, closeTo(200 / 300, 1e-6));
+          expect(engine.calls, 0);
+        } finally {
+          Pdfrx.pdfiumModulePath = previous;
+        }
+      });
+    },
+    skip:
+        !Platform.isWindows ||
+        !File('build/windows/x64/runner/Release/pdfium.dll').existsSync(),
+  );
+
+  test('a broken preview picture gives no cover and no error', () async {
+    final engine = _NoBackgroundOfficePreview();
+    cache = ThumbnailCache(
+      Directory('${temp.path}/broken-picture-covers'),
+      officePreviewEngine: engine,
+    );
+    final logged = <String>[];
+    final listening = Logger.root.onRecord.listen((record) {
+      if (record.loggerName == 'PIVCover') logged.add(record.message);
+    });
+    addTearDown(listening.cancel);
+    final png = redPicture(40, 30, png: true);
+    final notes = <String, VaultNote>{};
+    for (final (fileName, bytes) in [
+      // A PNG whose header names no real colour type: its size passes the
+      // check before decoding, the picture itself does not decode.
+      (
+        'undecodable.odp',
+        officeZip({
+          'Thumbnails/thumbnail.png': Uint8List.fromList(png)..[25] = 7,
+        }),
+      ),
+      // A Windows metafile is not drawn.
+      (
+        'vector.docx',
+        officeZip({
+          '_rels/.rels': thumbnailRels('docProps/thumbnail.wmf'),
+          'docProps/thumbnail.wmf': [0xd7, 0xcd, 0xc6, 0x9a, 0, 0, 0, 0],
+        }),
+      ),
+      // Larger than 8 MiB.
+      (
+        'huge.odt',
+        officeZip({
+          'Thumbnails/thumbnail.png': Uint8List((8 << 20) + 1)..setAll(0, png),
+        }),
+      ),
+      ('not-a-zip.pptx', Uint8List.fromList([1, 2, 3])),
+    ]) {
+      final note = notes[fileName] = await office(fileName, bytes);
+      expect(
+        await cache.getOrCreate(repository, note),
+        isNull,
+        reason: fileName,
+      );
+    }
+    expect(engine.calls, 0);
+    // Nothing was written for them.
+    expect(cache.root.existsSync(), isFalse);
+    // A package that cannot be read says why in the log, like other covers.
+    expect(
+      logged,
+      contains(
+        allOf(
+          contains(notes['not-a-zip.pptx']!.id),
+          contains('preview picture not read'),
+        ),
+      ),
+    );
+  });
+
+  for (final (fileName, part) in [
+    ('notes.odt', 'Thumbnails/thumbnail.png'),
+    ('slides.odp', 'Thumbnails/thumbnail.png'),
+    ('letter.hwpx', 'Preview/PrvImage.png'),
+    ('report.docx', 'docProps/thumbnail.png'),
+  ]) {
+    test('the preview picture of $fileName is read from $part', () async {
+      final engine = _NoBackgroundOfficePreview();
+      cache = ThumbnailCache(
+        Directory('${temp.path}/named-picture-covers'),
+        officePreviewEngine: engine,
+      );
+      final note = await office(
+        fileName,
+        officeZip({
+          'mimetype': utf8.encode('application/octet-stream'),
+          part: redPicture(70, 100, png: true),
+        }),
+      );
+      final cover = await cache.getOrCreate(repository, note);
+      expect(cover, isNotNull);
+      final (width, height, red) = await inspectPng(cover!);
+      expect(width, 240);
+      expect(height, lessThanOrEqualTo(320));
+      expect(red, greaterThan(1000));
+      expect(
+        (await ThumbnailCache.readCoverFacts(cover))!.aspect,
+        closeTo(70 / 100, 1e-9),
+      );
+      // 한글 has a headless engine; the picture is used when it fails.
+      expect(engine.calls, fileName.endsWith('.hwpx') ? 1 : 0);
+    });
+  }
+}
+
+/// An Office engine as on Android: Word·PowerPoint cannot be converted
+/// without a window, and the headless preview a 한글 original may ask for
+/// fails as when its engine is missing.
+class _NoBackgroundOfficePreview extends OfficePreviewEngine {
+  new() : super(isWindows: false, isAndroid: true);
+
+  var calls = 0;
+
+  @override
+  Future<OfficePreviewResult?> preview({
+    required String sourcePath,
+    required String sessionId,
+  }) async {
+    calls++;
+    throw StateError('The preview engine is not available');
+  }
 }
 
 class _OfficeCoverInspection extends WindowsOfficeEngine {

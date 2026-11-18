@@ -406,10 +406,7 @@ void main() {
       picker.result = null;
       final drawer = find.byType(DrawerButton);
       await mount(tester, ready: drawer);
-      await tester.tap(drawer);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      // The vault tools moved from the side bar's menu into its settings.
+      // The vault tools are in the library's settings, the gear in its top bar.
       await tester.tap(find.byKey(const ValueKey('library-settings')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));

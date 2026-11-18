@@ -198,7 +198,18 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    final option = find.text('Obsidian 보관함 가져오기').hitTestable();
+    // The + menu keeps the Obsidian import under 「다른 앱에서 가져오기 ›」. The
+    // + was tapped in runAsync, so the menu opens its second level there too.
+    await tester.runAsync(
+      () => tester.tap(
+        find.byKey(const ValueKey('library-add-other')).hitTestable(),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    final option = find
+        .byKey(const ValueKey('library-import-obsidian'))
+        .hitTestable();
     expect(option, findsOneWidget);
     debugPrint('Obsidian UI create menu open');
     await tester.runAsync(() => tester.tap(option));

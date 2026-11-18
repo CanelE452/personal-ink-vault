@@ -65,6 +65,15 @@ sources are present in the package, not that every native subdependency was audi
 A complete native-library/Gradle/PDFium notice and asset provenance audit remains open.
 No assertion of complete distribution compliance is made by this inventory.
 
+Android build 231 adds Google ML Kit digital ink recognition
+(`com.google.mlkit:digital-ink-recognition` 19.0.0 from Google's Maven repository)
+for the calendar's handwriting-to-text. It is a closed-source Google library
+provided under Google's ML Kit terms, not GPL code. The per-language handwriting
+models are downloaded from Google on first use, after the app shows their size.
+The library brings Google's data transport components, which can send ML Kit usage
+logs to Google. Its Maven dependencies include OkHttp 3.12.1 and Okio 2.0.0
+(Apache-2.0).
+
 Onyx SDK dependencies and its insecure Maven repository, Sentry runtime/build
 upload dependencies, and permission_handler were removed following the pinned
 upstream FOSS/Windows patches. Their unused upstream source folders may remain as

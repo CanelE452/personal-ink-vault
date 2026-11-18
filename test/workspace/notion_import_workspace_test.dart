@@ -240,7 +240,15 @@ Future<void> _openImport(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('library-create-button')));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
-  final action = find.text('Notion ZIP 가져오기').hitTestable();
+  // The + menu keeps the Notion import under 「다른 앱에서 가져오기 ›」.
+  await tester.tap(
+    find.byKey(const ValueKey('library-add-other')).hitTestable(),
+  );
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+  final action = find
+      .byKey(const ValueKey('library-import-notion'))
+      .hitTestable();
   expect(action, findsOneWidget);
   await tester.runAsync(() => tester.tap(action));
 }

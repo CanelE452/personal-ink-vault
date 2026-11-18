@@ -8,8 +8,9 @@ import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/office/office_document_store.dart';
+import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
-import 'package:saber/data/prefs.dart';
+import 'package:saber/data/vault/thumbnail_cache.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
@@ -113,16 +114,10 @@ void main() {
     return value as T;
   }
 
-  // The library's link and AI dialogs are in its settings, in the side bar
-  // (closed at first on this 800 dp wide test screen).
+  // The library's link and AI dialogs are in its settings, the gear in the
+  // library's top bar.
   Future<void> openFromSettings(WidgetTester tester, String item) async {
     final settings = find.byKey(const ValueKey('library-settings'));
-    if (settings.hitTestable().evaluate().isEmpty) {
-      addTearDown(() => stows.libraryPanelOpen.value = null);
-      await tester.tap(find.byKey(const ValueKey('library-panel-toggle')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-    }
     await tester.tap(settings);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -133,7 +128,21 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     await tester.pumpWidget(
       TranslationProvider(
-        child: MaterialApp(home: StudyWorkspace(controller: controller)),
+        child: MaterialApp(
+          home: StudyWorkspace(
+            controller: controller,
+            // Covers as on Android, where no Office engine converts in the background. Cover requests run in
+            // real time, so the host's Office engine would otherwise still be converting a shared PPTX for its
+            // cover while the fixture deletes its folder.
+            thumbnailCacheFactory: (root) => ThumbnailCache(
+              root,
+              officePreviewEngine: OfficePreviewEngine(
+                isWindows: false,
+                isAndroid: true,
+              ),
+            ),
+          ),
+        ),
       ),
     );
     await tester.pump();

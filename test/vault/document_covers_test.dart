@@ -23,6 +23,7 @@ import 'package:saber/data/office/office_annotation_store.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/block_page_document.dart';
 import 'package:saber/data/vault/card_canvas_document.dart';
 import 'package:saber/data/vault/infinite_document.dart';
@@ -762,7 +763,11 @@ void main() {
       await tester.pump();
       expect(requested, isNotEmpty);
       requested.clear();
-      await tester.tap(find.byKey(const ValueKey('library-layout-toggle')));
+      // The list layout is in the top bar's ⋯ menu and is remembered.
+      addTearDown(() => stows.libraryGrid.value = true);
+      await tester.tap(find.byKey(const ValueKey('library-view-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-view-list')));
       await tester.pumpAndSettle();
       expect(requested.length, lessThan(48));
     },

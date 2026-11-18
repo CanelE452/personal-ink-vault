@@ -50,7 +50,18 @@ internal class DocumentSourceBridge(
     init {
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
-                "choose" -> if (call.arguments == null) choose(result) else invalidRequest(result)
+                "choose" -> {
+                    // No arguments: every type. {"mimeTypes": [...]}: the picker shows only those types.
+                    val args = call.arguments
+                    val types = (args as? Map<*, *>)?.get("mimeTypes") as? List<*>
+                    when {
+                        args == null -> choose(result, emptyList())
+                        args is Map<*, *> && args.size == 1 && types != null && types.isNotEmpty() &&
+                            types.all { it is String && mimeType.matches(it) } ->
+                            choose(result, types.map { it as String })
+                        else -> invalidRequest(result)
+                    }
+                }
                 "stage", "release" -> {
                     val args = call.arguments as? Map<*, *>
                     val id = args?.get("id") as? String
@@ -67,7 +78,7 @@ internal class DocumentSourceBridge(
         }
     }
 
-    private fun choose(result: MethodChannel.Result) {
+    private fun choose(result: MethodChannel.Result, mimeTypes: List<String>) {
         if (chooser != null || selection != null) {
             result.error("busy", "${kind.label} 파일을 이미 가져오고 있습니다.", null)
             return
@@ -75,6 +86,7 @@ internal class DocumentSourceBridge(
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
+            if (mimeTypes.isNotEmpty()) putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
@@ -262,6 +274,7 @@ internal class DocumentSourceBridge(
     companion object {
         private const val UUID_PATTERN = "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
         private val identifier = Regex(UUID_PATTERN)
+        private val mimeType = Regex("[a-z0-9.+-]+/[a-z0-9.+*-]+")
         private val processId = UUID.randomUUID().toString()
         private val files = Executors.newSingleThreadExecutor()
         private val preparedCaches = mutableSetOf<Kind>()

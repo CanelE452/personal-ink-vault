@@ -28,8 +28,17 @@ enum AndroidDocumentSource {
   static const _uuidPattern = r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}';
   static final _uuid = RegExp('^$_uuidPattern\$');
 
-  Future<AndroidDocumentSelection?> choose() async {
-    final result = await AppExternalScreen.run(() => _invoke('choose'));
+  /// [mimeTypes] narrows what the picker offers; without them it offers
+  /// every file.
+  Future<AndroidDocumentSelection?> choose({List<String>? mimeTypes}) async {
+    final result = await AppExternalScreen.run(
+      () => _invoke(
+        'choose',
+        mimeTypes == null || mimeTypes.isEmpty
+            ? null
+            : {'mimeTypes': mimeTypes},
+      ),
+    );
     if (result == null) return null;
     const invalid = FormatException('선택한 문서를 확인하지 못했습니다.');
     if (result is! Map) throw invalid;
@@ -104,7 +113,7 @@ enum AndroidDocumentSource {
     }
   }
 
-  Future<Object?> _invoke(String method, [Map<String, String>? args]) async {
+  Future<Object?> _invoke(String method, [Map<String, Object>? args]) async {
     try {
       return await channel.invokeMethod<Object?>(method, args);
     } on MissingPluginException {

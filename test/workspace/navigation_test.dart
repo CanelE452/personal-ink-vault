@@ -236,12 +236,13 @@ void main() {
       );
       await tester.runAsync(() => controller.createNote('Wide back'));
       await mount(tester);
-      expect(find.text('내 문서'), findsNothing);
+      expect(find.byKey(const ValueKey('library-nav-all')), findsNothing);
       expect(find.byTooltip('문서 목록으로'), findsOneWidget);
       expect(tester.getSize(find.byType(CanvasGestureDetector)).width, 1400);
       await backArrow(tester);
       expect(controller.activeSession, isNull);
-      expect(find.widgetWithText(ListTile, '내 문서'), findsOneWidget);
+      // The wide library keeps its side panel, whose first row is 모두.
+      expect(find.widgetWithText(ListTile, '모두'), findsOneWidget);
       expect(
         tester.widget<Scaffold>(find.byType(Scaffold).first).drawer,
         isNull,

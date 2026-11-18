@@ -16,6 +16,14 @@ class EditorChromeController extends ChangeNotifier {
   /// Opens the host's "기타 설정" panel; set by the host.
   VoidCallback? openOtherSettings;
 
+  /// Opens a link to another note or a web address from a link in the note
+  /// (the workspace's `_openLink`); set by the host. Without it the editor
+  /// opens web addresses itself and cannot open other notes.
+  Future<void> Function(String link)? openLink;
+
+  /// The vault's notes for the link dialog's 「노트」 tab; set by the host.
+  Future<List<({String id, String title})>> Function()? listNotes;
+
   var _scheduled = false;
   var _disposed = false;
 

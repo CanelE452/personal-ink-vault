@@ -3,6 +3,12 @@
 
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- Reminder notifications at the time set in the reminder (PlannerReminders.kt) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
     <!-- Needed for saving photos -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <!-- Needed for reading files opened with the app -->
@@ -132,6 +138,46 @@
             </intent-filter>
         </activity>
 
+        <!-- Home-screen widgets for the reminder and the calendar, and reminder alarms
+             (PlannerWidgets.kt, PlannerReminders.kt). -->
+        <receiver
+            android:name=".CalendarWidgetProvider"
+            android:exported="false"
+            android:label="PIV 달력">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/zz_piv_widget_calendar" />
+        </receiver>
+        <receiver
+            android:name=".ReminderWidgetProvider"
+            android:exported="false"
+            android:label="PIV 리마인더">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/zz_piv_widget_reminder" />
+        </receiver>
+        <receiver
+            android:name=".ReminderAlarmReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".PlannerTickReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".PlannerBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
        <!-- https://developer.android.com/guide/topics/resources/app-languages#android12-impl -->
        <service

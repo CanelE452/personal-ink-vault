@@ -116,22 +116,7 @@ void main() {
           .onCreate(LibraryCreateAction.handwriting);
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
-    for (
-      var i = 0;
-      i < 20 && find.byType(AlertDialog).evaluate().isEmpty;
-      i++
-    ) {
-      await tester.runAsync(() async {
-        await tester.pump();
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      });
-    }
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.runAsync(() async {
-      tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, '확인'))
-          .onPressed!();
-    });
+    // The page note is made at once, without asking for a name (Notein's pencil).
     for (var i = 0; i < 200; i++) {
       await tester.runAsync(() async {
         await tester.pump(const Duration(milliseconds: 20));
@@ -169,11 +154,15 @@ void main() {
       expect(saved.pages.first.strokes, isNotEmpty);
       saved.dispose();
     });
+    final noteId = c.activeSession!.note.id;
     c.setInkDirty(true);
     scaffold.openDrawer();
     await tester.pumpAndSettle();
+    // Leaving the note for the library (모두) saves it first, so unfinished ink
+    // refuses: the drawer closes and the note stays open. (새 폴더 does not
+    // touch the open note, so it is not refused.)
     await tester.runAsync(() async {
-      await tester.tap(find.byTooltip('새 폴더'));
+      await tester.tap(find.byKey(const ValueKey('library-nav-all')));
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
     for (var i = 0; i < 10; i++) {
@@ -185,6 +174,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(scaffold.isDrawerOpen, isFalse);
     expect(find.textContaining('필기 또는 가져오기 작업을 마친 뒤'), findsOneWidget);
+    expect(c.activeSession?.note.id, noteId);
     await tester.runAsync(() async {
       c.setInkDirty(false);
       await c.refresh();

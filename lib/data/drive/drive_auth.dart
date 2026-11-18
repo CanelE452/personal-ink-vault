@@ -60,6 +60,29 @@ class SecureDriveUploadSessions implements DriveUploadSessions {
   Future<void> clear() => _secrets.delete(_key);
 }
 
+// The platform singleton must be initialized exactly once per Flutter engine.
+Future<void>? _googleInitialization;
+String? _googleInitializedClient;
+
+/// Initializes google_sign_in once per engine; shared by Drive and Calendar.
+Future<void> ensureGoogleSignInInitialized(String serverClientId) async {
+  if (_googleInitializedClient != null &&
+      _googleInitializedClient != serverClientId) {
+    throw const OAuthFailure(
+      'Restart the app after changing the Android OAuth client ID.',
+    );
+  }
+  _googleInitializedClient = serverClientId;
+  try {
+    await (_googleInitialization ??= GoogleSignIn.instance.initialize(
+      serverClientId: serverClientId,
+    ));
+  } catch (_) {
+    _googleInitialization = null;
+    throw const OAuthFailure('Android Google Sign-In configuration failed.');
+  }
+}
+
 abstract class DriveAuth {
   String? get accountId;
   Future<void> restore();
@@ -97,29 +120,13 @@ class AndroidDriveAuth extends DriveAuth {
   final GoogleSignIn _google = GoogleSignIn.instance;
   String? _accountId, _email, _lastToken;
   var _initialized = false;
-  // The platform singleton must be initialized exactly once per Flutter engine.
-  static Future<void>? _initialization;
-  static String? _initializedClient;
   new(this.serverClientId, {this.secrets = const OsDriveSecrets()});
   @override
   String? get accountId => _accountId;
   Future<void> _initialize() async {
     if (_initialized) return;
-    if (_initializedClient != null && _initializedClient != serverClientId) {
-      throw const OAuthFailure(
-        'Restart the app after changing the Android OAuth client ID.',
-      );
-    }
-    _initializedClient = serverClientId;
-    try {
-      await (_initialization ??= _google.initialize(
-        serverClientId: serverClientId,
-      ));
-      _initialized = true;
-    } catch (_) {
-      _initialization = null;
-      throw const OAuthFailure('Android Google Sign-In configuration failed.');
-    }
+    await ensureGoogleSignInInitialized(serverClientId);
+    _initialized = true;
   }
 
   @override

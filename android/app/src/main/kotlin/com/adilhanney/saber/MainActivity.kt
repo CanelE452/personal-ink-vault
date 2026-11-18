@@ -23,6 +23,8 @@ class MainActivity: FlutterActivity() {
     private var starNoteSourceBridge: DocumentSourceBridge? = null
     private var officeSourceBridge: DocumentSourceBridge? = null
     private var obsidianFolderBridge: ObsidianFolderBridge? = null
+    private var plannerBridge: PlannerBridge? = null
+    private var handwritingBridge: HandwritingBridge? = null
     private var fullscreen = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -43,6 +45,8 @@ class MainActivity: FlutterActivity() {
         starNoteSourceBridge = DocumentSourceBridge(this, messenger, DocumentSourceBridge.Kind.STARNOTE)
         officeSourceBridge = DocumentSourceBridge(this, messenger, DocumentSourceBridge.Kind.OFFICE)
         obsidianFolderBridge = ObsidianFolderBridge(this, flutterEngine.dartExecutor.binaryMessenger)
+        plannerBridge = PlannerBridge(this, messenger)
+        handwritingBridge = HandwritingBridge(messenger)
         val bridge = OfficeEngineBridge(this)
         officeBridge = bridge
         val hwpEditor = HwpEditorBridge(this)
@@ -198,6 +202,9 @@ class MainActivity: FlutterActivity() {
         officeSourceBridge = null
         cameraBridge?.dispose()
         cameraBridge = null
+        plannerBridge = null
+        handwritingBridge?.close()
+        handwritingBridge = null
         officeBridge?.dispose()
         officeBridge = null
         hwpEditorBridge = null
@@ -216,6 +223,8 @@ class MainActivity: FlutterActivity() {
             launch.addFlags(FLAG_ACTIVITY_NEW_TASK)
             startActivity(launch)
         }
+        // A widget or reminder notification started the app: Dart takes the screen to open once it is ready.
+        if (savedInstanceState == null) PlannerBridge.targetOf(launch)?.let { PlannerBridge.launchTarget = it }
         val isDocument = DocumentImportBridge.handles(launch)
         if (isDocument) setIntent(Intent())
         super.onCreate(savedInstanceState)
@@ -257,7 +266,20 @@ class MainActivity: FlutterActivity() {
         documentChannel?.let { DocumentImportBridge.activate(it) }
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if (plannerBridge?.onPermissionResult(requestCode, grantResults) == true) return
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
     override fun onNewIntent(intent: Intent) {
+        val plannerTarget = PlannerBridge.targetOf(intent)
+        if (plannerTarget != null) {
+            // The app is already running: open the reminder or calendar over what is on screen.
+            super.onNewIntent(Intent())
+            val bridge = plannerBridge
+            if (bridge != null) bridge.open(plannerTarget) else PlannerBridge.launchTarget = plannerTarget
+            return
+        }
         val leftSession = intent.getStringExtra("piv.editorLeft")
         if (leftSession != null) {
             // An editor sent the user back to the app's tabs; it stays open below this screen.

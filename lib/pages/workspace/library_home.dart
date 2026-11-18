@@ -1,7 +1,19 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:saber/data/prefs.dart';
+import 'package:saber/data/vault/document_facts.dart';
 import 'package:saber/data/vault/knowledge_index.dart';
+import 'package:saber/data/vault/library_marks.dart';
 import 'package:saber/data/vault/library_store.dart';
 import 'package:saber/data/vault/workspace_store.dart';
+import 'package:saber/pages/workspace/library_add.dart';
+import 'package:saber/pages/workspace/library_cards.dart';
+import 'package:saber/pages/workspace/library_menus.dart';
+
+export 'package:saber/pages/workspace/library_cards.dart'
+    show LibraryImportJobView;
 
 enum LibraryCreateAction {
   handwriting,
@@ -20,11 +32,53 @@ enum LibraryCreateAction {
   pdf,
   image,
   camera,
+
+  /// Any Office·한글 original; shared files and older paths still use it.
   office,
   wordDocument,
   presentation,
   hwpx,
   folder,
+
+  /// The + menu imports one format each, as Notein's do.
+  importPpt,
+  importWord,
+  importHwp,
+
+  /// 「새 노트」's 만들기: a page note with the pattern that was just stored
+  /// in `stows.lastBackgroundPattern`.
+  pageNoteWithPattern,
+}
+
+enum LibraryCollectionKind { folder, recent, favorites, label }
+
+/// What the library lists: one folder, or documents from every folder
+/// (the drawer's 최근, 즐겨찾기 and labels), which have no folder cards.
+final class LibraryCollection {
+  const new folder()
+    : kind = LibraryCollectionKind.folder,
+      noteIds = const [],
+      labelId = null,
+      name = null;
+
+  /// The most recent first.
+  const new recent(this.noteIds)
+    : kind = LibraryCollectionKind.recent,
+      labelId = null,
+      name = null;
+  const new favorites()
+    : kind = LibraryCollectionKind.favorites,
+      noteIds = const [],
+      labelId = null,
+      name = null;
+  const new label(String this.labelId, String this.name)
+    : kind = LibraryCollectionKind.label,
+      noteIds = const [];
+
+  final LibraryCollectionKind kind;
+  final List<String> noteIds;
+  final String? labelId;
+  final String? name;
 }
 
 /// [preview] and [pdf] are for Office·한글 documents only.
@@ -34,6 +88,9 @@ enum LibraryFolderAction { rename, move, trash, restore }
 
 enum LibraryBatchAction { move, trash, restore }
 
+/// The library laid out as Notein's (설계 1–4절): a top bar with five
+/// icons, four kind tabs, covers shaped like their documents, and the
+/// pencil and + at the bottom right.
 class LibraryHome extends StatefulWidget {
   final List<VaultNote> notes;
   final List<VaultFolder> folders;
@@ -46,8 +103,8 @@ class LibraryHome extends StatefulWidget {
   final Map<String, ImageProvider> thumbnails;
   final ValueChanged<VaultNote>? onPreviewRequested;
 
-  /// The parent searches the documents (its box is in the side bar,
-  /// [LibrarySearchField]); the title's × clears the search through it.
+  /// The parent searches the documents; the search box opens in the top
+  /// bar ([LibrarySearchField]) and the title's × clears the search.
   final ValueChanged<String>? onSearchChanged;
   final String? searchQuery;
   final bool searchAcrossFolders;
@@ -65,9 +122,44 @@ class LibraryHome extends StatefulWidget {
   final bool showTrash;
   final Set<LibraryCreateAction> availableCreateActions;
 
-  /// Left of the title in the header: the button that shows the hidden side
-  /// bar, or the drawer button on a phone (the library has no top row).
+  /// First in the top bar: the drawer or side panel button (☰).
   final Widget? leading;
+
+  /// Dates, format, pages and cover shape of each document, by note id.
+  final Map<String, DocumentFacts> facts;
+
+  /// Favourites, pins, labels and colour covers.
+  final LibraryMarks marks;
+
+  /// Imports running in this folder; each is a card at the front, in the
+  /// folder and in 최근, 즐겨찾기 and the label views shown over it.
+  final List<LibraryImportJobView> importJobs;
+  final ValueChanged<String>? onCancelImport;
+  final void Function(String targetId)? onToggleFavorite;
+  final void Function(String targetId)? onTogglePin;
+
+  /// The workspace opens the label dialog (it knows the vault); an empty
+  /// target asks for the label list itself (the ⋯ menu's 라벨 색상).
+  final void Function(String targetId)? onEditLabels;
+  final void Function(String targetId)? onChangeCover;
+
+  /// 「첫 쪽 표지 만들기」 in the ⌄ menu of an Office original (not 한글)
+  /// whose card has no first-page picture: the workspace converts it once
+  /// (on Android, where no engine works in the background). Null hides it.
+  final ValueChanged<VaultNote>? onMakeCover;
+
+  /// The top bar's gear; without it the gear is not shown.
+  final VoidCallback? onOpenSettings;
+
+  /// False greys the gear out, while the workspace is busy.
+  final bool settingsEnabled;
+
+  /// The search box's search-expression switch.
+  final ValueChanged<bool>? onSearchExpressionChanged;
+
+  /// The top bar's cloud; without it, a crossed-out cloud.
+  final Widget? syncButton;
+  final LibraryCollection collection;
 
   const new({
     super.key,
@@ -97,30 +189,44 @@ class LibraryHome extends StatefulWidget {
     this.showTrash = false,
     this.availableCreateActions = const {...LibraryCreateAction.values},
     this.leading,
+    this.facts = const {},
+    this.marks = LibraryMarks.empty,
+    this.importJobs = const [],
+    this.onCancelImport,
+    this.onToggleFavorite,
+    this.onTogglePin,
+    this.onEditLabels,
+    this.onChangeCover,
+    this.onMakeCover,
+    this.onOpenSettings,
+    this.settingsEnabled = true,
+    this.onSearchExpressionChanged,
+    this.syncButton,
+    this.collection = const LibraryCollection.folder(),
   });
 
   @override
   State<LibraryHome> createState() => _LibraryHomeState();
 }
 
+typedef _FolderSummary = ({
+  Map<String, int> counts,
+  Map<String, DateTime> changed,
+  Map<String, VaultNote> first,
+});
+
 class _LibraryHomeState extends State<LibraryHome>
     with SingleTickerProviderStateMixin {
-  static const _teal = Color(0xff237d82);
-  final _createTileMenu =
-      GlobalKey<PopupMenuButtonState<LibraryCreateAction>>();
   String get _query => widget.searchQuery ?? '';
   var _filter = 'all';
+  var _searchOpen = false;
 
-  /// The document kinds as swipeable tabs, like StarNote's 모두·메모·PDF.
+  /// Notein's four kinds as swipeable tabs (설계 1.2절).
   static const _filterTabs = [
     ('all', '모두'),
-    ('ink', '필기'),
     ('pdf', 'PDF'),
-    ('markdown', 'Markdown'),
-    ('canvas', '캔버스'),
-    ('page', '페이지'),
-    ('database', '데이터베이스'),
-    ('office', 'Office·한글'),
+    ('notes', '메모'),
+    ('folders', '폴더'),
   ];
   // A tab tap switches at once (taps on a sliding page would be ignored);
   // swiping still slides.
@@ -130,6 +236,11 @@ class _LibraryHomeState extends State<LibraryHome>
     animationDuration: Duration.zero,
   )..addListener(_tabChanged);
 
+  /// The grid or list and the order are kept between visits.
+  final _layout = Listenable.merge([stows.libraryGrid, stows.librarySort]);
+  final _scheduledPreviews = <String>{};
+  final _selectedNoteIds = <String>{};
+
   void _tabChanged() {
     final next = _filterTabs[_tabs.index].$1;
     if (next == _filter) return;
@@ -138,18 +249,24 @@ class _LibraryHomeState extends State<LibraryHome>
       _selectedNoteIds.clear();
     });
   }
-  var _grid = true;
-  var _sortByTitle = false;
-  final _scheduledPreviews = <String>{};
-  final _selectedNoteIds = <String>{};
+
+  bool get _inCollection =>
+      !widget.showTrash &&
+      widget.collection.kind != LibraryCollectionKind.folder;
+
+  bool get _hearts =>
+      widget.onToggleFavorite != null && !widget.showTrash && !widget.selecting;
 
   @override
   void didUpdateWidget(covariant LibraryHome oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.onSearchChanged == null) _searchOpen = false;
     if (!widget.selecting ||
         !oldWidget.selecting ||
         oldWidget.currentFolderId != widget.currentFolderId ||
         oldWidget.showTrash != widget.showTrash ||
+        oldWidget.collection.kind != widget.collection.kind ||
+        oldWidget.collection.labelId != widget.collection.labelId ||
         oldWidget.searchQuery != widget.searchQuery ||
         oldWidget.searchAcrossFolders != widget.searchAcrossFolders ||
         oldWidget.searchExpression != widget.searchExpression) {
@@ -179,17 +296,13 @@ class _LibraryHomeState extends State<LibraryHome>
     return path;
   }
 
+  /// PDF holds PDFs and the Office·한글 originals (the format mark tells
+  /// them apart); 메모 holds every other kind; 폴더 only the folders.
   bool _matchesKind(VaultDocumentKind kind, String filter) => switch (filter) {
-    'ink' =>
-      kind == VaultDocumentKind.handwriting ||
-          kind == VaultDocumentKind.infinite ||
-          kind == VaultDocumentKind.image,
-    'pdf' => kind == VaultDocumentKind.pdf,
-    'markdown' => kind == VaultDocumentKind.markdown,
-    'office' => kind == VaultDocumentKind.office,
-    'canvas' => kind == VaultDocumentKind.canvas,
-    'page' => kind == VaultDocumentKind.page,
-    'database' => kind == VaultDocumentKind.database,
+    'pdf' => kind == VaultDocumentKind.pdf || kind == VaultDocumentKind.office,
+    'notes' =>
+      kind != VaultDocumentKind.pdf && kind != VaultDocumentKind.office,
+    'folders' => false,
     _ => true,
   };
 
@@ -198,23 +311,92 @@ class _LibraryHomeState extends State<LibraryHome>
   List<VaultNote> _notesFor(String filter) {
     if (!widget.showTrash && widget.searchPending) return [];
     final query = _query.trim().toLowerCase();
-    final notes = widget.notes.where((note) {
-      final inLocation = widget.showTrash
-          ? note.trashed
-          : ((widget.searchAcrossFolders && query.isNotEmpty) ||
-                    note.folderId == widget.currentFolderId) &&
-                (!note.trashed || note.deletionConflict);
-      return inLocation &&
-          _matchesKind(note.documentKind, filter) &&
-          (widget.onSearchChanged != null ||
-              query.isEmpty ||
-              note.title.toLowerCase().contains(query));
-    }).toList();
-    if (_sortByTitle)
-      notes.sort(
-        (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+    bool shown(VaultNote note) =>
+        _matchesKind(note.documentKind, filter) &&
+        (widget.onSearchChanged != null ||
+            query.isEmpty ||
+            note.title.toLowerCase().contains(query));
+    final Iterable<VaultNote> candidates;
+    if (widget.showTrash) {
+      candidates = widget.notes.where((note) => note.trashed);
+    } else if (_inCollection) {
+      candidates = _collectionNotes();
+    } else {
+      candidates = widget.notes.where(
+        (note) =>
+            ((widget.searchAcrossFolders && query.isNotEmpty) ||
+                note.folderId == widget.currentFolderId) &&
+            (!note.trashed || note.deletionConflict),
       );
-    return notes;
+    }
+    return _sorted(candidates.where(shown).toList());
+  }
+
+  List<VaultNote> _collectionNotes() {
+    final live = [
+      for (final note in widget.notes)
+        if (!note.trashed || note.deletionConflict) note,
+    ];
+    final collection = widget.collection;
+    switch (collection.kind) {
+      case LibraryCollectionKind.recent:
+        final byId = <String, List<VaultNote>>{};
+        for (final note in live) {
+          (byId[note.id] ??= []).add(note);
+        }
+        final seen = <String>{};
+        return [
+          for (final id in collection.noteIds)
+            if (seen.add(id)) ...?byId[id],
+        ];
+      case LibraryCollectionKind.favorites:
+        return [
+          for (final note in live)
+            if (widget.marks.favorites.contains(note.id)) note,
+        ];
+      case LibraryCollectionKind.label:
+        return [
+          for (final note in live)
+            if (widget.marks.labelsOf[note.id]?.contains(collection.labelId) ??
+                false)
+              note,
+        ];
+      case LibraryCollectionKind.folder:
+        return live;
+    }
+  }
+
+  /// Pinned documents first, then the chosen order; documents without the
+  /// date being sorted on go last. Ties keep the given order.
+  List<VaultNote> _sorted(List<VaultNote> notes) {
+    final sort = stows.librarySort.value;
+    final pinned = widget.marks.pinned;
+    // VaultNote keeps Object's identity equality, so each note is its own key.
+    final order = {for (final (index, note) in notes.indexed) note: index};
+    DateTime? date(VaultNote note) => switch (sort) {
+      'changed' => widget.facts[note.id]?.changed,
+      'created' => widget.facts[note.id]?.created,
+      _ => null,
+    };
+    int compare(VaultNote a, VaultNote b) {
+      final pinA = pinned.contains(a.id), pinB = pinned.contains(b.id);
+      if (pinA != pinB) return pinA ? -1 : 1;
+      if (sort == 'title') {
+        final byTitle = a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        if (byTitle != 0) return byTitle;
+      } else if (sort == 'changed' || sort == 'created') {
+        final dateA = date(a), dateB = date(b);
+        if (dateA == null && dateB != null) return 1;
+        if (dateA != null && dateB == null) return -1;
+        if (dateA != null && dateB != null) {
+          final latest = dateB.compareTo(dateA);
+          if (latest != 0) return latest;
+        }
+      }
+      return order[a]!.compareTo(order[b]!);
+    }
+
+    return notes..sort(compare);
   }
 
   Map<String, VaultNote> _selectable(List<VaultNote> visibleNotes) {
@@ -248,132 +430,77 @@ class _LibraryHomeState extends State<LibraryHome>
   }
 
   List<VaultFolder> get _folders {
+    if (_inCollection) return const [];
     if (!widget.showTrash &&
         widget.searchExpression &&
         _query.trim().isNotEmpty) {
       return [];
     }
+    final query = _query.trim().toLowerCase();
+    final pinned = widget.marks.pinned;
     return widget.folders.where((folder) {
       final inLocation = widget.showTrash
           ? folder.trashed
           : folder.parentId == widget.currentFolderId &&
                 (!folder.trashed || folder.deletionConflict);
       return inLocation &&
-          (_query.trim().isEmpty ||
-              folder.title.toLowerCase().contains(_query.trim().toLowerCase()));
-    }).toList()..sort(
-      (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-    );
+          (query.isEmpty || folder.title.toLowerCase().contains(query));
+    }).toList()..sort((a, b) {
+      final pinA = pinned.contains(a.id), pinB = pinned.contains(b.id);
+      if (pinA != pinB) return pinA ? -1 : 1;
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
   }
 
-  Widget _createMenu({required bool tile}) {
-    final quickGesture =
-        tile &&
-        widget.availableCreateActions.contains(LibraryCreateAction.quickNote);
-    final trigger = tile ? _createTile(quickGesture) : _createButton();
-    final menu = PopupMenuButton<LibraryCreateAction>(
-      key: tile ? _createTileMenu : const ValueKey('library-create-button'),
-      tooltip: '생성',
-      enabled: !quickGesture,
-      onSelected: widget.onCreate,
-      itemBuilder: (context) => [
-        for (final action in LibraryCreateAction.values)
-          if (widget.availableCreateActions.contains(action))
-            PopupMenuItem(
-              key: switch (action) {
-                LibraryCreateAction.starnote => const ValueKey(
-                  'library-create-starnote',
-                ),
-                LibraryCreateAction.dailyNoteTemplate => const ValueKey(
-                  'daily-note-template-create-action',
-                ),
-                _ => null,
-              },
-              value: action,
-              child: Row(
-                children: [
-                  Icon(_createIcon(action), size: 22, color: _teal),
-                  const SizedBox(width: 16),
-                  Flexible(child: Text(_createLabel(action))),
-                ],
-              ),
-            ),
-      ],
-      child: quickGesture
-          ? Semantics(
-              button: true,
-              child: InkWell(
-                onTap: () => _createTileMenu.currentState?.showButtonMenu(),
-                onDoubleTap: () =>
-                    widget.onCreate(LibraryCreateAction.quickNote),
-                child: trigger,
-              ),
-            )
-          : trigger,
-    );
-    return tile
-        ? KeyedSubtree(key: const ValueKey('library-create-tile'), child: menu)
-        : menu;
+  /// Per folder: its documents (inside folders too), the latest change
+  /// among them, and its first document for the cover.
+  _FolderSummary _folderSummary() {
+    final parents = {
+      for (final folder in widget.folders) folder.id: folder.parentId,
+    };
+    final counts = <String, int>{};
+    final changed = <String, DateTime>{};
+    final first = <String, VaultNote>{};
+    for (final note in widget.notes) {
+      if (note.trashed) continue;
+      if (note.folderId case final folder?)
+        first.putIfAbsent(folder, () => note);
+      final time = widget.facts[note.id]?.changed;
+      var id = note.folderId;
+      final seen = <String>{};
+      while (id != null && seen.add(id)) {
+        counts[id] = (counts[id] ?? 0) + 1;
+        if (time != null && (changed[id]?.isBefore(time) ?? true)) {
+          changed[id] = time;
+        }
+        id = parents[id];
+      }
+    }
+    return (counts: counts, changed: changed, first: first);
   }
 
-  Widget _createTile(bool quickGesture) => CustomPaint(
-    painter: const _CreateBorder(_teal),
-    child: ColoredBox(
-      color: _teal.withValues(alpha: .035),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          const label = Text(
-            '생성',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-              color: _teal,
-            ),
-          );
-          return Center(
-            child: constraints.maxHeight < 120
-                ? const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.add, size: 28, color: _teal),
-                      SizedBox(width: 10),
-                      label,
-                    ],
-                  )
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.add, size: 48, color: _teal),
-                      const SizedBox(height: 18),
-                      label,
-                      if (quickGesture) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          '두 번 탭하면 빠른 메모가 열려요',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ],
-                  ),
-          );
-        },
-      ),
-    ),
-  );
+  String _locationOf(VaultNote note) {
+    if (note.trashed) return '휴지통';
+    final byId = {for (final folder in widget.folders) folder.id: folder};
+    final names = <String>[];
+    final seen = <String>{};
+    var id = note.folderId;
+    while (id != null && seen.add(id)) {
+      final folder = byId[id];
+      if (folder == null) break;
+      names.insert(0, folder.title);
+      id = folder.parentId;
+    }
+    return ['내 문서', ...names].join(' › ');
+  }
 
-  Widget _createButton() => const Padding(
-    padding: EdgeInsets.all(8),
-    child: Icon(Icons.add, size: 24, color: _teal),
-  );
-
-  /// The header's title, as StarNote's: where the documents below are from.
-  /// In a folder its ‹ goes up a folder; while searching, × clears it.
+  /// The title on the left of the top bar, after ☰ (사진 1000319967): ‹ and
+  /// the folder's name inside a folder, nothing on the first screen.
   Widget _title(bool compact) {
     final style = TextStyle(
       color: Theme.of(context).colorScheme.onSurface,
-      fontSize: compact ? 18 : 21,
-      fontWeight: FontWeight.w700,
+      fontSize: compact ? 16 : 18,
+      fontWeight: FontWeight.w600,
     );
     Widget title(String text) => Flexible(
       child: Text(
@@ -387,11 +514,9 @@ class _LibraryHomeState extends State<LibraryHome>
     final query = _query.trim();
     if (query.isNotEmpty) {
       return Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          title(
-            widget.showTrash ? "휴지통 '$query' 검색 결과" : "'$query' 검색 결과",
-          ),
+          const SizedBox(width: 8),
+          title(widget.showTrash ? "휴지통 '$query' 검색 결과" : "'$query' 검색 결과"),
           if (widget.onSearchChanged case final search?)
             IconButton(
               key: const ValueKey('library-search-clear'),
@@ -402,72 +527,133 @@ class _LibraryHomeState extends State<LibraryHome>
         ],
       );
     }
-    final path = widget.showTrash ? const <VaultFolder>[] : _path;
+    final named = widget.showTrash
+        ? '휴지통'
+        : switch (widget.collection.kind) {
+            LibraryCollectionKind.recent => '최근',
+            LibraryCollectionKind.favorites => '즐겨찾기',
+            LibraryCollectionKind.label => widget.collection.name ?? '',
+            LibraryCollectionKind.folder => null,
+          };
+    if (named != null) {
+      return Row(children: [const SizedBox(width: 8), title(named)]);
+    }
+    final path = _path;
+    if (path.isEmpty) return const SizedBox.shrink();
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        if (path.isNotEmpty)
-          IconButton(
-            key: const ValueKey('library-up'),
-            tooltip: '위 폴더로',
-            icon: const Icon(Icons.chevron_left),
-            onPressed: () => widget.onOpenFolder(
-              path.length > 1 ? path[path.length - 2].id : null,
-            ),
+        IconButton(
+          key: const ValueKey('library-up'),
+          tooltip: '위 폴더로',
+          icon: const Icon(Icons.chevron_left),
+          onPressed: () => widget.onOpenFolder(
+            path.length > 1 ? path[path.length - 2].id : null,
           ),
-        title(
-          widget.showTrash
-              ? '휴지통'
-              : path.isEmpty
-              ? '내 문서'
-              : path.last.title,
         ),
+        title(path.last.title),
       ],
     );
   }
 
-  Widget _sortAndLayout() => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      PopupMenuButton<bool>(
-        tooltip: _sortByTitle ? '정렬: 이름순' : '정렬: 기본 순서',
-        onSelected: (value) => setState(() => _sortByTitle = value),
-        itemBuilder: (_) => [
-          CheckedPopupMenuItem(
-            value: false,
-            checked: !_sortByTitle,
-            child: const Text('기본 순서'),
+  /// Notein's top bar (사진 1000319963): ☰ and the title on the left; the
+  /// cloud, search, settings, select and ⋯ on the right. Search opens its
+  /// box in the bar itself.
+  Widget _topBar(bool compact) {
+    final search = widget.onSearchChanged;
+    if (_searchOpen && search != null) {
+      return SizedBox(
+        height: 48,
+        child: Row(
+          children: [
+            ?widget.leading,
+            const SizedBox(width: 8),
+            Expanded(
+              child: LibrarySearchField(
+                query: _query,
+                onChanged: search,
+                expression: widget.searchExpression,
+                onExpressionChanged: widget.showTrash
+                    ? null
+                    : widget.onSearchExpressionChanged,
+                enabled: !widget.selectionBusy,
+                autofocus: true,
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('library-search-toggle'),
+              tooltip: '검색 닫기',
+              icon: const Icon(Icons.close),
+              iconSize: 22,
+              style: libraryBarButtonStyle,
+              onPressed: () => setState(() => _searchOpen = false),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+      );
+    }
+    final select = widget.onSelectionChanged;
+    return SizedBox(
+      height: 48,
+      child: Row(
+        children: [
+          ?widget.leading,
+          Expanded(child: _title(compact)),
+          widget.syncButton ??
+              const Tooltip(
+                message: '동기화 연결 없음',
+                child: SizedBox(
+                  key: ValueKey('library-sync'),
+                  width: 40,
+                  height: 40,
+                  child: Icon(Icons.cloud_off_outlined, size: 22),
+                ),
+              ),
+          if (search != null)
+            IconButton(
+              key: const ValueKey('library-search-toggle'),
+              tooltip: '검색',
+              icon: const Icon(Icons.search),
+              iconSize: 22,
+              style: libraryBarButtonStyle,
+              onPressed: () => setState(() => _searchOpen = true),
+            ),
+          if (widget.onOpenSettings case final open?)
+            IconButton(
+              key: const ValueKey('library-settings'),
+              tooltip: '설정',
+              icon: const Icon(Icons.settings_outlined),
+              iconSize: 22,
+              style: libraryBarButtonStyle,
+              onPressed: widget.settingsEnabled ? open : null,
+            ),
+          if (select != null)
+            IconButton(
+              key: const ValueKey('library-select-mode'),
+              tooltip: widget.selecting ? '일괄 관리 닫기' : '일괄 관리',
+              isSelected: widget.selecting,
+              iconSize: 22,
+              style: libraryBarButtonStyle,
+              onPressed: widget.selectionBusy
+                  ? null
+                  : () => select(!widget.selecting),
+              icon: const Icon(Icons.check_circle_outline),
+              selectedIcon: const Icon(Icons.check_circle),
+            ),
+          LibraryViewMenu(
+            key: const ValueKey('library-view-menu'),
+            grid: stows.libraryGrid.value,
+            sort: stows.librarySort.value,
+            labels: widget.marks.labels,
+            onGrid: (grid) => stows.libraryGrid.value = grid,
+            onSort: (sort) => stows.librarySort.value = sort,
+            onEditLabels: widget.onEditLabels,
           ),
-          CheckedPopupMenuItem(
-            value: true,
-            checked: _sortByTitle,
-            child: const Text('이름순'),
-          ),
+          const SizedBox(width: 4),
         ],
-        child: const Padding(
-          padding: EdgeInsets.all(8),
-          child: Icon(Icons.sort, size: 22),
-        ),
       ),
-      if (widget.onSelectionChanged != null)
-        IconButton(
-          key: const ValueKey('library-select-mode'),
-          tooltip: widget.selecting ? '일괄 관리 닫기' : '일괄 관리',
-          isSelected: widget.selecting,
-          onPressed: widget.selectionBusy
-              ? null
-              : () => widget.onSelectionChanged!(!widget.selecting),
-          icon: const Icon(Icons.check_box_outlined),
-          selectedIcon: const Icon(Icons.check_box),
-        ),
-      IconButton(
-        key: const ValueKey('library-layout-toggle'),
-        tooltip: _grid ? '목록으로 보기' : '표지로 보기',
-        onPressed: () => setState(() => _grid = !_grid),
-        icon: Icon(_grid ? Icons.view_list_outlined : Icons.grid_view_outlined),
-      ),
-    ],
-  );
+    );
+  }
 
   Widget _selectionActions(Map<String, VaultNote> selectable) {
     final selected = [
@@ -533,204 +719,53 @@ class _LibraryHomeState extends State<LibraryHome>
     );
   }
 
-  Widget _filters() => IgnorePointer(
-    ignoring: widget.selectionBusy,
-    child: TabBar(
-      key: const ValueKey('library-filter-tabs'),
-      controller: _tabs,
-      isScrollable: true,
-      tabAlignment: TabAlignment.start,
-      labelColor: _teal,
-      unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
-      indicatorColor: _teal,
-      dividerColor: Colors.transparent,
-      labelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-      unselectedLabelStyle: const TextStyle(fontSize: 15),
-      tabs: [
-        for (final (id, label) in _filterTabs)
-          Tab(key: ValueKey('library-filter-$id'), text: label, height: 40),
-      ],
-    ),
-  );
-
-  Widget _folderCard(VaultFolder folder) => Material(
-    color: Theme.of(context).colorScheme.surfaceContainerLow,
-    borderRadius: BorderRadius.circular(9),
-    child: InkWell(
-      key: ValueKey('library-folder-${folder.id}'),
-      borderRadius: BorderRadius.circular(9),
-      onTap: () => widget.onOpenFolder(folder.id),
-      child: Padding(
-        padding: const EdgeInsets.only(left: 14, top: 12, bottom: 12),
-        child: Row(
-          children: [
-            const Icon(Icons.folder_outlined, color: _teal, size: 29),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    folder.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (folder.deletionConflict) _conflict(),
-                ],
+  /// The pill with four cells; the chosen one is a white pill (설계 1.2절).
+  /// In light mode the track is Notein's light grey.
+  Widget _filters() {
+    final scheme = Theme.of(context).colorScheme;
+    final light = Theme.of(context).brightness == Brightness.light;
+    return IgnorePointer(
+      ignoring: widget.selectionBusy,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: light
+              ? const Color(0xFFEFEFF1)
+              : scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: TabBar(
+          key: const ValueKey('library-filter-tabs'),
+          controller: _tabs,
+          indicator: BoxDecoration(
+            color: light ? Colors.white : scheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x24000000),
+                blurRadius: 4,
+                offset: Offset(0, 1),
               ),
-            ),
-            if (widget.onFolderAction != null) _folderMenu(folder),
+            ],
+          ),
+          indicatorSize: TabBarIndicatorSize.tab,
+          indicatorPadding: const EdgeInsets.all(2),
+          dividerColor: Colors.transparent,
+          labelColor: scheme.onSurface,
+          unselectedLabelColor: scheme.onSurfaceVariant,
+          labelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          unselectedLabelStyle: const TextStyle(fontSize: 14),
+          splashBorderRadius: BorderRadius.circular(16),
+          tabs: [
+            for (final (id, label) in _filterTabs)
+              Tab(key: ValueKey('library-filter-$id'), text: label, height: 30),
           ],
         ),
       ),
-    ),
-  );
-
-  Widget _folderMenu(VaultFolder folder) => PopupMenuButton<LibraryFolderAction>(
-    tooltip: '폴더 메뉴',
-    onSelected: (action) => widget.onFolderAction!(folder, action),
-    itemBuilder: (_) => [
-      if (folder.trashed)
-        const PopupMenuItem(
-          value: LibraryFolderAction.restore,
-          child: Text('복원'),
-        )
-      else ...[
-        const PopupMenuItem(
-          value: LibraryFolderAction.rename,
-          child: Text('이름 변경'),
-        ),
-        const PopupMenuItem(value: LibraryFolderAction.move, child: Text('이동')),
-        const PopupMenuItem(
-          value: LibraryFolderAction.trash,
-          child: Text('휴지통으로 이동'),
-        ),
-      ],
-    ],
-  );
-
-  /// Documents per folder, counting the folders inside it, for the covers.
-  Map<String, int> _folderCounts() {
-    final parents = {
-      for (final folder in widget.folders) folder.id: folder.parentId,
-    };
-    final counts = <String, int>{};
-    for (final note in widget.notes) {
-      if (note.trashed) continue;
-      var id = note.folderId;
-      final seen = <String>{};
-      while (id != null && seen.add(id)) {
-        counts[id] = (counts[id] ?? 0) + 1;
-        id = parents[id];
-      }
-    }
-    return counts;
+    );
   }
-
-  /// A folder as a cover the size of a document card, like StarNote.
-  Widget _folderCover(VaultFolder folder, int count) => Material(
-    color: Colors.transparent,
-    child: InkWell(
-      key: ValueKey('library-folder-${folder.id}'),
-      borderRadius: BorderRadius.circular(10),
-      onTap: () => widget.onOpenFolder(folder.id),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: CustomPaint(
-                painter: const _FolderShape(
-                  fill: Color(0xffe9f2f1),
-                  border: Color(0xffcadcda),
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.folder_outlined,
-                    size: 46,
-                    color: _teal.withValues(alpha: .65),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    folder.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-                if (widget.onFolderAction != null) _folderMenu(folder),
-              ],
-            ),
-            Text(
-              '$count개 문서',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (folder.deletionConflict) _conflict(),
-          ],
-        ),
-      ),
-    ),
-  );
-
-
-  Widget _noteMenu(VaultNote note) => PopupMenuButton<LibraryNoteAction>(
-    key: ValueKey('library-note-menu-${note.revision.revisionId}'),
-    tooltip: '문서 메뉴',
-    onSelected: (action) => widget.onNoteAction!(note, action),
-    itemBuilder: (_) => [
-      if (note.trashed)
-        const PopupMenuItem(value: LibraryNoteAction.restore, child: Text('복원'))
-      else ...[
-        // A tap edits an Office·한글 original; the menu keeps its preview and
-        // the PDF made from it for handwriting.
-        if (note.documentKind == VaultDocumentKind.office) ...[
-          const PopupMenuItem(
-            key: ValueKey('library-note-preview'),
-            value: LibraryNoteAction.preview,
-            child: Text('미리보기'),
-          ),
-          const PopupMenuItem(
-            key: ValueKey('library-note-pdf'),
-            value: LibraryNoteAction.pdf,
-            child: Text('PDF로 바꾸기'),
-          ),
-          // The Office screen itself: versions, PDF handwriting, detailed tools, kept edits.
-          const PopupMenuItem(
-            key: ValueKey('library-note-tools'),
-            value: LibraryNoteAction.tools,
-            child: Text('기록·도구'),
-          ),
-        ],
-        const PopupMenuItem(
-          value: LibraryNoteAction.rename,
-          child: Text('이름 변경'),
-        ),
-        const PopupMenuItem(value: LibraryNoteAction.move, child: Text('이동')),
-        const PopupMenuItem(
-          value: LibraryNoteAction.trash,
-          child: Text('휴지통으로 이동'),
-        ),
-      ],
-    ],
-  );
 
   Widget _conflict() => const Row(
     mainAxisSize: MainAxisSize.min,
@@ -741,7 +776,7 @@ class _LibraryHomeState extends State<LibraryHome>
     ],
   );
 
-  Widget _preview(VaultNote note) {
+  void _schedulePreview(VaultNote note) {
     if (widget.onPreviewRequested != null &&
         _scheduledPreviews.add(note.revision.revisionId)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -749,40 +784,6 @@ class _LibraryHomeState extends State<LibraryHome>
         if (mounted) widget.onPreviewRequested?.call(note);
       });
     }
-    final image = widget.thumbnails[note.id];
-    final surface = switch (note.documentKind) {
-      VaultDocumentKind.handwriting => const Color(0xfffffbed),
-      VaultDocumentKind.infinite => const Color(0xfff0f8f5),
-      VaultDocumentKind.office => const Color(0xfff1f4fa),
-      _ => const Color(0xfffdfdfc),
-    };
-    final fallback = Center(
-      child: Icon(
-        _kindIcon(note.documentKind),
-        size: 42,
-        color: _teal.withValues(alpha: .5),
-      ),
-    );
-    return Container(
-      decoration: BoxDecoration(
-        color: surface,
-        border: Border.all(color: const Color(0xffdedfd6)),
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(16),
-          bottomRight: Radius.circular(16),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: image == null
-          ? fallback
-          : Image(
-              image: image,
-              fit: BoxFit.contain,
-              width: double.infinity,
-              height: double.infinity,
-              errorBuilder: (_, _, _) => fallback,
-            ),
-    );
   }
 
   void _toggleSelection(String id) {
@@ -835,405 +836,604 @@ class _LibraryHomeState extends State<LibraryHome>
     );
   }
 
-  Widget _noteCard(VaultNote note, bool canSelect) => Material(
-    color: Colors.transparent,
-    child: InkWell(
-      key: ValueKey('library-note-${note.revision.revisionId}'),
-      borderRadius: BorderRadius.circular(10),
-      onTap: _noteActivation(note, canSelect),
+  /// The heart: drawn in the cover's top-right corner, touched anywhere in
+  /// its 48×48 area.
+  Widget _heart(String id, {Alignment alignment = Alignment.topRight}) {
+    final favourite = widget.marks.favorites.contains(id);
+    return LibraryTouchTarget(
+      key: ValueKey('library-favorite-$id'),
+      label: '즐겨찾기',
+      tooltip: favourite ? '즐겨찾기 해제' : '즐겨찾기',
+      toggled: favourite,
+      alignment: alignment,
+      onTap: () => widget.onToggleFavorite!(id),
       child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: _preview(note)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    note.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-                if (widget.selecting)
-                  _noteCheckbox(note, canSelect)
-                else if (widget.onNoteAction != null)
-                  _noteMenu(note),
-              ],
-            ),
-            Text(
-              _kindLabel(note.documentKind),
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            ?_searchExcerpt(note),
-            if (note.deletionConflict) _conflict(),
-            if (note.trashed && !note.deletionConflict)
-              Text(
-                '휴지통',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-          ],
+        padding: EdgeInsets.all(alignment == Alignment.topRight ? 5 : 0),
+        child: Icon(
+          favourite ? Icons.favorite : Icons.favorite_border,
+          size: 18,
+          color: favourite ? const Color(0xFFE53935) : const Color(0xFF8A8A8A),
         ),
       ),
-    ),
-  );
+    );
+  }
 
-  Widget _noteRow(VaultNote note, bool canSelect) => ListTile(
-    key: ValueKey('library-note-${note.revision.revisionId}'),
-    leading: SizedBox(width: 40, height: 52, child: _preview(note)),
-    title: Text(note.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-    subtitle: switch (_searchExcerpt(note)) {
-      final excerpt? => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [Text(_kindLabel(note.documentKind)), excerpt],
-      ),
-      null =>
-        note.deletionConflict
-            ? _conflict()
-            : Text(_kindLabel(note.documentKind)),
-    },
-    trailing: widget.selecting
-        ? _noteCheckbox(note, canSelect)
-        : widget.onNoteAction == null
-        ? null
-        : _noteMenu(note),
-    onTap: _noteActivation(note, canSelect),
-  );
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final compact = constraints.maxWidth < 560;
-      final notes = _notes;
-      final folders = _folders;
-      final selectable = widget.selecting
-          ? _selectable(notes)
-          : const <String, VaultNote>{};
-      final canCreate =
-          !widget.showTrash &&
-          !widget.selecting &&
-          widget.availableCreateActions.isNotEmpty;
-      return Padding(
-        padding: EdgeInsets.fromLTRB(
-          compact ? 16 : 28,
-          16,
-          compact ? 16 : 28,
-          0,
+  /// The pin in a cover's bottom-left corner.
+  List<Widget> _coverMarks(String id) => [
+    if (widget.marks.pinned.contains(id))
+      Positioned(
+        left: 4,
+        bottom: 4,
+        child: Icon(
+          Icons.push_pin,
+          key: ValueKey('library-pin-$id'),
+          size: 12,
+          color: const Color(0xFF5F6368),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // The title in the middle, as an AppBar centres it: the bar or
-            // drawer button on its left, the view and create on its right.
-            SizedBox(
-              height: 56,
-              child: NavigationToolbar(
-                leading: widget.leading,
-                middle: _title(compact),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _sortAndLayout(),
-                    if (canCreate) _createMenu(tile: false),
-                  ],
-                ),
-                middleSpacing: 8,
-              ),
+      ),
+  ];
+
+  Widget _noteCover(
+    VaultNote note,
+    DocumentFacts? facts,
+    Size size, {
+    bool small = false,
+  }) {
+    final format = note.documentKind == VaultDocumentKind.office
+        ? libraryFormatOf(facts?.format)
+        : null;
+    return LibraryCover(
+      key: ValueKey('library-cover-${note.id}'),
+      size: size,
+      title: note.title,
+      image: widget.thumbnails[note.id],
+      color: widget.marks.covers[note.id]?.color,
+      format: format,
+      icon: libraryKindIcon(note.documentKind),
+      overlays: [
+        if (format != null)
+          Positioned(
+            left: 0,
+            top: 0,
+            width: size.width * .4,
+            height: size.height * .3,
+            child: LibraryFormatMark(
+              key: ValueKey('library-format-${note.id}'),
+              label: format.label,
+              color: format.color,
+              tag: !small,
             ),
-            if (!widget.showTrash && widget.searchExpression) ...[
-              const SizedBox(height: 6),
-              Text(
-                '모든 폴더에서 검색 · file: path: tag: content: · 따옴표, -, OR, 괄호\n'
-                '예시  (tag:#강의 OR path:"수업 자료") -file:초안',
-                key: const ValueKey('library-search-help'),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              if (widget.searchError case final message?)
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    message,
-                    key: const ValueKey('library-search-error'),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+          ),
+        ..._coverMarks(note.id),
+      ],
+    );
+  }
+
+  Widget _folderCover(
+    VaultFolder folder,
+    VaultNote? first,
+    Size size, {
+    bool small = false,
+  }) => LibraryCover(
+    key: ValueKey('library-cover-${folder.id}'),
+    size: size,
+    title: folder.title,
+    image: first == null ? null : widget.thumbnails[first.id],
+    color: widget.marks.covers[folder.id]?.color,
+    icon: small ? Icons.folder_outlined : null,
+    overlays: _coverMarks(folder.id),
+  );
+
+  /// The grey line: the date and pages, or a folder's documents, after up
+  /// to three label colours.
+  Widget _line(String text, String id, {required bool center}) {
+    final colours = {
+      for (final label in widget.marks.labels) label.id: Color(label.color),
+    };
+    final dots = [
+      for (final labelId in widget.marks.labelsOf[id] ?? const <String>{})
+        ?colours[labelId],
+    ].take(3).toList();
+    return Row(
+      mainAxisAlignment: center
+          ? MainAxisAlignment.center
+          : MainAxisAlignment.start,
+      children: [
+        if (dots.isNotEmpty) ...[
+          Row(
+            key: ValueKey('library-label-dots-$id'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final colour in dots)
+                Padding(
+                  padding: const EdgeInsets.only(right: 3),
+                  child: SizedBox(
+                    width: 7,
+                    height: 7,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colour,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
                 ),
             ],
-            const SizedBox(height: 4),
-            _filters(),
-            if (widget.selecting) _selectionActions(selectable),
-            const SizedBox(height: 12),
-            Expanded(
-              child: TabBarView(
-                controller: _tabs,
-                physics: widget.selectionBusy
-                    ? const NeverScrollableScrollPhysics()
-                    : null,
-                children: [
-                  for (final (filter, _) in _filterTabs)
-                    _content(
-                      filter,
-                      notes: filter == _filter ? notes : _notesFor(filter),
-                      folders: filter == 'all' ? folders : const [],
-                      selectable: filter == _filter
-                          ? selectable
-                          : const <String, VaultNote>{},
-                      // The 생성 card holds a GlobalKey, so only the current tab shows it.
-                      canCreate: canCreate && filter == _filter,
-                    ),
-                ],
+          ),
+          const SizedBox(width: 3),
+        ],
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _noteLine(
+    VaultNote note,
+    DocumentFacts? facts, {
+    required bool center,
+  }) => note.deletionConflict
+      ? _conflict()
+      : _line(libraryNoteSubtitle(note, facts), note.id, center: center);
+
+  Widget _folderLine(
+    VaultFolder folder,
+    _FolderSummary? summary, {
+    required bool center,
+  }) {
+    if (folder.deletionConflict) return _conflict();
+    final count = summary?.counts[folder.id] ?? 0;
+    final changed = summary?.changed[folder.id];
+    return _line(
+      changed == null ? '$count 메모' : '${libraryDate(changed)} · $count 메모',
+      folder.id,
+      center: center,
+    );
+  }
+
+  /// Whether the card offers 「첫 쪽 표지 만들기」: an Office original other
+  /// than 한글 (which has a background engine) without a first-page picture.
+  bool _canMakeCover(VaultNote note) =>
+      widget.onMakeCover != null &&
+      !note.trashed &&
+      note.documentKind == VaultDocumentKind.office &&
+      widget.thumbnails[note.id] == null &&
+      switch (widget.facts[note.id]?.format) {
+        null || 'hwp' || 'hwpx' => false,
+        _ => true,
+      };
+
+  /// The ⌄ menu; in the [grid] it is the card's title line.
+  Widget? _noteMenu(VaultNote note, {bool grid = false}) {
+    if (note.trashed && widget.onNoteAction == null) return null;
+    return LibraryNoteMenu(
+      key: ValueKey('library-note-menu-${note.revision.revisionId}'),
+      note: note,
+      title: grid ? note.title : null,
+      pinned: widget.marks.pinned.contains(note.id),
+      onNoteAction: widget.onNoteAction,
+      onTogglePin: widget.onTogglePin,
+      onChangeCover: widget.onChangeCover,
+      onMakeCover: _canMakeCover(note) ? () => widget.onMakeCover!(note) : null,
+      onEditLabels: widget.onEditLabels,
+      onDetails: () => unawaited(
+        showLibraryDetails(
+          context,
+          note: note,
+          facts: widget.facts[note.id],
+          location: _locationOf(note),
+        ),
+      ),
+    );
+  }
+
+  Widget? _folderMenu(VaultFolder folder, {bool grid = false}) {
+    if (widget.selecting) return null;
+    final menu = LibraryFolderMenu(
+      key: ValueKey('library-folder-menu-${folder.id}'),
+      folder: folder,
+      title: grid ? folder.title : null,
+      pinned: widget.marks.pinned.contains(folder.id),
+      onFolderAction: widget.onFolderAction,
+      onTogglePin: widget.onTogglePin,
+      onChangeCover: widget.onChangeCover,
+      onEditLabels: widget.onEditLabels,
+    );
+    return menu.hasRows ? menu : null;
+  }
+
+  VoidCallback? _cancel(LibraryImportJobView job) =>
+      switch (widget.onCancelImport) {
+        final cancel? => () => cancel(job.id),
+        null => null,
+      };
+
+  Widget _gridItem(
+    Object item,
+    Map<String, VaultNote> selectable,
+    _FolderSummary? summary,
+  ) {
+    switch (item) {
+      case final LibraryImportJobView job:
+        return LibraryImportCard(
+          key: ValueKey('library-import-${job.id}'),
+          job: job,
+          onCancel: _cancel(job),
+        );
+      case final VaultFolder folder:
+        final first = summary?.first[folder.id];
+        if (first != null) _schedulePreview(first);
+        return LibraryCardCell(
+          key: ValueKey('library-folder-${folder.id}'),
+          aspect: 4 / 3,
+          stacked: true,
+          cover: (size) => _folderCover(folder, first, size),
+          title: folder.title,
+          titleLine:
+              _folderMenu(folder, grid: true) ?? LibraryCardTitle(folder.title),
+          subtitle: _folderLine(folder, summary, center: true),
+          // No heart: 즐겨찾기 lists documents only.
+          onTap: () => widget.onOpenFolder(folder.id),
+        );
+      case final VaultNote note:
+        _schedulePreview(note);
+        final facts = widget.facts[note.id];
+        final canSelect = selectable.containsKey(note.id);
+        return LibraryCardCell(
+          key: ValueKey('library-note-${note.revision.revisionId}'),
+          aspect: libraryCoverAspect(note.documentKind, facts),
+          cover: (size) => _noteCover(note, facts, size),
+          title: note.title,
+          // While selecting the title is plain; the check box takes the
+          // cover box's corner.
+          titleLine:
+              (widget.selecting ? null : _noteMenu(note, grid: true)) ??
+              LibraryCardTitle(note.title),
+          subtitle: _noteLine(note, facts, center: true),
+          below: [?_searchExcerpt(note)],
+          corner: widget.selecting ? _noteCheckbox(note, canSelect) : null,
+          coverCorner: _hearts ? _heart(note.id) : null,
+          onTap: _noteActivation(note, canSelect),
+        );
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _listItem(
+    Object item,
+    Map<String, VaultNote> selectable,
+    _FolderSummary? summary,
+  ) {
+    switch (item) {
+      case final LibraryImportJobView job:
+        return LibraryImportCard(
+          key: ValueKey('library-import-${job.id}'),
+          job: job,
+          onCancel: _cancel(job),
+          list: true,
+        );
+      case final VaultFolder folder:
+        final first = summary?.first[folder.id];
+        if (first != null) _schedulePreview(first);
+        return LibraryListRow(
+          key: ValueKey('library-folder-${folder.id}'),
+          aspect: 4 / 3,
+          cover: (size) => _folderCover(folder, first, size, small: true),
+          title: folder.title,
+          subtitle: _folderLine(folder, summary, center: false),
+          trailing: [?_folderMenu(folder)],
+          onTap: () => widget.onOpenFolder(folder.id),
+        );
+      case final VaultNote note:
+        _schedulePreview(note);
+        final facts = widget.facts[note.id];
+        final canSelect = selectable.containsKey(note.id);
+        final line = _noteLine(note, facts, center: false);
+        final excerpt = _searchExcerpt(note);
+        return LibraryListRow(
+          key: ValueKey('library-note-${note.revision.revisionId}'),
+          aspect: libraryCoverAspect(note.documentKind, facts),
+          cover: (size) => _noteCover(note, facts, size, small: true),
+          title: note.title,
+          subtitle: excerpt == null
+              ? line
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [line, excerpt],
+                ),
+          trailing: [
+            if (_hearts) _heart(note.id, alignment: Alignment.center),
+            if (widget.selecting)
+              _noteCheckbox(note, canSelect)
+            else
+              ?_noteMenu(note),
+          ],
+          onTap: _noteActivation(note, canSelect),
+        );
+    }
+    return const SizedBox.shrink();
+  }
+
+  /// Notein's empty screen (사진 1000319979) when nothing is here at all;
+  /// a search, a kind tab or the trash keep their own words.
+  Widget _empty() {
+    final muted = TextStyle(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
+    if (!widget.showTrash && widget.searchError != null) {
+      return const SizedBox.shrink();
+    }
+    final String? words;
+    if (!widget.showTrash && widget.searchPending) {
+      words = '검색 중…';
+    } else if (widget.showTrash) {
+      words = _query.trim().isEmpty ? '휴지통이 비어 있습니다.' : '조건에 맞는 문서가 없습니다.';
+    } else if (_query.trim().isNotEmpty ||
+        _notesFor('all').isNotEmpty ||
+        _folders.isNotEmpty) {
+      words = '조건에 맞는 문서가 없습니다.';
+    } else if (_inCollection) {
+      // The first-run hint is for an empty folder only.
+      words = switch (widget.collection.kind) {
+        LibraryCollectionKind.favorites => '즐겨찾기한 문서가 없습니다',
+        LibraryCollectionKind.recent => '최근에 연 문서가 없습니다',
+        LibraryCollectionKind.label => '이 라벨이 붙은 문서가 없습니다',
+        LibraryCollectionKind.folder => null,
+      };
+    } else {
+      words = null;
+    }
+    if (words != null) {
+      return Center(child: Text(words, style: muted));
+    }
+    final accent = Theme.of(context).colorScheme.primary;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          key: const ValueKey('library-empty'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.inventory_2_outlined, size: 48, color: accent),
+            const SizedBox(height: 16),
+            Text(
+              '아직 노트가 없습니다',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: accent,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
               ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '아래쪽 모서리의 +를 탭하여 노트를 만들거나 문서를 가져오세요.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: accent, fontSize: 14),
             ),
           ],
         ),
-      );
-    },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _layout,
+    builder: (context, _) => LayoutBuilder(builder: _body),
   );
+
+  Widget _body(BuildContext context, BoxConstraints constraints) {
+    final compact = constraints.maxWidth < 560;
+    final pad = compact ? 16.0 : 24.0;
+    final width = constraints.maxWidth - 2 * pad;
+    // A column is at least 128 wide; a phone always gets two.
+    final columns = max(2, (width / 128).floor());
+    final notes = _notes;
+    final selectable = widget.selecting
+        ? _selectable(notes)
+        : const <String, VaultNote>{};
+    final canCreate =
+        !widget.showTrash &&
+        !widget.selecting &&
+        widget.availableCreateActions.isNotEmpty;
+    final theme = Theme.of(context);
+    // Notein's page is pure white; a dark theme keeps its own surface. A
+    // Material, so list rows draw their ink on the page.
+    return Material(
+      key: const ValueKey('library-page'),
+      color: theme.brightness == Brightness.light
+          ? Colors.white
+          : theme.colorScheme.surface,
+      child: Stack(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _topBar(compact),
+              Divider(
+                key: const ValueKey('library-top-divider'),
+                height: 1,
+                color: libraryLine(context),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!widget.showTrash && widget.searchExpression) ...[
+                      Text(
+                        '모든 폴더에서 검색 · file: path: tag: content: · 따옴표, -, OR, 괄호\n'
+                        '예시  (tag:#강의 OR path:"수업 자료") -file:초안',
+                        key: const ValueKey('library-search-help'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      if (widget.searchError case final message?)
+                        Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            message,
+                            key: const ValueKey('library-search-error'),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                    ],
+                    _filters(),
+                    if (widget.selecting) _selectionActions(selectable),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabs,
+                  physics: widget.selectionBusy
+                      ? const NeverScrollableScrollPhysics()
+                      : null,
+                  children: [
+                    for (final (filter, _) in _filterTabs)
+                      _content(
+                        filter,
+                        notes: filter == _filter ? notes : _notesFor(filter),
+                        selectable: filter == _filter
+                            ? selectable
+                            : const <String, VaultNote>{},
+                        pad: pad,
+                        cell: width / columns,
+                        columns: columns,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (canCreate)
+            Positioned(
+              right: pad,
+              bottom: pad,
+              child: LibraryAddButtons(
+                available: widget.availableCreateActions,
+                onCreate: widget.onCreate,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _content(
     String filter, {
     required List<VaultNote> notes,
-    required List<VaultFolder> folders,
     required Map<String, VaultNote> selectable,
-    required bool canCreate,
+    required double pad,
+    required double cell,
+    required int columns,
   }) {
-    final counts = folders.isEmpty ? const <String, int>{} : _folderCounts();
-    final leading = canCreate ? 1 : 0;
+    final grid = stows.libraryGrid.value;
+    final folders = filter == 'all' || filter == 'folders'
+        ? _folders
+        : const <VaultFolder>[];
+    // An import started from 최근, 즐겨찾기 or a label shows there too.
+    final jobs = filter == 'folders' || widget.showTrash
+        ? const <LibraryImportJobView>[]
+        : widget.importJobs;
+    final pinned = widget.marks.pinned;
+    // Imports first, then what is pinned, folders before documents.
+    final items = <Object>[
+      ...jobs,
+      for (final folder in folders)
+        if (pinned.contains(folder.id)) folder,
+      for (final note in notes)
+        if (pinned.contains(note.id)) note,
+      for (final folder in folders)
+        if (!pinned.contains(folder.id)) folder,
+      for (final note in notes)
+        if (!pinned.contains(note.id)) note,
+    ];
+    final summary = folders.isEmpty ? null : _folderSummary();
+    final excerpts =
+        widget.onOpenBodyMatch != null &&
+        widget.searchBodyMatches.isNotEmpty &&
+        !widget.selecting &&
+        !widget.searchPending &&
+        !widget.showTrash;
+    final location = widget.showTrash
+        ? 'trash'
+        : _inCollection
+        ? '${widget.collection.kind.name}-${widget.collection.labelId}'
+        : widget.currentFolderId ?? 'root';
     return CustomScrollView(
-      key: PageStorageKey(
-        'library-${widget.showTrash ? 'trash' : widget.currentFolderId ?? 'root'}-$_grid-$filter',
-      ),
+      key: PageStorageKey('library-$location-$grid-$filter'),
       slivers: [
-        if (_grid)
-          SliverGrid(
-            key: const ValueKey('library-grid'),
-            delegate: SliverChildBuilderDelegate((_, index) {
-              if (index < leading) {
-                return Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: _createMenu(tile: true),
-                );
-              }
-              final position = index - leading;
-              if (position < folders.length) {
-                final folder = folders[position];
-                return _folderCover(folder, counts[folder.id] ?? 0);
-              }
-              final note = notes[position - folders.length];
-              return _noteCard(note, selectable.containsKey(note.id));
-            }, childCount: leading + folders.length + notes.length),
-            // Four columns and four rows on a tablet held upright (824 dp wide), six across when it lies flat.
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 200,
-              mainAxisExtent: 262,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-            ),
-          )
-        else ...[
-          if (folders.isNotEmpty) ...[
-            SliverGrid(
-              delegate: SliverChildBuilderDelegate(
-                (_, index) => _folderCard(folders[index]),
-                childCount: folders.length,
-              ),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 300,
-                mainAxisExtent: 80,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 12,
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          ],
-          SliverList(
-            key: const ValueKey('library-list'),
-            delegate: SliverChildBuilderDelegate((_, index) {
-              if (index < leading) {
-                return SizedBox(height: 76, child: _createMenu(tile: true));
-              }
-              final note = notes[index - leading];
-              return _noteRow(note, selectable.containsKey(note.id));
-            }, childCount: notes.length + leading),
+        if (items.isNotEmpty) ...[
+          SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: pad),
+            sliver: grid
+                ? SliverGrid(
+                    key: const ValueKey('library-grid'),
+                    delegate: SliverChildBuilderDelegate(
+                      (_, index) =>
+                          _gridItem(items[index], selectable, summary),
+                      childCount: items.length,
+                    ),
+                    // The cover box (80% of the column, 1.33 times as tall)
+                    // and room for a two-line title and the progress of an
+                    // import.
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      mainAxisExtent:
+                          cell * .8 * 1.33 + 88 + (excerpts ? 44 : 0),
+                    ),
+                  )
+                : SliverList(
+                    key: const ValueKey('library-list'),
+                    delegate: SliverChildBuilderDelegate(
+                      (_, index) =>
+                          _listItem(items[index], selectable, summary),
+                      childCount: items.length,
+                    ),
+                  ),
           ),
-        ],
-        if (notes.isEmpty && (widget.showTrash || widget.searchError == null))
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 30),
-              child: Text(
-                !widget.showTrash && widget.searchPending
-                    ? '검색 중…'
-                    : _query.isNotEmpty || filter != 'all'
-                    ? '조건에 맞는 문서가 없습니다.'
-                    : widget.showTrash
-                    ? '휴지통이 비어 있습니다.'
-                    : '생성을 눌러 이 폴더에 문서를 추가하세요.',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+          // Documents are still being searched for under the folders and
+          // imports already shown.
+          if (!widget.showTrash && widget.searchPending)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    '검색 중…',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        const SliverToBoxAdapter(child: SizedBox(height: 28)),
+          // Room under the pencil and the +.
+          const SliverToBoxAdapter(child: SizedBox(height: 136)),
+        ] else
+          SliverFillRemaining(hasScrollBody: false, child: _empty()),
       ],
     );
   }
 }
 
-/// A folder outline with a tab, behind the folder covers.
-class _FolderShape extends CustomPainter {
-  const new({required this.fill, required this.border});
-
-  final Color fill;
-  final Color border;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const tabHeight = 14.0;
-    final tab = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, 0, size.width * .4, tabHeight * 2),
-      const Radius.circular(10),
-    );
-    final body = RRect.fromRectAndCorners(
-      Rect.fromLTWH(0, tabHeight, size.width, size.height - tabHeight),
-      topRight: const Radius.circular(14),
-      bottomLeft: const Radius.circular(14),
-      bottomRight: const Radius.circular(14),
-    );
-    final outline = Path.combine(
-      PathOperation.union,
-      Path()..addRRect(tab),
-      Path()..addRRect(body),
-    );
-    canvas
-      ..drawPath(outline, Paint()..color = fill)
-      ..drawPath(
-        outline,
-        Paint()
-          ..color = border
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2,
-      );
-  }
-
-  @override
-  bool shouldRepaint(_FolderShape oldDelegate) =>
-      fill != oldDelegate.fill || border != oldDelegate.border;
-}
-
-String _createLabel(LibraryCreateAction action) => switch (action) {
-  LibraryCreateAction.handwriting => '페이지 노트',
-  LibraryCreateAction.quickNote => '빠른 메모',
-  LibraryCreateAction.infinite => '무한 노트',
-  LibraryCreateAction.markdown => 'Markdown',
-  LibraryCreateAction.dailyNote => '오늘 노트',
-  LibraryCreateAction.datedNote => '날짜별 노트',
-  LibraryCreateAction.dailyNoteTemplate => '날짜별 노트 템플릿',
-  LibraryCreateAction.obsidianVault => 'Obsidian 보관함 가져오기',
-  LibraryCreateAction.notionZip => 'Notion ZIP 가져오기',
-  LibraryCreateAction.starnote => 'StarNote 가져오기',
-  LibraryCreateAction.canvas => '카드 캔버스',
-  LibraryCreateAction.page => '블록 페이지',
-  LibraryCreateAction.database => '데이터베이스',
-  LibraryCreateAction.pdf => 'PDF 가져오기',
-  LibraryCreateAction.image => '이미지 가져오기',
-  LibraryCreateAction.camera => '사진 촬영',
-  LibraryCreateAction.office => 'Office·한글 가져오기',
-  LibraryCreateAction.wordDocument => 'Word 문서 만들기',
-  LibraryCreateAction.presentation => '프레젠테이션 만들기',
-  LibraryCreateAction.hwpx => '한글 문서 만들기',
-  LibraryCreateAction.folder => '새 폴더',
-};
-
-IconData _createIcon(LibraryCreateAction action) => switch (action) {
-  LibraryCreateAction.handwriting ||
-  LibraryCreateAction.quickNote => Icons.note_alt_outlined,
-  LibraryCreateAction.infinite => Icons.all_out,
-  LibraryCreateAction.markdown => Icons.article_outlined,
-  LibraryCreateAction.dailyNote ||
-  LibraryCreateAction.datedNote => Icons.calendar_month,
-  LibraryCreateAction.dailyNoteTemplate => Icons.edit_calendar_outlined,
-  LibraryCreateAction.obsidianVault => Icons.folder_open_outlined,
-  LibraryCreateAction.notionZip => Icons.folder_zip_outlined,
-  LibraryCreateAction.starnote => Icons.picture_as_pdf_outlined,
-  LibraryCreateAction.canvas => Icons.dashboard_customize_outlined,
-  LibraryCreateAction.page => Icons.view_agenda_outlined,
-  LibraryCreateAction.database => Icons.table_chart_outlined,
-  LibraryCreateAction.pdf => Icons.picture_as_pdf_outlined,
-  LibraryCreateAction.image => Icons.image_outlined,
-  LibraryCreateAction.camera => Icons.camera_alt_outlined,
-  LibraryCreateAction.office => Icons.description_outlined,
-  LibraryCreateAction.wordDocument => Icons.description_outlined,
-  LibraryCreateAction.presentation => Icons.slideshow_outlined,
-  LibraryCreateAction.hwpx => Icons.description_outlined,
-  LibraryCreateAction.folder => Icons.create_new_folder_outlined,
-};
-
-String _kindLabel(VaultDocumentKind kind) => switch (kind) {
-  VaultDocumentKind.handwriting => '페이지 노트',
-  VaultDocumentKind.infinite => '무한 노트',
-  VaultDocumentKind.markdown => 'Markdown',
-  VaultDocumentKind.canvas => '카드 캔버스',
-  VaultDocumentKind.page => '블록 페이지',
-  VaultDocumentKind.database => '데이터베이스',
-  VaultDocumentKind.pdf => 'PDF',
-  VaultDocumentKind.image => '이미지 노트',
-  VaultDocumentKind.office => 'Office·한글',
-};
-
-IconData _kindIcon(VaultDocumentKind kind) => switch (kind) {
-  VaultDocumentKind.handwriting => Icons.draw_outlined,
-  VaultDocumentKind.infinite => Icons.all_out,
-  VaultDocumentKind.markdown => Icons.article_outlined,
-  VaultDocumentKind.canvas => Icons.dashboard_customize_outlined,
-  VaultDocumentKind.page => Icons.view_agenda_outlined,
-  VaultDocumentKind.database => Icons.table_chart_outlined,
-  VaultDocumentKind.pdf => Icons.picture_as_pdf_outlined,
-  VaultDocumentKind.image => Icons.image_outlined,
-  VaultDocumentKind.office => Icons.description_outlined,
-};
-
-class _CreateBorder extends CustomPainter {
-  final Color color;
-  const new(this.color);
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(10)),
-      );
-    final paint = Paint()
-      ..color = color.withValues(alpha: .7)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    for (final metric in path.computeMetrics()) {
-      for (double distance = 0; distance < metric.length; distance += 12) {
-        canvas.drawPath(metric.extractPath(distance, distance + 6), paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_CreateBorder oldDelegate) => oldDelegate.color != color;
-}
-
-/// The library's search box in the side bar: typing narrows the documents
-/// beside it, as the box over the documents used to.
+/// The library's search box, opened in the top bar: typing narrows the
+/// documents below it.
 class LibrarySearchField extends StatefulWidget {
   const new({
     super.key,
@@ -1243,6 +1443,7 @@ class LibrarySearchField extends StatefulWidget {
     this.onExpressionChanged,
     this.enabled = true,
     this.onSubmitted,
+    this.autofocus = false,
   });
 
   final String query;
@@ -1255,6 +1456,7 @@ class LibrarySearchField extends StatefulWidget {
   final ValueChanged<bool>? onExpressionChanged;
   final bool enabled;
   final VoidCallback? onSubmitted;
+  final bool autofocus;
 
   @override
   State<LibrarySearchField> createState() => _LibrarySearchFieldState();
@@ -1289,6 +1491,7 @@ class _LibrarySearchFieldState extends State<LibrarySearchField> {
       key: const ValueKey('library-search'),
       controller: _text,
       enabled: widget.enabled,
+      autofocus: widget.autofocus,
       autocorrect: !widget.expression,
       smartDashesType: widget.expression ? SmartDashesType.disabled : null,
       smartQuotesType: widget.expression ? SmartQuotesType.disabled : null,
@@ -1316,7 +1519,10 @@ class _LibrarySearchFieldState extends State<LibrarySearchField> {
           borderSide: BorderSide.none,
           borderRadius: BorderRadius.circular(10),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
       ),
     );
   }

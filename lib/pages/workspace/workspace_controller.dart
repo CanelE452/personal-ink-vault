@@ -168,6 +168,8 @@ class WorkspaceController extends ChangeNotifier {
   var _operations = 0;
   DatabaseAutomationCoordinator? _automations;
   var _repositorySwitching = false;
+  // Imports storing an original (createDocumentQuietly); a vault switch lets them finish first.
+  final _quietWrites = <Future<void>>{};
   DatabaseAutomationPass? get lastAutomationPass => _automations?.lastPass;
 
   DatabaseAutomationCoordinator createAutomationCoordinator({
@@ -441,6 +443,43 @@ class WorkspaceController extends ChangeNotifier {
       bytes: bytes,
       sharedRequestId: requestId,
     );
+  }
+
+  /// Stores an imported original as a new document beside whatever the workspace is doing (설계 4절):
+  /// it opens nothing, makes no ink (the first open makes the pages), and neither waits for nor checks
+  /// the open document or the current folder. Only the vault must be the one the import started in.
+  Future<VaultNote> createDocumentQuietly({
+    required NoteRepository expectedRepository,
+    required String title,
+    required String fileName,
+    required Uint8List bytes,
+    required VaultDocumentKind kind,
+    required String? folderId,
+  }) async {
+    void requireVault() {
+      if (!identical(repository, expectedRepository))
+        throw StateError('가져오기 대상 보관함이 바뀌었습니다.');
+    }
+
+    // A vault switch waits for the imports already storing, and none starts while it runs.
+    if (_repositorySwitching) throw StateError('가져오기 대상 보관함이 바뀌었습니다.');
+    requireVault();
+    final writing = store.createWithSource(
+      title,
+      fileName: fileName,
+      bytes: bytes,
+      documentKind: kind,
+      folderId: folderId,
+    );
+    final settled = writing.then<void>((_) {}, onError: (Object _) {});
+    _quietWrites.add(settled);
+    try {
+      final note = await writing;
+      requireVault();
+      return note;
+    } finally {
+      _quietWrites.remove(settled);
+    }
   }
 
   Future<VaultNote> _importPdf(
@@ -1276,6 +1315,8 @@ class WorkspaceController extends ChangeNotifier {
     _activityGeneration++;
     _automations?.invalidate();
     try {
+      // A document an import is storing lands whole in the vault being left, as a finished import.
+      if (_quietWrites.isNotEmpty) await Future.wait(List.of(_quietWrites));
       await _replaceRepository(next);
     } finally {
       _repositorySwitching = false;

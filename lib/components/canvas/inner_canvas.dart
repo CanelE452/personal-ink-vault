@@ -32,6 +32,7 @@ class InnerCanvas extends StatefulWidget {
     required this.currentToolIsSelect,
     this.selectionErases = false,
     required this.currentScale,
+    this.linkLayer,
   });
 
   final int pageIndex;
@@ -53,6 +54,10 @@ class InnerCanvas extends StatefulWidget {
   final bool selectionErases;
 
   final double currentScale;
+
+  /// The page's links (a `PageLinkLayer`), over its pictures. Only the editor
+  /// gives one: previews and exports draw the page without links.
+  final Widget? linkLayer;
 
   static const defaultBackgroundColor = Color(0xFFFCFCFC);
 
@@ -188,6 +193,8 @@ class _InnerCanvasState extends State<InnerCanvas> {
                         ) ??
                         false,
                   ),
+                if (widget.linkLayer case final linkLayer?)
+                  Positioned.fill(child: linkLayer),
               ],
             ),
           ),

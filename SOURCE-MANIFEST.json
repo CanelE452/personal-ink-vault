@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136229,
+  "versionCode": 136231,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,19 +17,23 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "65ccd2719c3ab7f7a26d2e8a485069bdfad755484d614b55c38be8a2051bac88",
+      "sha256": "09639623994bf7bb400a78f669af0ed0db0d6f589fd940a07dffaffee5c8363f",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
-      "sha256": "c18dae0863c94c7ae4221a96a864c5276fc1d9ec6886214e2a99f614020ed014",
+      "sha256": "c85c420e6a09f7645a761f0d9e24b329d999cb87dc5a7dddffe3572562d46176",
       "mode": "100644"
     },
     "android/.gitignore": {
       "sha256": "11e249367914c5fb30f6f732030a31f685ca92716b5b8feec636e5df632417bb",
       "mode": "100644"
     },
+    "android/app/aapt-stable-ids.txt": {
+      "sha256": "e1a53c0acfc0774241e1c521cac2a9c6b159e81b24e566b7421baed69c82f364",
+      "mode": "100644"
+    },
     "android/app/build.gradle.kts": {
-      "sha256": "cc63f9814e283cfe6ff3cc1d920772ed111db908f49b67c702b6388a0a86ce3d",
+      "sha256": "1c177c605530e925fce3d8fcfc6a00720934eefd1839d89c61318f2902b70fbd",
       "mode": "100644"
     },
     "android/app/proguard-rules.pro": {
@@ -41,7 +45,7 @@
       "mode": "100644"
     },
     "android/app/src/main/AndroidManifest.xml": {
-      "sha256": "ad440ab45b7d6cbd31df5b686d37c92c1fe415fa756a1ef81d67b93a04c50d1b",
+      "sha256": "409c74a9c6b3c3c828f919ef1f7338ff5fd03a26061d928955b916c20b1ee747",
       "mode": "100644"
     },
     "android/app/src/main/assets/adi-registration.properties": {
@@ -69,15 +73,31 @@
       "mode": "100644"
     },
     "android/app/src/main/kotlin/com/adilhanney/saber/DocumentSourceBridge.kt": {
-      "sha256": "2e3b7622a80e66e12d04a8705be1826330159e1f6a5e763aa37b0591ce4bf4f7",
+      "sha256": "a95f36aaf184d78acc6c7ad7ea8e10fc0604ea7604e29ff8b128ff722ff7b403",
+      "mode": "100644"
+    },
+    "android/app/src/main/kotlin/com/adilhanney/saber/HandwritingBridge.kt": {
+      "sha256": "20d8601a91c3b8ce63deb6782a1529afdd555ace161787a1206b599bc58eca7d",
       "mode": "100644"
     },
     "android/app/src/main/kotlin/com/adilhanney/saber/MainActivity.kt": {
-      "sha256": "6d9113feab7c8162b98ec5b5b6cf9c0213ab3dc1394faaabd2f93b60a9defc38",
+      "sha256": "53572c55abcc311130ca5ae9ac71534f1977ea7ad529c9e5ccb91fe2fd3572d6",
       "mode": "100644"
     },
     "android/app/src/main/kotlin/com/adilhanney/saber/ObsidianFolderBridge.kt": {
       "sha256": "6b95c4b5743ae9d69718dcfa7d5f89f4ab8b179eb02fb4b3a7b5ea55101a4225",
+      "mode": "100644"
+    },
+    "android/app/src/main/kotlin/com/adilhanney/saber/PlannerBridge.kt": {
+      "sha256": "343a87f481e38774bcdac510043c4a7b05f71a57cf826ac830a74df5ed28fe27",
+      "mode": "100644"
+    },
+    "android/app/src/main/kotlin/com/adilhanney/saber/PlannerReminders.kt": {
+      "sha256": "5a6d023780f6ede2738ef4301bd75608a1ab7553cc932fb9b9549f7b5a4dde9a",
+      "mode": "100644"
+    },
+    "android/app/src/main/kotlin/com/adilhanney/saber/PlannerWidgets.kt": {
+      "sha256": "ce23fd08523bc280cdefe304024ee5cceec903d8d85b726ce992b74a4504312c",
       "mode": "100644"
     },
     "android/app/src/main/res/drawable-v21/launch_background.xml": {
@@ -86,6 +106,10 @@
     },
     "android/app/src/main/res/drawable/launch_background.xml": {
       "sha256": "2df60e2cfbee873ce2858088cf003e6b93498f2f568476da437610467ea1a9d7",
+      "mode": "100644"
+    },
+    "android/app/src/main/res/layout/zz_piv_widget.xml": {
+      "sha256": "b7fd8a98ab037a6a0f3bc10e34d7beb17e398f21167d8869b1114c22a1cd03ec",
       "mode": "100644"
     },
     "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml": {
@@ -152,6 +176,10 @@
       "sha256": "58e5a70f66545db2964f2b705b2208ba0f977048feef585c376e9bfdf53949e0",
       "mode": "100644"
     },
+    "android/app/src/main/res/raw/zz_piv_keep.xml": {
+      "sha256": "05182efdbe698f9a6c6e4355e5f1c3540a39eb42dbe1a81033e98195b3348624",
+      "mode": "100644"
+    },
     "android/app/src/main/res/values-night/styles.xml": {
       "sha256": "ff6bf037dcee7b3967a0b383bf038ce720219980b2af5e49aaa241a9a1dcff2e",
       "mode": "100644"
@@ -170,6 +198,14 @@
     },
     "android/app/src/main/res/xml/locales_config.xml": {
       "sha256": "2bb58e082192b62dc994333bc22567f2f1c45ca7305ae7ef25bb1a37f6fddb6a",
+      "mode": "100644"
+    },
+    "android/app/src/main/res/xml/zz_piv_widget_calendar.xml": {
+      "sha256": "4a34be1099bfe261db31492f44fbb336752ce15a394f70951960d44424f267a6",
+      "mode": "100644"
+    },
+    "android/app/src/main/res/xml/zz_piv_widget_reminder.xml": {
+      "sha256": "6522003db84755510c1845d8eb69979ebad052e39b0d56a505a5d715ea1e8a05",
       "mode": "100644"
     },
     "android/app/src/profile/AndroidManifest.xml": {
@@ -561,7 +597,7 @@
       "mode": "100644"
     },
     "lib/components/canvas/canvas.dart": {
-      "sha256": "c0ecef200657a0db5cc86d821eed63a4c9dfd1ee6af462284eb7cc8c663d0afd",
+      "sha256": "b86a1575c333d7b79e7e7cada9fb24b55345ecc8a8a435f36d6fe7766b1352d4",
       "mode": "100644"
     },
     "lib/components/canvas/canvas_background_preview.dart": {
@@ -621,7 +657,7 @@
       "mode": "100644"
     },
     "lib/components/canvas/inner_canvas.dart": {
-      "sha256": "93ae9b7890770820c670990ad2ccf071b93a56fd60bfec705dd628d804b575dd",
+      "sha256": "6dbde14650313fc00dd82295ce47b0888b02124f8352f8863495eede31ba5cd5",
       "mode": "100644"
     },
     "lib/components/canvas/interactive_canvas.dart": {
@@ -630,6 +666,10 @@
     },
     "lib/components/canvas/invert_widget.dart": {
       "sha256": "7dc00a7fef2bdabbb6c0ef55edef84df2f419c998fd8f5fd46aac87c690ae055",
+      "mode": "100644"
+    },
+    "lib/components/canvas/page_link_layer.dart": {
+      "sha256": "8f95e3dd8c76f3954b390a2ea8ba4eaf1a736359a0288f0b0bd6feddb2ff5302",
       "mode": "100644"
     },
     "lib/components/canvas/pencil_shader.dart": {
@@ -901,7 +941,7 @@
       "mode": "100644"
     },
     "lib/components/toolbar/selection_bar.dart": {
-      "sha256": "7a40923f857145843197f75193f0bd08aa229c16612a67d2e1675b12164541e7",
+      "sha256": "648d98afc1581606e6610dffa328be3ec284953a79ffa7f511c376be1ad3b59e",
       "mode": "100644"
     },
     "lib/components/toolbar/shortcut_bar_editor.dart": {
@@ -909,7 +949,7 @@
       "mode": "100644"
     },
     "lib/components/toolbar/shortcut_layout.dart": {
-      "sha256": "3341fa4ecd88c53c1edb9648a3414719972c8a10a4de090e32498abed5aef25a",
+      "sha256": "212d92f8829971678cfbb39bd29b15ceda90b621b6682e76a1f491634255bd2f",
       "mode": "100644"
     },
     "lib/components/toolbar/size_picker.dart": {
@@ -921,7 +961,7 @@
       "mode": "100644"
     },
     "lib/components/toolbar/toolbar.dart": {
-      "sha256": "0a40a3a5921d937e8352043f53b905ebbf69805b02101e63913679e67071dbbf",
+      "sha256": "6884a8629d8cedbd6877626d181e1f9330f168b2578bf93480d3d190a9fa25ba",
       "mode": "100644"
     },
     "lib/components/toolbar/toolbar_button.dart": {
@@ -965,7 +1005,7 @@
       "mode": "100644"
     },
     "lib/data/drive/drive_auth.dart": {
-      "sha256": "b5ef576429b4ad11d81b8632c55107b38f618de012a1255106ee54cadd1da8eb",
+      "sha256": "226abe70fce40e0610a7753c313be120d7b9a4057a1e9895c5e3f41d2b51b836",
       "mode": "100644"
     },
     "lib/data/drive/drive_background.dart": {
@@ -989,11 +1029,15 @@
       "mode": "100644"
     },
     "lib/data/editor/editor_history.dart": {
-      "sha256": "c8d8b9d167938f4d88637cc8638ddb3788c3b0b8116ba070d35bf9c66fef7ac9",
+      "sha256": "c63e44b08abdad28a58ecaaacccbaf3626f24099b18bf393f133ab9a199e33f5",
       "mode": "100644"
     },
     "lib/data/editor/page.dart": {
-      "sha256": "419796a6a2cbc249b702f11a062ccb9744c4772257ad71eb6c91e4bdbf1c94c8",
+      "sha256": "8bc0736b9d88a02d55fb69270de224e31bf0ea9db63450a9e0dec56fc6b0e124",
+      "mode": "100644"
+    },
+    "lib/data/editor/page_link.dart": {
+      "sha256": "a3ce6e31656f67283a98dd8e472e58cd92cf1a1ab152e944f082e1a8eb719c49",
       "mode": "100644"
     },
     "lib/data/extensions/axis_extensions.dart": {
@@ -1033,7 +1077,7 @@
       "mode": "100644"
     },
     "lib/data/imports/android_document_source.dart": {
-      "sha256": "53ea71433208cff43302f0b887aae4eb6733c472ea55049f3a32e0e5be7d3fd6",
+      "sha256": "e34887b6a9c3538c273c54faf0a0dcf3e6631dd93cf5a3b846d0fe5d92271e8c",
       "mode": "100644"
     },
     "lib/data/imports/android_obsidian_folder.dart": {
@@ -1213,7 +1257,7 @@
       "mode": "100644"
     },
     "lib/data/office/pptx_annotation_carry.dart": {
-      "sha256": "d9a3c00f16963be5371c31f778af9fccdba027510bc15a6b5151a35cb77fdfa1",
+      "sha256": "4a592f9c5dc64cfa5e68ac603641570c5dddd3582fc2177f463e9b5061b3ed63",
       "mode": "100644"
     },
     "lib/data/office/pptx_find_replace.dart": {
@@ -1300,8 +1344,44 @@
       "sha256": "d8422373ec25bc470ece3d1909d2f2b3682a5992e5f93b0a75fac316b5d19eec",
       "mode": "100644"
     },
+    "lib/data/planner/calendar_auth.dart": {
+      "sha256": "80baf0e3d0f3e10ec03f27060bb124dcfc39d7d7c7f1920eb60b0310db162ed6",
+      "mode": "100644"
+    },
+    "lib/data/planner/calendar_sync.dart": {
+      "sha256": "31fb3da04a9279a7c3abc988bc7ad926d46ce6d8388d774c365589207c9884e5",
+      "mode": "100644"
+    },
+    "lib/data/planner/google_calendar.dart": {
+      "sha256": "aca2b2f698614ccac7e77cc29547578ebe2b1695247d8645e012d4f189a8ec8a",
+      "mode": "100644"
+    },
+    "lib/data/planner/handwriting_recognizer.dart": {
+      "sha256": "e22b5ea78f6e99fd0dddfb5e3199fadefb46eb188d2ccd81487dcc5142286ef2",
+      "mode": "100644"
+    },
+    "lib/data/planner/planner_models.dart": {
+      "sha256": "bd827f48042f92e013499ff48b7a453a881fba4d6995828f95d819306c5d7dd5",
+      "mode": "100644"
+    },
+    "lib/data/planner/planner_platform.dart": {
+      "sha256": "50216fb11696b4cab5baa2d5afa1f92f1ded05106ec5447e8d0310b7feb05b48",
+      "mode": "100644"
+    },
+    "lib/data/planner/planner_store.dart": {
+      "sha256": "54fe5b88fa5aaa562b12efeb71a9ddbf454ad67687fce9ed2efc803eefe130b1",
+      "mode": "100644"
+    },
+    "lib/data/planner/planner_widget_sync.dart": {
+      "sha256": "5ea411bd280be08ab9517a8932e6e634bd7055ef192125c43fbd5db6e49cb0c4",
+      "mode": "100644"
+    },
+    "lib/data/planner/widget_payload.dart": {
+      "sha256": "a92f8db03ef2b0f3108d27b963da890eca6f6a6fa6e4cba7af7fbf4765bfd1d4",
+      "mode": "100644"
+    },
     "lib/data/prefs.dart": {
-      "sha256": "742027cb7fd1eec508d7e6475be32e8482a16a7fce3fbb50e589038727ea7a6d",
+      "sha256": "c8b2ca046623a15ece0faf6d3322452135e5edc7879ddf44e0572de944d160df",
       "mode": "100644"
     },
     "lib/data/quota.dart": {
@@ -1480,6 +1560,14 @@
       "sha256": "303f024420271c9ac812078c02d9e408db4661ca6915c0b3c3e54e9475922701",
       "mode": "100644"
     },
+    "lib/data/vault/document_facts.dart": {
+      "sha256": "20f7362963e7bd56733f1629e4c733fd677ef005df0b141123d0fe513dbfde1e",
+      "mode": "100644"
+    },
+    "lib/data/vault/fork_merge.dart": {
+      "sha256": "0d2aad491ff4925d839d03ded7819ee322fae5704b837325abc01cf471f667e8",
+      "mode": "100644"
+    },
     "lib/data/vault/infinite_document.dart": {
       "sha256": "3da4f368d4e5fb90ed84cee31651918bcc3ac1d27e35fd3425daede6e13ab31b",
       "mode": "100644"
@@ -1494,6 +1582,10 @@
     },
     "lib/data/vault/knowledge_rename.dart": {
       "sha256": "d83d0b2fd7166cd2086c5f30c83dff5f6421cfc6dd13285cc13b1faae6796858",
+      "mode": "100644"
+    },
+    "lib/data/vault/library_marks.dart": {
+      "sha256": "4ecdbba5d14a7c7bfc191a0971fdba47f1c6004482d0eb8e4de6ff511cb7ff07",
       "mode": "100644"
     },
     "lib/data/vault/library_store.dart": {
@@ -1577,7 +1669,7 @@
       "mode": "100644"
     },
     "lib/data/vault/thumbnail_cache.dart": {
-      "sha256": "ff7b58b9a8b05fa82f788b61ee4cae371e54a7993026a7dc9001ea35b01e8838",
+      "sha256": "af10387325d2b0e87e5a8173e599cf3d3c98685b103fb80b914af733d8d15bf2",
       "mode": "100644"
     },
     "lib/data/vault/workspace_bookmarks.dart": {
@@ -1849,11 +1941,15 @@
       "mode": "100644"
     },
     "lib/pages/editor/editor.dart": {
-      "sha256": "f9afe45c162c31d0499ee8449a88d489ca32d646ef451723bc5488c9566e87b5",
+      "sha256": "245f57ab80edd86b3315e26c72e5b8a97690919ec846d00ec7ef8185519f1b05",
       "mode": "100644"
     },
     "lib/pages/editor/editor_chrome.dart": {
-      "sha256": "ec3947b138e9c58fa84e60ae01ffd8495ecbedfcf64c42507a77592f67c35a70",
+      "sha256": "f08a400ba564d74a4420ce27d1560b333dcb7cc10c93592e8c4001ed7ed03820",
+      "mode": "100644"
+    },
+    "lib/pages/editor/link_dialog.dart": {
+      "sha256": "7e00e6d2b356af041f154ea7bba8afa441ab8c27bafc7b34acdfea87704763c2",
       "mode": "100644"
     },
     "lib/pages/home/browse.dart": {
@@ -1980,6 +2076,30 @@
       "sha256": "59be8fa58b30cd3ac8d446d7363d91d78bb7b0f5af0212f7c83ecb052a6eac84",
       "mode": "100644"
     },
+    "lib/pages/planner/calendar_page.dart": {
+      "sha256": "7fd2f4d5bfb565e8f55f26ab7ca37995a70ac0601e6b32e084c8e68128b9a90a",
+      "mode": "100644"
+    },
+    "lib/pages/planner/event_sheet.dart": {
+      "sha256": "81b4a4b1610e7c20799c64664ce0927da2e3515688600ccc01b604813025d054",
+      "mode": "100644"
+    },
+    "lib/pages/planner/ink_pad.dart": {
+      "sha256": "cd5f30e0d8f4982fd921c76e5dbc9efce2253803e8d106f4a44b28a551ab83c2",
+      "mode": "100644"
+    },
+    "lib/pages/planner/month_grid.dart": {
+      "sha256": "67383de79a6399bc54d58ad097eb807e76175b03dcef11bd51432697b030d2dc",
+      "mode": "100644"
+    },
+    "lib/pages/planner/planner_screen.dart": {
+      "sha256": "acb4b568847af56df955d426b1fd48407b0769a82df87310ff35b27ce7b9c7c8",
+      "mode": "100644"
+    },
+    "lib/pages/planner/reminder_page.dart": {
+      "sha256": "a2ad44db3d8496573db70458dfc339af65883fdef3673bd3017460ccb4b28362",
+      "mode": "100644"
+    },
     "lib/pages/user/login.dart": {
       "sha256": "fbefa52a9226b73123867e110bddfe899dbe74a4b3caa9c1c7d3751dc83713ee",
       "mode": "100644"
@@ -2040,6 +2160,10 @@
       "sha256": "a199bbcac4dd474fea84e4d57371104671870658d0787c8dd8cb2ba4bc8dd37b",
       "mode": "100644"
     },
+    "lib/pages/workspace/import_jobs.dart": {
+      "sha256": "c7c9a0d1a106f1d33bbccf84803c6951445a5550dc43a4df02524ba2aca16679",
+      "mode": "100644"
+    },
     "lib/pages/workspace/infinite_canvas.dart": {
       "sha256": "001b1486678fdd1a4bf8ca94046f4b8454952d7a3cd9d0c6a2113138273b17c0",
       "mode": "100644"
@@ -2048,8 +2172,20 @@
       "sha256": "83eb451990433e758872fa6b33d019c053445cee0871e2680978dc629adedb1f",
       "mode": "100644"
     },
+    "lib/pages/workspace/library_add.dart": {
+      "sha256": "98a6e9f2dcedf4ac43f33da9449622d49cc2f85680dc1613cdececca9a45bba2",
+      "mode": "100644"
+    },
+    "lib/pages/workspace/library_cards.dart": {
+      "sha256": "b69f5fc93955fad39afb77847f3439de5e2e26a2426d4bd115a9dfb785d765e3",
+      "mode": "100644"
+    },
     "lib/pages/workspace/library_home.dart": {
-      "sha256": "e44e95affe3edcea03bd3e2da021b26133d5476f68b1ba00672fd089e52a7250",
+      "sha256": "65a154da16a85c95b47688b1337c581944bd54e4683d2327aa79ca6cea39ae62",
+      "mode": "100644"
+    },
+    "lib/pages/workspace/library_menus.dart": {
+      "sha256": "0757b7a57787b0751ca40b513fccde58e57a06ab64a4c80f0231ed9c6667f78e",
       "mode": "100644"
     },
     "lib/pages/workspace/linked_database_block.dart": {
@@ -2093,7 +2229,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/study_workspace.dart": {
-      "sha256": "15c76c872857da26c52ac93121547a1ca6ace6e9a7d8e6546a444ca73883c3c9",
+      "sha256": "add45920c5c8ebde503e7eb1f681291a000e8f5bd679f7575928e4d72d11e060",
       "mode": "100644"
     },
     "lib/pages/workspace/synced_block_view.dart": {
@@ -2105,7 +2241,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_controller.dart": {
-      "sha256": "f5e809abd3aac133f2ae3050ed898b5400c8d07bee07e71878178fcfc3a9726f",
+      "sha256": "48f31e4562829668d0b0bac61e356ee9c32b21012e887ab6f5028102626b8049",
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_quick_switcher.dart": {
@@ -2708,8 +2844,8 @@
       "sha256": "ca46113c51d38e8bbc033590acab2959030179ff401585105b183a848e32c623",
       "mode": "100644"
     },
-    "scripts/build-android-229.sh": {
-      "sha256": "8c500d1744acfb70030299b2253456c78ace106219e2dcaaacb6320684151112",
+    "scripts/build-android-231.sh": {
+      "sha256": "140a0cc82a63bdea7dfc52fd48f469b2f44f22aa1748617c1258b0ccd58a2309",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {
