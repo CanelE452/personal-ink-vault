@@ -1671,21 +1671,30 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The editor reports busy (drawing, saving) and dirty on every stroke, and
+  /// the workspace builds again on each notice: listeners hear only when
+  /// [dirty] changes, and the vault is read again only once the ink is saved.
   void setInkBusy(bool value, {NoteSession? session}) {
     if (session != null && !identical(session, activeSession)) return;
     if (value) _activityGeneration++;
-    inkBusy = value;
     if (!value) _pendingImportSession = null;
-    if (!_disposed) notifyListeners();
-    if (!value && !_disposed) unawaited(refresh());
+    if (inkBusy == value) return;
+    final wasDirty = dirty;
+    inkBusy = value;
+    if (_disposed) return;
+    if (dirty != wasDirty) notifyListeners();
+    if (!value && !inkDirty) unawaited(refresh());
   }
 
   void setInkDirty(bool value, {NoteSession? session}) {
     if (session != null && !identical(session, activeSession)) return;
     if (value) _activityGeneration++;
+    if (inkDirty == value) return;
+    final wasDirty = dirty;
     inkDirty = value;
-    if (!_disposed) notifyListeners();
-    if (!value && !_disposed) unawaited(refresh());
+    if (_disposed) return;
+    if (dirty != wasDirty) notifyListeners();
+    if (!value) unawaited(refresh());
   }
 
   Future<void> saveMarkdown() {

@@ -347,8 +347,8 @@ void main() {
         expect(oldLink?.pageId, controller.navigation.current.pageId);
         expect(oldLink?.pageId, persisted.current.pageId);
 
-        // An open note keeps 노트 링크 열기 in its function row's 더 많은 기능 on every screen.
-        final linkButton = find.byKey(const ValueKey('workspace-more-actions'));
+        // An open PDF note keeps 노트 링크 열기 in its ⋯ 「더 보기」 on every screen (Task 17: no function row).
+        final linkButton = find.byKey(const ValueKey('editor-doc-menu'));
         final linkField = find.descendant(
           of: find.byType(AlertDialog),
           matching: find.byType(TextField),
@@ -409,12 +409,14 @@ void main() {
             'The page link button must be reachable.',
           );
           await tester.runAsync(() => tester.tap(linkButton));
-          final item = find.text('노트 링크 열기');
+          final item = find.byKey(const ValueKey('editor-doc-openNoteLink'));
           await officePreviewUntil(
             tester,
-            () => item.hitTestable().evaluate().length == 1,
-            'The page link action must be reachable in 더 많은 기능.',
+            () => item.evaluate().length == 1,
+            'The page link action must be in ⋯.',
           );
+          await tester.ensureVisible(item);
+          await tester.pump();
           await tester.runAsync(() => tester.tap(item));
           await officePreviewUntil(
             tester,
@@ -474,17 +476,20 @@ void main() {
         );
         await waitForLinkedPage(fixture.secondPage, 2);
         if (defaultTargetPlatform == TargetPlatform.android) {
-          // The note bar's view switch (it replaced the bottom bar) shows the PDF, not its Markdown: a wide bar
-          // selects the note segment, a narrow one offers Markdown as the other view.
-          final toggle = tester.widget(
-            find.byKey(const ValueKey('note-view-toggle')),
-          );
+          // The view switch (the editor's ⋯ 「보기」 since Task 17) shows the PDF, not its Markdown: it offers
+          // Markdown as the other view.
+          await tester.tap(linkButton);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 400));
           expect(
-            toggle is SegmentedButton
-                ? (toggle.selected.single as Enum).name
-                : (toggle as IconButton).tooltip,
-            toggle is SegmentedButton ? 'note' : 'Markdown',
+            find.descendant(
+              of: find.byKey(const ValueKey('note-view-toggle')),
+              matching: find.text('Markdown'),
+            ),
+            findsOneWidget,
           );
+          await tester.binding.handlePopRoute();
+          await tester.pump(const Duration(milliseconds: 400));
         }
         expect(state().coreInfo.pages[2].strokes, hasLength(1));
         expect(controller.activeSession!.inkParents.single, inkHead);

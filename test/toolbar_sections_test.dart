@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:saber/components/toolbar/toolbar.dart';
+import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
+import 'package:sbn/tool_id.dart';
 
 import 'utils/test_mock_channel_handlers.dart';
 
-/// StarNote's tool bar (view_tool_bar_container): undo and redo, the tools,
-/// then the chosen tool's values, each part scrolling on its own.
+/// The editor's bars since Task 13B-1: the toolbar (9th draft c) holds the
+/// tools, the floating bar under it undo, redo and the tool's values.
 void main() {
   setUp(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -24,20 +25,19 @@ void main() {
 
   Future<void> mountEditor(
     WidgetTester tester, {
-    AxisDirection alignment = AxisDirection.up,
     Size size = const Size(1200, 2000),
   }) async {
-    final previousAlignment = stows.workspaceToolbarAlignment.value;
+    final previousTool = stows.lastTool.value;
     final previousLayout = stows.pageToolbarLayout.value;
     final previousEraserSize = stows.eraserSize.value;
     final previousEraserMode = stows.eraserMode.value;
     final previousRectangle = stows.selectRectangle.value;
-    stows.workspaceToolbarAlignment.value = alignment;
+    stows.lastTool.value = ToolId.fountainPen;
     stows.pageToolbarLayout.value = const [];
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
-      stows.workspaceToolbarAlignment.value = previousAlignment;
+      stows.lastTool.value = previousTool;
       stows.pageToolbarLayout.value = previousLayout;
       stows.eraserSize.value = previousEraserSize;
       stows.eraserMode.value = previousEraserMode;
@@ -46,11 +46,14 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     await tester.pumpWidget(
-      TranslationProvider(
-        child: MaterialApp(
-          home: Editor(
-            path: '/toolbar-sections',
-            onSaveSnapshot: (_, _) async {},
+      MediaQuery(
+        data: MediaQueryData(size: size),
+        child: TranslationProvider(
+          child: MaterialApp(
+            home: Editor(
+              path: '/toolbar-sections',
+              onSaveSnapshot: (_, _) async {},
+            ),
           ),
         ),
       ),
@@ -58,106 +61,85 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Finder inPart(String part, Finder matching) =>
-      find.descendant(of: find.byKey(ValueKey(part)), matching: matching);
+  Finder tool(String id) => find.byKey(ValueKey('editor-tool-$id'));
+  Finder key(String k) => find.byKey(ValueKey(k));
+  final bar = key('kit-floating-bar');
 
-  testWidgets("undo, tools and the tool's values sit in three sections", (
+  testWidgets(
+    "the toolbar: three groups; the pen's values in the floating bar",
+    (tester) async {
+      await mountEditor(tester);
+      double x(Finder f) => tester.getCenter(f).dx;
+      // start · middle · end (9th draft c)
+      expect(x(key('editor-note-sheet')), lessThan(x(key('editor-mode'))));
+      expect(
+        x(key('editor-tools-more')),
+        lessThan(x(key('editor-insert-page'))),
+      );
+      expect(x(key('editor-fullscreen')), lessThan(x(key('editor-doc-menu'))));
+      // undo, redo and the pen's width live in the floating bar
+      for (final k in const [
+        'floating-bar-undo',
+        'floating-bar-redo',
+        'toolbar-quick-ink-widths',
+        'floating-bar-custom-colour',
+      ]) {
+        expect(
+          find.descendant(of: bar, matching: key(k)),
+          findsOneWidget,
+          reason: k,
+        );
+      }
+    },
+  );
+
+  testWidgets('the eraser shows its choices in the floating bar', (
     tester,
   ) async {
     await mountEditor(tester);
-    await tester.tap(find.byTooltip('펜'));
+    await tester.tap(tool('eraser'));
     await tester.pumpAndSettle();
-    expect(inPart('toolbar-undo-redo', find.byTooltip('실행 취소')), findsOneWidget);
-    expect(inPart('toolbar-undo-redo', find.byTooltip('다시 실행')), findsOneWidget);
-    expect(inPart('toolbar-tools-scroll', find.byTooltip('펜')), findsOneWidget);
-    expect(inPart('toolbar-tools-scroll', find.byTooltip('지우개')), findsOneWidget);
+    // the 10th draft: the kind chip, 「고급 설정」 and three sizes
     expect(
-      inPart('toolbar-params-scroll', find.byKey(const ValueKey('toolbar-colors'))),
+      find.descendant(of: bar, matching: key('floating-bar-eraser-size-40')),
       findsOneWidget,
     );
-    expect(
-      inPart(
-        'toolbar-params-scroll',
-        find.byKey(const ValueKey('toolbar-quick-ink-widths')),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      inPart('toolbar-params-scroll', find.byKey(const ValueKey('toolbar-pen-box'))),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('the eraser shows its modes and three sizes', (tester) async {
-    await mountEditor(tester);
-    await tester.tap(find.byTooltip('지우개'));
+    expect(key('floating-bar-custom-colour'), findsNothing);
+    await tester.tap(key('floating-bar-eraser-kind'));
     await tester.pumpAndSettle();
-    for (final key in const [
-      'toolbar-eraser-stroke',
-      'toolbar-eraser-lasso',
-      'toolbar-eraser-size-15',
-      'toolbar-eraser-size-30',
-      'toolbar-eraser-size-50',
-    ]) {
-      expect(inPart('toolbar-params-scroll', find.byKey(ValueKey(key))), findsOneWidget);
-    }
-    expect(find.byKey(const ValueKey('toolbar-colors')), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('toolbar-eraser-size-30')));
-    await tester.pumpAndSettle();
-    expect(stows.eraserSize.value, 30);
-    await tester.tap(find.byKey(const ValueKey('toolbar-eraser-lasso')));
+    await tester.tap(key('eraser-kind-lasso'));
     await tester.pumpAndSettle();
     expect(stows.eraserMode.value, EraserMode.lasso);
   });
 
-  testWidgets('the lasso shows free and rectangle', (tester) async {
+  testWidgets('the lasso has no floating bar', (tester) async {
     await mountEditor(tester);
-    stows.selectRectangle.value = false;
-    await tester.tap(find.byTooltip('올가미'));
+    await tester.tap(tool('lasso'));
     await tester.pumpAndSettle();
-    expect(
-      inPart('toolbar-params-scroll', find.byKey(const ValueKey('toolbar-select-free'))),
-      findsOneWidget,
-    );
-    await tester.tap(find.byKey(const ValueKey('toolbar-select-rect')));
-    await tester.pumpAndSettle();
-    expect(stows.selectRectangle.value, isTrue);
+    expect(bar, findsNothing);
   });
 
-  testWidgets('docked left, the sections stand vertically without overflow', (
+  testWidgets('docked left, the floating bar stands upright without overflow', (
     tester,
   ) async {
-    await mountEditor(
-      tester,
-      alignment: AxisDirection.left,
-      size: const Size(400, 800),
-    );
+    final place = stows.floatingBarPosition.value;
+    stows.floatingBarPosition.value = 'left';
+    addTearDown(() => stows.floatingBarPosition.value = place);
+    await mountEditor(tester, size: const Size(800, 900));
     expect(tester.takeException(), isNull);
-    expect(
-      tester
-          .widget<SingleChildScrollView>(
-            find.byKey(const ValueKey('toolbar-params-scroll')),
-          )
-          .scrollDirection,
-      Axis.vertical,
-    );
-    expect(
-      tester
-          .widget<SingleChildScrollView>(
-            find.byKey(const ValueKey('toolbar-tools-scroll')),
-          )
-          .scrollDirection,
-      Axis.vertical,
-    );
+    expect(tester.widget<Flex>(bar).direction, Axis.vertical);
   });
 
-  testWidgets('page actions, finger, fullscreen and export are not toolbar items', (
+  testWidgets('the toolbar has no pencil, highlighter or export button', (
     tester,
   ) async {
     await mountEditor(tester);
-    for (final tooltip in const ['쪽 추가', '페이지 추가', '손가락 필기', '전체 화면', '내보내기']) {
+    for (final tooltip in const ['연필', '형광펜', '내보내기', '손가락 필기']) {
       expect(
-        find.descendant(of: find.byType(Toolbar), matching: find.byTooltip(tooltip)),
+        find.descendant(
+          of: find.byType(KitEditorToolbar),
+          matching: find.byTooltip(tooltip),
+        ),
         findsNothing,
         reason: tooltip,
       );

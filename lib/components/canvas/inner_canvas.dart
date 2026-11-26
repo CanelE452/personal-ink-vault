@@ -8,6 +8,7 @@ import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/canvas_image.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
+import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/i18n/strings.g.dart';
@@ -23,6 +24,7 @@ class InnerCanvas extends StatefulWidget {
     required this.height,
     this.showPageIndicator = true,
     this.textEditing = false,
+    this.inkLocked = false,
     required this.coreInfo,
     required this.currentStroke,
     required this.currentStrokeDetectedShape,
@@ -41,6 +43,9 @@ class InnerCanvas extends StatefulWidget {
   final double height;
   final bool showPageIndicator;
   final bool textEditing;
+
+  /// The editor's 「읽기 전용」: the text box and the pictures take no input.
+  final bool inkLocked;
   final EditorCoreInfo coreInfo;
   final Stroke? currentStroke;
   final RecognizedUnistroke? currentStrokeDetectedShape;
@@ -60,6 +65,23 @@ class InnerCanvas extends StatefulWidget {
   final Widget? linkLayer;
 
   static const defaultBackgroundColor = Color(0xFFFCFCFC);
+
+  /// On an inverted page a text highlight is drawn with its lightness
+  /// inverted, as the strokes are, so the white letters stay readable on it
+  /// (a pale highlight would put white on white). The note keeps its colour.
+  static TextStyle invertedHighlight(Attribute attribute) {
+    final value = attribute.value;
+    if (attribute.key != Attribute.background.key ||
+        value is! String ||
+        !value.startsWith('#')) {
+      return const TextStyle();
+    }
+    var hex = value.substring(1);
+    if (hex.length == 6) hex = 'ff$hex';
+    final argb = hex.length == 8 ? int.tryParse(hex, radix: 16) : null;
+    if (argb == null) return const TextStyle();
+    return TextStyle(backgroundColor: Color(argb).withInversion());
+  }
 
   @override
   State<InnerCanvas> createState() => _InnerCanvasState();
@@ -91,6 +113,7 @@ class _InnerCanvasState extends State<InnerCanvas> {
                 secondary: colorScheme.secondary,
                 lineHeight: widget.coreInfo.lineHeight,
               ),
+              customStyleBuilder: invert ? InnerCanvas.invertedHighlight : null,
               scrollable: false,
               autoFocus: false,
               expands: true,
@@ -175,7 +198,10 @@ class _InnerCanvasState extends State<InnerCanvas> {
                   width: widget.width,
                   height: widget.height,
                   child: IgnorePointer(
-                    ignoring: widget.coreInfo.readOnly || !widget.textEditing,
+                    ignoring:
+                        widget.coreInfo.readOnly ||
+                        widget.inkLocked ||
+                        !widget.textEditing,
                     child: quillEditor,
                   ),
                 ),
@@ -186,7 +212,9 @@ class _InnerCanvasState extends State<InnerCanvas> {
                     pageSize: Size(widget.width, widget.height),
                     setAsBackground: widget.setAsBackground,
                     readOnly:
-                        widget.coreInfo.readOnly || !widget.currentToolIsSelect,
+                        widget.coreInfo.readOnly ||
+                        widget.inkLocked ||
+                        !widget.currentToolIsSelect,
                     selected:
                         widget.currentSelection?.images.contains(
                           page.images[i],

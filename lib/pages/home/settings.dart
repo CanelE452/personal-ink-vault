@@ -26,7 +26,6 @@ import 'package:saber/data/locales.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/routes.dart';
 import 'package:saber/data/sentry/sentry_init.dart';
-import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:stow/stow.dart';
 
@@ -516,9 +515,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       Text(t.settings.shapeRecognitionDisabled),
                     ),
                   ],
-                  afterChange: (ms) {
-                    ShapePen.debounceDuration = ShapePen.getDebounceFromPref();
-                  },
                 ),
                 SettingsSwitch(
                   title: t.settings.prefLabels.autoStraightenLines,

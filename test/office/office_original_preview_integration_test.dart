@@ -11,7 +11,7 @@ import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:pdf/pdf.dart' show PdfColor, PdfColors;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
-import 'package:saber/components/toolbar/toolbar.dart';
+import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/office/android_office_engine.dart';
@@ -859,7 +859,7 @@ void main() {
         final editor = find.byType(Editor);
         final toolbar = find.descendant(
           of: editor,
-          matching: find.byType(Toolbar),
+          matching: find.byType(KitEditorToolbar),
         );
         // A drawing tool itself must be reachable; the toolbar's centre can fall between buttons.
         final pen = find.descendant(of: toolbar, matching: find.byTooltip('펜'));
@@ -868,7 +868,7 @@ void main() {
           () => pen.hitTestable().evaluate().isNotEmpty && !fixture.busy,
           'The usual drawing tools must become usable without a second action.',
         );
-        expect(tester.widget<Toolbar>(toolbar).readOnly, isFalse);
+        expect(tester.state<EditorState>(editor).coreInfo.readOnly, isFalse);
         final state = tester.state<EditorState>(editor);
         expect(
           state.coreInfo.pages.first.backgroundImage,

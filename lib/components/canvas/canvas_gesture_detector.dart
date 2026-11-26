@@ -5,8 +5,6 @@ import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:keybinder/keybinder.dart';
 import 'package:saber/components/canvas/hud/canvas_hud.dart';
 import 'package:saber/components/canvas/interactive_canvas.dart';
 import 'package:saber/data/editor/page.dart';
@@ -277,27 +275,11 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
       ..scaleByDouble(newScale, newScale, newScale, 1);
   }
 
-  final Map<AxisDirection, Timer> _arrowKeyPanTimers = {};
-  void arrowKeyPan(AxisDirection direction, bool pressed) {
-    _arrowKeyPanTimers.remove(direction)?.cancel();
-    if (!pressed) return;
-
-    // arrow keys are used to navigate around text
+  /// Moves the page 50 px the arrow's way: the editor's arrow keys, while
+  /// the focus is in it (a held key repeats). The text box's arrows move its
+  /// cursor instead.
+  void arrowKeyPan(AxisDirection direction) {
     if (widget.isTextEditing()) return;
-
-    _arrowKeyPanNow(direction);
-
-    // Wait for 200ms, then pan every 100ms
-    const ms100 = Duration(milliseconds: 100);
-    const ms200 = Duration(milliseconds: 200);
-    _arrowKeyPanTimers[direction] = Timer(ms200, () {
-      _arrowKeyPanTimers[direction] = Timer.periodic(ms100, (_) {
-        _arrowKeyPanNow(direction);
-      });
-    });
-  }
-
-  void _arrowKeyPanNow(AxisDirection direction) {
     final transformation = widget._transformationController.value;
     const panAmount = 50.0;
 
@@ -320,80 +302,12 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     widget._transformationController.notifyListenersPlease();
   }
 
-  var _setupKeybindings = false;
-  late Keybinding _ctrlPlus, _ctrlEquals, _ctrlMinus;
-  late Keybinding _leftKey, _rightKey, _upKey, _downKey;
-  void _assignKeybindings() {
-    _ctrlPlus = Keybinding([
-      KeyCode.ctrl,
-      KeyCode.from(LogicalKeyboardKey.add),
-    ], inclusive: true);
-    _ctrlEquals = Keybinding([
-      KeyCode.ctrl,
-      KeyCode.from(LogicalKeyboardKey.equal),
-    ], inclusive: true);
-    _ctrlMinus = Keybinding([
-      KeyCode.ctrl,
-      KeyCode.from(LogicalKeyboardKey.minus),
-    ], inclusive: true);
-    Keybinder.bind(_ctrlPlus, zoomIn);
-    Keybinder.bind(_ctrlEquals, zoomIn);
-    Keybinder.bind(_ctrlMinus, zoomOut);
-
-    _leftKey = Keybinding([
-      KeyCode.from(LogicalKeyboardKey.arrowLeft),
-    ], inclusive: true);
-    _rightKey = Keybinding([
-      KeyCode.from(LogicalKeyboardKey.arrowRight),
-    ], inclusive: true);
-    _upKey = Keybinding([
-      KeyCode.from(LogicalKeyboardKey.arrowUp),
-    ], inclusive: true);
-    _downKey = Keybinding([
-      KeyCode.from(LogicalKeyboardKey.arrowDown),
-    ], inclusive: true);
-    Keybinder.bind(
-      _leftKey,
-      (bool pressed) => arrowKeyPan(AxisDirection.left, pressed),
-    );
-    Keybinder.bind(
-      _rightKey,
-      (bool pressed) => arrowKeyPan(AxisDirection.right, pressed),
-    );
-    Keybinder.bind(
-      _upKey,
-      (bool pressed) => arrowKeyPan(AxisDirection.up, pressed),
-    );
-    Keybinder.bind(
-      _downKey,
-      (bool pressed) => arrowKeyPan(AxisDirection.down, pressed),
-    );
-
-    _setupKeybindings = true;
-  }
-
-  void _removeKeybindings() {
-    if (!_setupKeybindings) return;
-    _setupKeybindings = false;
-
-    Keybinder.remove(_ctrlPlus);
-    Keybinder.remove(_ctrlEquals);
-    Keybinder.remove(_ctrlMinus);
-
-    Keybinder.remove(_leftKey);
-    Keybinder.remove(_rightKey);
-    Keybinder.remove(_upKey);
-    Keybinder.remove(_downKey);
-    _arrowKeyPanTimers.forEach((_, timer) => timer.cancel());
-  }
-
   @override
   void initState() {
     widget._transformationController.addListener(onTransformChanged);
     stows.lastSingleFingerPanLock.addListener(_syncPanLocks);
     stows.lastAxisAlignedPanLock.addListener(_syncPanLocks);
     stows.lastZoomLock.addListener(_syncPanLocks);
-    _assignKeybindings();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setInitialTransform();
     });
@@ -637,6 +551,8 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
   }
 
   /// Zooms around the centre of the view to [target] (1.0 fits the width).
+  /// While zoom is locked the lock then holds the new scale (⋯ 「확대 비율」
+  /// picks one while locked).
   void zoomTo(double target) {
     _markUserInput();
     final transformation = widget._transformationController.value;
@@ -650,6 +566,12 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
           containerBounds: containerBounds,
         ) ??
         transformation;
+    if (zoomLockedValue != null) {
+      setState(
+        () => zoomLockedValue =
+            widget._transformationController.value.approxScale,
+      );
+    }
   }
 
   /// Resets the zoom level to 1.0x
@@ -673,6 +595,11 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
 
   bool get _hasActiveContacts => _pointerContacts.isNotEmpty || _panZoomActive;
 
+  /// [_hasActiveContacts] for the zoom badge, which goes a second after the
+  /// fingers lift.
+  final _touching = ValueNotifier(false);
+  void _syncTouching() => _touching.value = _hasActiveContacts;
+
   bool _isStylus(PointerEvent event) =>
       event.kind == PointerDeviceKind.stylus ||
       event.kind == PointerDeviceKind.invertedStylus;
@@ -688,6 +615,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
       _pointerContacts.clear();
     }
     _pointerContacts.add(event.pointer);
+    _syncTouching();
     _listenerPointerEvent(event);
   }
 
@@ -751,6 +679,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
 
   void _listenerPointerUpEvent(PointerEvent event) {
     if (!_pointerContacts.remove(event.pointer)) return;
+    _syncTouching();
     _markUserInput();
     if (_stylusPointer == event.pointer) _stylusPointer = null;
     widget.updatePointerData(event.kind, null);
@@ -814,9 +743,13 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
           onPointerCancel: _listenerPointerUpEvent,
           onPointerHover: _listenerPointerHoverEvent,
           onPointerSignal: (_) => _markUserInput(),
-          onPointerPanZoomStart: (_) => _panZoomActive = true,
+          onPointerPanZoomStart: (_) {
+            _panZoomActive = true;
+            _syncTouching();
+          },
           onPointerPanZoomEnd: (_) {
             _panZoomActive = false;
+            _syncTouching();
             _markUserInput();
           },
           child: GestureDetector(
@@ -867,14 +800,8 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
         Positioned.fill(
           child: CanvasHud(
             transformationController: widget._transformationController,
-            zoomLock: zoomLockedValue != null,
-            setZoomLock: (bool zoomLock) => setState(() {
-              zoomLockedValue = zoomLock
-                  ? widget._transformationController.value.approxScale
-                  : null;
-              stows.lastZoomLock.value = zoomLock;
-            }),
             setScale: zoomLockedValue != null ? null : zoomTo,
+            touching: _touching,
             shouldShow: () => _userZooming,
           ),
         ),
@@ -920,6 +847,7 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
   @override
   void dispose() {
     _snapZoomTimer?.cancel();
+    _touching.dispose();
     final selected = singlePageIndex;
     CanvasTransformCache.add(
       widget.filePath,
@@ -932,7 +860,6 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     stows.lastZoomLock.removeListener(_syncPanLocks);
     widget._transformationController.dispose();
     _motionReset.dispose();
-    _removeKeybindings();
     super.dispose();
   }
 

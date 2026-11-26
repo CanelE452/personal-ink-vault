@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
+import 'package:saber/data/planner/google_calendar.dart';
 
 final _log = Logger('PIVError');
 
@@ -47,6 +48,7 @@ String userErrorMessage(Object error) {
     final FormatException e => e.message,
     final FileSystemException e => e.message,
     final TimeoutException e => e.message,
+    CalendarApiException() || SocketException() || HandshakeException() => null,
     Error() => null,
     _ => '$error',
   };
@@ -58,6 +60,13 @@ String userErrorMessage(Object error) {
     FormatException() => '파일 내용을 읽지 못했습니다.',
     FileSystemException() => '파일을 읽거나 쓰지 못했습니다.',
     TimeoutException() => '시간 안에 끝나지 않았습니다. 다시 시도해 주세요.',
+    SocketException() || HandshakeException() =>
+      '인터넷에 연결하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.',
+    CalendarApiException(status: 401 || 403) =>
+      'Google 캘린더 연결이 만료되었거나 권한이 없습니다. 설정에서 다시 연결해 주세요.',
+    CalendarApiException(status: 429 || >= 500) =>
+      'Google 캘린더 서버가 응답하지 않습니다. 잠시 뒤 다시 시도해 주세요.',
+    CalendarApiException() => 'Google 캘린더와 동기화하지 못했습니다.',
     _ => _generic,
   };
 }

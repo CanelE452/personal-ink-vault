@@ -5,8 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/pdf.dart' show PdfColors;
 import 'package:saber/components/theming/dynamic_material_app.dart';
-import 'package:saber/components/toolbar/note_function_row.dart';
-import 'package:saber/components/toolbar/shortcut_layout.dart';
+import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
@@ -26,9 +25,10 @@ import 'utils/office_preview.dart'
         withOfficePreviewPdfium;
 import 'utils/test_mock_channel_handlers.dart';
 
-/// The editor's part of StarNote's function row and 기타 설정 (229): it
-/// draws them itself when no host does (the Office PDF ink view), and hands
-/// them to the host's controller otherwise (the workspace).
+/// The editor's actions for its host: an editor with a controller (the
+/// workspace) publishes them there, one without keeps them; neither draws
+/// 229's function row any more (Task 17: its toolbar and ⋯ hold those
+/// items). 기타 설정's rows moved to ⋯ (Task 14).
 void main() {
   setUp(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -43,14 +43,11 @@ void main() {
     WidgetTester tester, {
     EditorChromeController? chrome,
   }) async {
-    final previousAlignment = stows.workspaceToolbarAlignment.value;
     final previousShortcuts = stows.noteShortcutLayout.value;
-    stows.workspaceToolbarAlignment.value = AxisDirection.up;
     stows.noteShortcutLayout.value = const [];
     tester.view.physicalSize = const Size(1200, 2000);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
-      stows.workspaceToolbarAlignment.value = previousAlignment;
       stows.noteShortcutLayout.value = previousShortcuts;
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
@@ -70,20 +67,23 @@ void main() {
     return tester.state<EditorState>(find.byType(Editor));
   }
 
-  Finder inRow(Finder matching) => find.descendant(
-    of: find.byKey(const ValueKey('note-function-row')),
-    matching: matching,
-  );
-
-  testWidgets('a standalone editor shows its own function row with page shortcuts', (
+  testWidgets('a standalone editor has no function row; its toolbar adds pages', (
     tester,
   ) async {
     final editor = await mountEditor(tester);
-    expect(inRow(find.byTooltip('페이지 추가')), findsOneWidget);
-    expect(inRow(find.byKey(const ValueKey('note-other-settings'))), findsOneWidget);
-    expect(inRow(find.byKey(const ValueKey('note-overview'))), findsOneWidget);
+    expect(find.byKey(const ValueKey('note-function-row')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('note-other-settings')),
+      findsNothing,
+      reason: '기타 설정 is gone; its rows are in ⋯',
+    );
+    // 문서 개요 is the toolbar's 쪽 목록
+    expect(
+      find.byKey(const ValueKey('editor-page-list')).hitTestable(),
+      findsOneWidget,
+    );
     final pages = editor.coreInfo.pages.length;
-    await tester.tap(inRow(find.byTooltip('페이지 추가')));
+    await tester.tap(find.byKey(const ValueKey('editor-insert-page')));
     await tester.pumpAndSettle();
     expect(editor.coreInfo.pages, hasLength(pages + 1));
     editor.cancelAutosaveAndMarkSaved();
@@ -101,15 +101,24 @@ void main() {
     expect(chrome.editor, same(editor));
     expect(heard, greaterThan(0));
     expect(
-      chrome.shortcuts.map((shortcut) => shortcut.id),
+      [
+        for (final id in AppActionIds.all)
+          if (chrome.actions.has(id)) id,
+      ],
       containsAll(['insertPage', 'pageMode', 'finger', 'fullscreen', 'export']),
     );
-    expect(chrome.fixed.map((shortcut) => shortcut.id), ['overview', 'otherSettings']);
+    // A hosted editor leaves 저장 to its host.
+    expect(chrome.actions.has(AppActionIds.save), isFalse);
+    // 문서 개요, which an Office PDF's function row keeps at its end
+    expect(
+      chrome.actions.lookup(AppActionIds.pageList)?.widgetKey,
+      const ValueKey('note-overview'),
+    );
     await tester.pumpWidget(const SizedBox());
     expect(chrome.editor, isNull);
   });
 
-  testWidgets('other settings: 페이지로 이동 goes to the page', (tester) async {
+  testWidgets('⋯ 쪽으로 이동 goes to the page', (tester) async {
     final editor = await mountEditor(tester);
     // createPage keeps one empty page after the one it makes.
     editor.createPage(2);
@@ -117,21 +126,15 @@ void main() {
     editor.setState(() {});
     await tester.pumpAndSettle();
     expect(editor.coreInfo.pages.length, greaterThanOrEqualTo(3));
-    await tester.tap(find.byKey(const ValueKey('note-other-settings')));
+    await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
     await tester.pumpAndSettle();
-    final panel = find.byKey(const ValueKey('other-settings-panel'));
-    expect(panel, findsOneWidget);
-    for (final title in const ['페이지 설정', '문서 내보내기', '일반 설정']) {
-      expect(find.descendant(of: panel, matching: find.text(title)), findsOneWidget);
-    }
-    await tester.enterText(
-      find.byKey(const ValueKey('other-settings-go-to-page-field')),
-      '3',
-    );
+    await tester.tap(find.text('쪽으로 이동'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('go-to-page-field')), '3');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(editor.currentPageIndex, 2);
-    expect(find.byKey(const ValueKey('other-settings-panel')), findsNothing);
+    expect(find.byKey(const ValueKey('go-to-page-field')), findsNothing);
     editor.cancelAutosaveAndMarkSaved();
   });
 
@@ -142,11 +145,10 @@ void main() {
     // ignore: invalid_use_of_protected_member
     editor.setState(() => editor.coreInfo.readOnlyReason = ReadOnlyReason.versionTooNew);
     await tester.pumpAndSettle();
-    NoteShortcut shortcut(String id) =>
-        chrome.shortcuts.firstWhere((shortcut) => shortcut.id == id);
-    expect(shortcut('insertPage').onPressed, isNull);
-    expect(shortcut('export').onPressed, isNull);
-    expect(shortcut('fullscreen').onPressed, isNotNull);
+    bool enabled(String id) => chrome.actions.lookup(id)!.enabled;
+    expect(enabled('insertPage'), isFalse);
+    expect(enabled('export'), isFalse);
+    expect(enabled('fullscreen'), isTrue);
   });
 
   testWidgets('a read-only note in full screen keeps a way back', (tester) async {
@@ -164,35 +166,8 @@ void main() {
     expect(DynamicMaterialApp.isFullscreen, isFalse);
   });
 
-  testWidgets('saving 사용자 지정 도구 모음 keeps the shortcuts the 228 toolbar hid', (
-    tester,
-  ) async {
-    final previousToolbar = stows.pageToolbarLayout.value;
-    stows.pageToolbarLayout.value = const ['!finger'];
-    addTearDown(() => stows.pageToolbarLayout.value = previousToolbar);
-    await mountEditor(tester);
-    ShortcutSide finger() => ShortcutLayout.decode(
-      noteShortcutItems,
-      stows.noteShortcutLayout.value,
-      legacyToolbar: stows.pageToolbarLayout.value,
-    ).sideOf('finger');
-    expect(finger(), ShortcutSide.more);
-    await tester.tap(find.byKey(const ValueKey('note-other-settings')));
-    await tester.pumpAndSettle();
-    final custom = find.byKey(const ValueKey('other-settings-toolbar-custom'));
-    await tester.ensureVisible(custom);
-    await tester.pumpAndSettle();
-    await tester.tap(custom);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('toolbar-custom-apply')));
-    await tester.pumpAndSettle();
-    // The dialog writes the tools only; the old switches are gone from it.
-    expect(stows.pageToolbarLayout.value, isNot(contains('!finger')));
-    expect(finger(), ShortcutSide.more);
-  });
-
   testWidgets(
-    'while a PDF is being imported, the page shortcuts and 기타 설정 are off',
+    'while a PDF is being imported, the page shortcuts are off',
     (tester) => withOfficePreviewPdfium(tester, () async {
       tester.view.physicalSize = const Size(1200, 2000);
       tester.view.devicePixelRatio = 1;
@@ -236,14 +211,12 @@ void main() {
         () => saving,
         'The PDF import must reach its first save',
       );
-      NoteShortcut shortcut(String id) => [
-        ...chrome.shortcuts,
-        ...chrome.fixed,
-      ].firstWhere((shortcut) => shortcut.id == id);
-      const pageActions = ['insertPage', 'export', 'overview', 'otherSettings'];
+      // The page actions are the editor's actions, 문서 개요 too.
+      bool on(String id) => chrome.actions.lookup(id)!.enabled;
+      const pageActions = ['insertPage', 'export', 'pageList'];
       try {
         for (final id in pageActions) {
-          expect(shortcut(id).onPressed, isNull, reason: id);
+          expect(on(id), isFalse, reason: id);
         }
       } finally {
         if (!firstSave.isCompleted) firstSave.complete();
@@ -255,7 +228,7 @@ void main() {
       );
       await tester.pump();
       for (final id in pageActions) {
-        expect(shortcut(id).onPressed, isNotNull, reason: id);
+        expect(on(id), isTrue, reason: id);
       }
       tester.state<EditorState>(find.byType(Editor)).cancelAutosaveAndMarkSaved();
       await tester.pumpWidget(const SizedBox());

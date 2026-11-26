@@ -3,31 +3,32 @@ import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
+import 'package:saber/components/ink_ui/kit_zoom_badge.dart';
+import 'package:saber/components/ink_ui/pen_panel/size_level.dart';
+import 'package:saber/components/kit/kit_icon.dart';
+import 'package:saber/components/kit/kit_motion.dart';
+import 'package:saber/components/kit/kit_pill.dart';
+import 'package:saber/components/kit/kit_tokens.dart';
+import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/flavor_config.dart';
-import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/infinite_document.dart';
-import 'package:saber/pages/workspace/infinite_canvas.dart';
 
-InfiniteStroke stroke({
-  String id = 'stroke-1',
-  double x = -1000000,
-  double y = -50,
-}) => InfiniteStroke(
-  id: id,
-  tool: InfiniteInkTool.pen,
-  color: 0xff112233,
-  width: 3,
-  points: [
-    InfinitePoint(x, y, pressure: .4),
-    InfinitePoint(x + 20, y + 10, pressure: .9),
-  ],
-);
+import '../utils/paint_counts.dart';
+import '../utils/shown.dart';
+import 'infinite_canvas_harness.dart';
 
+/// The infinite note's engine: its document, the view, ink, saving, undo,
+/// the eraser and the lasso, the zoom badge. Its kit toolbar and floating
+/// bar (Task 18) are in infinite_canvas_kit_test.dart.
 void main() {
-  // The canvas reads its toolbar position from the app preferences.
-  setUp(FlavorConfig.setup);
+  setUp(() {
+    FlavorConfig.setup();
+    resetInkSettings();
+  });
 
   test('infinite document roundtrips negative and distant world coordinates with pressure', () {
     final source = InfiniteDocument(
@@ -67,56 +68,6 @@ void main() {
     expect(() => InfiniteDocument.fromJson(json), throwsFormatException);
   });
 
-  Future<GlobalKey<InfiniteCanvasState>> mount(
-    WidgetTester tester, {
-    InfiniteDocument initial = const InfiniteDocument.empty(),
-    Future<void> Function(InfiniteDocument)? onSave,
-    ValueChanged<bool>? onDirty,
-    ValueChanged<bool>? onBusy,
-    InfiniteViewport initialViewport = const InfiniteViewport(),
-    Future<void> Function(InfiniteViewport)? onSaveViewport,
-  }) async {
-    final key = GlobalKey<InfiniteCanvasState>();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: InfiniteCanvas(
-            key: key,
-            initialDocument: initial,
-            onSave: onSave ?? (_) async {},
-            initialViewport: initialViewport,
-            onSaveViewport: onSaveViewport,
-            onDirtyChanged: onDirty,
-            onBusyChanged: onBusy,
-            onBack: () {},
-            autosaveDelay: const Duration(hours: 1),
-          ),
-        ),
-      ),
-    );
-    return key;
-  }
-
-  Future<void> draw(
-    WidgetTester tester,
-    List<Offset> localPoints, {
-    int pointer = 1,
-  }) async {
-    final origin = tester.getTopLeft(
-      find.byKey(const ValueKey('infinite-surface')),
-    );
-    final gesture = await tester.createGesture(
-      kind: PointerDeviceKind.stylus,
-      pointer: pointer,
-    );
-    await gesture.down(origin + localPoints.first);
-    for (final point in localPoints.skip(1)) {
-      await gesture.moveTo(origin + point);
-    }
-    await gesture.up();
-    await tester.pump();
-  }
-
   testWidgets('save retains a moved view even when ink content is unchanged', (
     tester,
   ) async {
@@ -139,6 +90,7 @@ void main() {
     expect(reopened.currentState!.viewport.offset, saved!.offset);
     expect(reopened.currentState!.viewport.scale, saved!.scale);
     expect(reopened.currentState!.document.strokes, isEmpty);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets(
@@ -172,6 +124,31 @@ void main() {
     },
   );
 
+  testWidgets('narrow canvas keeps the widths in reach on the pen panel', (
+    tester,
+  ) async {
+    final key = await mount(tester, size: const Size(360, 640));
+    await press(tester, byKey('floating-bar-pen-fountain'));
+    // + to the end: the old menu's widest, 8
+    for (var i = 0; i < 20; i++) {
+      final plus = find.byTooltip('굵게');
+      await tester.ensureVisible(plus);
+      await tester.tap(plus);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(350, 630));
+    await tester.pumpAndSettle();
+    await draw(tester, [const Offset(60, 300), const Offset(90, 300)]);
+    await press(tester, byKey('floating-bar-pen-hlchisel'));
+    await draw(tester, [const Offset(60, 400), const Offset(90, 400)]);
+    expect(key.currentState!.document.strokes.map((stroke) => stroke.width), [
+      8,
+      40,
+    ]);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('one-tap width presets save exact pen and marker geometry', (
     tester,
   ) async {
@@ -188,47 +165,60 @@ void main() {
       initial: InfiniteDocument(strokes: [old]),
       onSave: (value) async => saved = value,
     );
-    Finder width(int index) => find.byKey(ValueKey('ink-width-preset-$index'));
-    await tester.tap(width(0));
-    await tester.pump();
-    await draw(tester, [const Offset(40, 60), const Offset(90, 60)]);
-    await tester.tap(find.byKey(const ValueKey('infinite-tool-highlighter')));
-    await tester.pump();
-    await draw(tester, [const Offset(40, 90), const Offset(90, 90)]);
-    await tester.tap(width(2));
-    await tester.pump();
 
-    final origin = tester.getTopLeft(
-      find.byKey(const ValueKey('infinite-surface')),
-    );
+    /// Picks the width labelled [level] in the floating bar's width window.
+    Future<void> width(int level) async {
+      await press(tester, byKey('toolbar-quick-ink-widths'));
+      await tester.tap(
+        find.descendant(
+          of: byKey('floating-bar-widths'),
+          matching: find.text('$level'),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    // the old quick widths 1 · 2.5 · 5, highlighter five times
+    await width(sizeToLevel(1, min: 1, max: 8));
+    await draw(tester, [const Offset(40, 160), const Offset(90, 160)]);
+    await press(tester, byKey('floating-bar-pen-hlchisel'));
+    await draw(tester, [const Offset(40, 190), const Offset(90, 190)]);
+    await width(sizeToLevel(25, min: 5, max: 40));
+
+    final origin = tester.getTopLeft(surface);
     final gesture = await tester.createGesture(
       kind: PointerDeviceKind.stylus,
       pointer: 17,
     );
-    await gesture.down(origin + const Offset(40, 120));
+    await gesture.down(origin + const Offset(40, 220));
     await tester.pump();
-    expect(tester.widget<IconButton>(width(1)).onPressed, isNull);
-    await tester.tap(width(1), warnIfMissed: false);
-    await gesture.moveTo(origin + const Offset(90, 120));
+    await gesture.moveTo(origin + const Offset(90, 220));
     await tester.pump();
-    final canvas = tester.widget<CustomPaint>(
-      find.descendant(
-        of: find.byKey(const ValueKey('infinite-surface')),
-        matching: find.byType(CustomPaint),
-      ),
+    // the finished marker on the strokes' layer, the one being drawn over it
+    CustomPainter painter(String layer) => tester
+        .widget<CustomPaint>(
+          find.descendant(
+            of: byKey(layer),
+            matching: find.byType(CustomPaint),
+            matchRoot: true,
+          ),
+        )
+        .painter!;
+    expect(
+      (Canvas target) =>
+          painter('infinite-strokes').paint(target, const Size(800, 500)),
+      paints..path(strokeWidth: 5),
     );
     expect(
-      (Canvas target) => canvas.painter!.paint(target, const Size(800, 500)),
-      paints
-        ..path(strokeWidth: 5)
-        ..path(strokeWidth: 25),
+      (Canvas target) =>
+          painter('infinite-active').paint(target, const Size(800, 500)),
+      paints..path(strokeWidth: 25),
     );
     await gesture.up();
     await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('infinite-tool-pen')));
-    await tester.pump();
-    await draw(tester, [const Offset(40, 150), const Offset(90, 150)]);
+    await press(tester, byKey('floating-bar-pen-fountain'));
+    await draw(tester, [const Offset(40, 250), const Offset(90, 250)]);
     await key.currentState!.save();
     final reopened = InfiniteDocument.fromJson(saved!.toJson()).strokes;
     expect(reopened.map((stroke) => stroke.width), [40, 1, 5, 25, 5]);
@@ -236,32 +226,137 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('narrow canvas keeps the four legacy widths in reach', (
+  // Final review C (structure #1): the finished strokes have their own
+  // layer, painted again only when the document or the view changes, as
+  // the editor's pages are.
+  testWidgets('colour, width and tool changes do not paint the strokes again', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(360, 640));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final key = await mount(tester);
-    expect(find.byKey(const ValueKey('ink-width-preset-0')), findsNothing);
-    final widthMenu = find.byKey(const ValueKey('infinite-width-menu'));
-    await tester.tap(widthMenu);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('8.0 px'));
-    await tester.pumpAndSettle();
-    await draw(tester, [const Offset(60, 90), const Offset(90, 90)]);
-    // The highlighter sits behind the width on a phone-width toolbar.
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('infinite-tool-highlighter')),
+    final key = await mount(
+      tester,
+      initial: InfiniteDocument(strokes: [stroke(x: 100, y: 300)]),
     );
+    final layer = tester.renderObject<RenderRepaintBoundary>(
+      byKey('infinite-strokes'),
+    );
+    final before = paintCounts(layer);
+
+    await press(tester, byKey('floating-bar-colour-1'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<KitColorDot>(byKey('floating-bar-colour-1')).selected,
+      isTrue,
+      reason: 'the bar shows the new colour',
+    );
+    await press(tester, byKey('toolbar-quick-ink-widths'));
+    await tester.tap(
+      find.descendant(
+        of: byKey('floating-bar-widths'),
+        matching: find.text('${sizeToLevel(5, min: 1, max: 8)}'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await press(tester, byKey('floating-bar-pen-hlchisel'));
+    await press(tester, byKey('editor-tool-eraser'));
+    await press(tester, byKey('editor-tool-pen'));
+    expectNotPainted(layer, before);
+
+    // a stroke with them: the new colour and width (highlighter five times
+    // as wide), and the layer painted again for it
+    await draw(tester, [const Offset(100, 200), const Offset(160, 200)]);
+    final drawn = key.currentState!.document.strokes.last;
+    expect(drawn.color, KitTokens.floatingBarDefaultColors[1].toARGB32());
+    expect(drawn.width, 25);
+    expect(drawn.tool, InfiniteInkTool.highlighter);
+    expect(
+      identical(paintCounts(layer).layers.first, before.layers.first),
+      isFalse,
+      reason: 'painted again (alone, new layers) for the new stroke',
+    );
+
+    // the view moved (a wheel pan): painted again too (final fix review
+    // Minor 1)
+    final unmoved = paintCounts(layer);
+    final offset = key.currentState!.viewport.offset;
+    final mouse = TestPointer(9, PointerDeviceKind.mouse);
+    await tester.sendEventToBinding(mouse.hover(tester.getCenter(surface)));
+    await tester.sendEventToBinding(mouse.scroll(const Offset(0, 40)));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('infinite-tool-highlighter')));
+    expect(key.currentState!.viewport.offset, isNot(offset));
+    expect(
+      identical(paintCounts(layer).layers.first, unmoved.layers.first),
+      isFalse,
+      reason: 'painted again for the moved view',
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // Final review design call 3: the saving clock had the disabled look (35 %
+  // from KitEditorToolbar's _BarButton, because 「저장 중」 is not enabled).
+  testWidgets('the saving clock is white and whole, and takes no press', (
+    tester,
+  ) async {
+    final write = Completer<void>();
+    var saves = 0;
+    await mount(
+      tester,
+      onSave: (_) {
+        saves++;
+        return write.future;
+      },
+    );
+    final save = byKey('editor-canvas-save');
+    KitIcon icon() => tester.widget<KitIcon>(
+      find.descendant(of: save, matching: find.byType(KitIcon)),
+    );
+    double opacity() => tester
+        .widget<Opacity>(
+          find.ancestor(of: find.byWidget(icon()), matching: find.byType(Opacity))
+              .first,
+        )
+        .opacity;
+    final saved = icon();
+    expect(saved.name, KitIconName.checkCircle);
+    await draw(tester, [const Offset(100, 200), const Offset(160, 200)]);
+    await tester.tap(save);
     await tester.pump();
-    expect(find.text('40.0 px'), findsOneWidget);
-    await draw(tester, [const Offset(60, 150), const Offset(90, 150)]);
-    expect(key.currentState!.document.strokes.map((stroke) => stroke.width), [
-      8,
-      40,
-    ]);
+    await tester.pump();
+    expect(icon().name, KitIconName.clock);
+    expect(opacity(), 1, reason: 'not dimmed');
+    expect(icon().color, saved.color);
+    expect(icon().size, saved.size);
+    expect(icon().strokeWidth, saved.strokeWidth);
+    // still not a button that works while it saves
+    expect(
+      tester.getSemantics(save).flagsCollection.isEnabled.toBoolOrNull(),
+      isFalse,
+    );
+    await tester.tap(save);
+    await tester.pump();
+    expect(saves, 1);
+    write.complete();
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // Final review design call 5: 원점으로 had the tab row's home; it is a
+  // crosshair of its own now.
+  testWidgets('원점으로 shows the origin crosshair, not the home', (
+    tester,
+  ) async {
+    await mount(tester);
+    final icon = tester.widget<KitIcon>(
+      find.descendant(
+        of: byKey('editor-canvas-origin'),
+        matching: find.byType(KitIcon),
+      ),
+    );
+    expect(icon.name.id, 'origin');
+    expect(icon.name.label, '원점으로');
+    // a small ring in the middle and four ticks, no outer ring
+    expect(icon.name.svg, contains('<circle cx="12" cy="12" r="3.4"/>'));
+    expect(RegExp('<circle').allMatches(icon.name.svg), hasLength(1));
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -284,7 +379,7 @@ void main() {
       expect(key.currentState!.document.strokes, hasLength(1));
       expect(dirty, [true]);
       fail = false;
-      await tester.tap(find.byKey(const ValueKey('infinite-retry-save')));
+      await tester.tap(byKey('infinite-retry-save'));
       await tester.pumpAndSettle();
       expect(dirty, [true, false]);
       await tester.pumpWidget(const SizedBox());
@@ -296,16 +391,16 @@ void main() {
   ) async {
     final key = await mount(tester);
     await draw(tester, [const Offset(100, 100), const Offset(160, 100)]);
-    await tester.tap(find.byKey(const ValueKey('infinite-undo')));
+    await tester.tap(byKey('floating-bar-undo'));
     await tester.pump();
     expect(key.currentState!.document.strokes, isEmpty);
-    await tester.tap(find.byKey(const ValueKey('infinite-redo')));
+    await tester.tap(byKey('floating-bar-redo'));
     await tester.pump();
     expect(key.currentState!.document.strokes, hasLength(1));
-    await tester.tap(find.byKey(const ValueKey('infinite-tool-eraser')));
+    await press(tester, byKey('editor-tool-eraser'));
     await draw(tester, [const Offset(130, 100)]);
     expect(key.currentState!.document.strokes, isEmpty);
-    await tester.tap(find.byKey(const ValueKey('infinite-undo')));
+    await tester.tap(byKey('floating-bar-undo'));
     await tester.pump();
     expect(key.currentState!.document.strokes, hasLength(1));
     await tester.pumpWidget(const SizedBox());
@@ -318,7 +413,7 @@ void main() {
       tester,
       initial: InfiniteDocument(strokes: [stroke(x: 100, y: 100)]),
     );
-    await tester.tap(find.byKey(const ValueKey('infinite-tool-lasso')));
+    await press(tester, byKey('editor-tool-lasso'));
     await draw(tester, [
       const Offset(80, 80),
       const Offset(150, 80),
@@ -331,7 +426,8 @@ void main() {
       key.currentState!.document.strokes.single.points.first.offset,
       const Offset(150, 130),
     );
-    await tester.tap(find.byKey(const ValueKey('infinite-undo')));
+    final context = tester.element(find.byType(KitEditorToolbar));
+    actionsOf(tester).run(AppActionIds.undo, context);
     await tester.pump();
     expect(
       key.currentState!.document.strokes.single.points.first.offset,
@@ -340,27 +436,26 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('touch pans infinitely and does not make ink by default', (
-    tester,
-  ) async {
-    final key = await mount(tester);
-    final origin = tester.getTopLeft(
-      find.byKey(const ValueKey('infinite-surface')),
-    );
-    final gesture = await tester.createGesture(
-      kind: PointerDeviceKind.touch,
-      pointer: 3,
-    );
-    await gesture.down(origin + const Offset(50, 50));
-    await gesture.moveTo(origin + const Offset(350, 150));
-    await gesture.up();
-    expect(key.currentState!.document.strokes, isEmpty);
-    expect(
-      key.currentState!.viewport.screenToWorld(Offset.zero).dx,
-      lessThan(0),
-    );
-    await tester.pumpWidget(const SizedBox());
-  });
+  testWidgets(
+    'touch pans infinitely and makes no ink with finger writing off',
+    (tester) async {
+      final key = await mount(tester);
+      final origin = tester.getTopLeft(surface);
+      final gesture = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+        pointer: 3,
+      );
+      await gesture.down(origin + const Offset(50, 150));
+      await gesture.moveTo(origin + const Offset(350, 250));
+      await gesture.up();
+      expect(key.currentState!.document.strokes, isEmpty);
+      expect(
+        key.currentState!.viewport.screenToWorld(Offset.zero).dx,
+        lessThan(0),
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('save serializes pending changes before completing', (
     tester,
@@ -374,12 +469,12 @@ void main() {
         if (writes.length == 1) await firstWrite.future;
       },
     );
-    await draw(tester, [const Offset(40, 40), const Offset(60, 60)]);
+    await draw(tester, [const Offset(40, 140), const Offset(60, 160)]);
     final saving = key.currentState!.save();
     await tester.pump();
     await draw(tester, [
-      const Offset(100, 100),
-      const Offset(130, 140),
+      const Offset(100, 200),
+      const Offset(130, 240),
     ], pointer: 2);
     firstWrite.complete();
     await saving;
@@ -391,34 +486,28 @@ void main() {
     'pointer cancellation retains the valid ink received before interruption',
     (tester) async {
       final key = await mount(tester);
-      final origin = tester.getTopLeft(
-        find.byKey(const ValueKey('infinite-surface')),
-      );
+      final origin = tester.getTopLeft(surface);
       final gesture = await tester.createGesture(
         kind: PointerDeviceKind.stylus,
         pointer: 7,
       );
-      await gesture.down(origin + const Offset(50, 50));
-      await gesture.moveTo(origin + const Offset(75, 80));
+      await gesture.down(origin + const Offset(50, 150));
+      await gesture.moveTo(origin + const Offset(75, 180));
       await gesture.cancel();
       await tester.pump();
       expect(
         key.currentState!.document.strokes.single.points.last.offset,
-        const Offset(75, 80),
+        const Offset(75, 180),
       );
       await key.currentState!.save();
       await tester.pumpWidget(const SizedBox());
     },
   );
 
-  double pillOpacity(WidgetTester tester) => tester
-      .widget<AnimatedOpacity>(find.byKey(const ValueKey('zoom-pill')))
-      .opacity;
+  final zoomBadge = byKey('zoom-badge-pill');
 
   Future<void> ctrlScroll(WidgetTester tester, double dy) async {
-    final center = tester.getCenter(
-      find.byKey(const ValueKey('infinite-surface')),
-    );
+    final center = tester.getCenter(surface);
     final mouse = TestPointer(9, PointerDeviceKind.mouse);
     await tester.sendEventToBinding(mouse.hover(center));
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
@@ -427,67 +516,31 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('zoom pill shows only when the scale changes', (tester) async {
-    await mount(tester);
-    expect(find.byTooltip('축소'), findsNothing);
-    expect(find.byTooltip('확대'), findsNothing);
-    final center = tester.getCenter(
-      find.byKey(const ValueKey('infinite-surface')),
-    );
-    final mouse = TestPointer(8, PointerDeviceKind.mouse);
-    await tester.sendEventToBinding(mouse.hover(center));
-    await tester.sendEventToBinding(mouse.scroll(const Offset(0, 40)));
-    await tester.pump();
-    expect(pillOpacity(tester), 0);
-    await ctrlScroll(tester, -60);
-    expect(pillOpacity(tester), 1);
-    await tester.pump(const Duration(milliseconds: 2100));
-    expect(pillOpacity(tester), 0);
-  });
-
-  testWidgets('pill scale list zooms the view to the chosen scale', (
-    tester,
-  ) async {
-    final key = await mount(tester);
-    await ctrlScroll(tester, -60);
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const ValueKey('zoom-pill')),
-        matching: find.textContaining('%'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('200%').last);
-    await tester.pumpAndSettle();
-    expect(key.currentState!.viewport.scale, closeTo(2, 1e-9));
-    await tester.pump(const Duration(seconds: 3));
-  });
-
-  testWidgets('infinite toolbar docks to the left as a column', (
-    tester,
-  ) async {
-    final previous = stows.workspaceToolbarAlignment.value;
-    stows.workspaceToolbarAlignment.value = AxisDirection.left;
-    addTearDown(() => stows.workspaceToolbarAlignment.value = previous);
-    await mount(tester);
-    expect(
-      tester.widget<Flex>(find.byKey(const ValueKey('infinite-toolbar'))).direction,
-      Axis.vertical,
-    );
-    expect(tester.getTopLeft(find.byTooltip('펜')).dx, lessThan(100));
-    expect(find.byKey(const ValueKey('toolbar-dock-handle')), findsOneWidget);
-    expect(find.byTooltip('툴바 설정'), findsOneWidget);
-  });
-  testWidgets('infinite toolbar follows the saved layout', (tester) async {
-    final previous = stows.infiniteToolbarLayout.value;
-    stows.infiniteToolbarLayout.value = ['!pan', 'save', 'undo'];
-    addTearDown(() => stows.infiniteToolbarLayout.value = previous);
-    await mount(tester);
-    expect(find.byTooltip('이동'), findsNothing);
-    expect(
-      tester.getCenter(find.byTooltip('저장')).dx,
-      lessThan(tester.getCenter(find.byTooltip('실행 취소')).dx),
-    );
-    expect(find.byTooltip('원점으로'), findsOneWidget);
-  });
+  testWidgets(
+    'the zoom pill is the kit zoom badge and shows only when the scale changes',
+    (tester) async {
+      final key = await mount(tester);
+      expect(find.byType(KitZoomBadge), findsOneWidget);
+      expect(shownOf(tester, zoomBadge), 0);
+      final center = tester.getCenter(surface);
+      final mouse = TestPointer(8, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(mouse.hover(center));
+      await tester.sendEventToBinding(mouse.scroll(const Offset(0, 40)));
+      await tester.pumpAndSettle();
+      expect(shownOf(tester, zoomBadge), 0, reason: 'a pan keeps the scale');
+      await ctrlScroll(tester, -60);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(shownOf(tester, zoomBadge), 1);
+      final scaled = key.currentState!.viewport.scale;
+      expect(find.text('${(scaled * 100).round()}%'), findsOneWidget);
+      // a press goes back to 100 %
+      await tester.tap(zoomBadge);
+      await tester.pump();
+      expect(key.currentState!.viewport.scale, closeTo(1, 1e-9));
+      await tester.pump(KitMotion.zoomBadgeHide);
+      await tester.pumpAndSettle();
+      expect(shownOf(tester, zoomBadge), 0);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

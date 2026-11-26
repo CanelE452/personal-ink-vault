@@ -11,6 +11,8 @@ import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/pages/workspace/workspace_controller.dart';
 
+import '../utils/temp_dirs.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   FlavorConfig.setup();
@@ -29,7 +31,7 @@ void main() {
     await controller.flush();
     controller.dispose();
     await controller.repository.close();
-    await temp.delete(recursive: true);
+    await deleteTempDir(temp);
   });
 
   test(

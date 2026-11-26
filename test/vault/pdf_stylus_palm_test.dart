@@ -20,6 +20,7 @@ import 'package:saber/data/vault/saber_ink_adapter.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 
+import '../utils/kit_menu_finders.dart';
 import '../utils/office_preview.dart'
     show
         officePreviewDocumentsClosed,
@@ -244,10 +245,10 @@ void main() {
             isTrue,
           );
           await tester.pumpAndSettle();
-          await tester.tap(
-            find.byKey(const ValueKey('editor-single-page-toggle')),
-          );
-          await tester.pumpAndSettle();
+          // ⋯ 쪽 배치 → 가로로 넘기기 (the function row toggle is gone: Task 17)
+          expect(singlePageLayout(tester), isFalse);
+          await togglePageLayout(tester);
+          expect(singlePageLayout(tester), isTrue);
           expect(editor.currentPageIndex, pageIndex);
           expect(editor.coreInfo.pages.first.renderBox, isNull);
           final center = tester.getCenter(find.byType(InteractiveCanvasViewer));

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:path/path.dart' as p;
+import 'package:saber/components/kit/kit_toolbar.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/native/ink_vault_native.dart';
@@ -92,12 +93,13 @@ void main() {
           ),
         );
         final editor = find.byType(DatabaseEditor);
+        // the function row's kit buttons (Task 17)
         Finder historyButton(String tooltip) => find.byWidgetPredicate(
-          (widget) => widget is IconButton && widget.tooltip == tooltip,
+          (widget) => widget is KitToolbarButton && widget.tooltip == tooltip,
         );
         bool enabled(Finder button) =>
             button.evaluate().length == 1 &&
-            tester.widget<IconButton>(button).onPressed != null;
+            tester.widget<KitToolbarButton>(button).onPressed != null;
         await _waitFor(
           tester,
           () =>

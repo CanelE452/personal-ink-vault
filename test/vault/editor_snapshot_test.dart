@@ -43,7 +43,7 @@ void main() {
       final editor = tester.state<EditorState>(find.byType(Editor));
       editor.drawTestStroke();
       await editor.saveToFile();
-      expect(editor.savingState.value, SavingState.waitingToSave);
+      expect(editor.savingState.value, SavingState.failed);
       await tester.pump();
       expect(find.textContaining('기기 저장 실패'), findsOneWidget);
       await editor.saveToFile();

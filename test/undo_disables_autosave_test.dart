@@ -51,7 +51,8 @@ void main() {
       );
 
       // undo the drawing
-      await tester.tap(find.byIcon(Icons.undo));
+      // undo is the floating bar's (Task 13B-1)
+      await tester.tap(find.byKey(const ValueKey('floating-bar-undo')));
       await tester.pumpAndSettle();
       expect(
         getSavingState(),
@@ -94,7 +95,8 @@ void main() {
         reason: 'Saving state should be "saved" after saving the file',
       );
 
-      await tester.tap(find.byIcon(Icons.undo));
+      // undo is the floating bar's (Task 13B-1)
+      await tester.tap(find.byKey(const ValueKey('floating-bar-undo')));
       await tester.pumpAndSettle();
       expect(
         getSavingState(),

@@ -6,18 +6,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:pdf/pdf.dart' show PdfColors;
+import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/office/pdf_note_original.dart';
-import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/thumbnail_cache.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
+import '../utils/kit_menu_finders.dart';
 import '../utils/office_preview.dart'
     show
         officePreviewPdf,
@@ -111,10 +112,6 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      // The user put 새 엔진으로 PDF 다시 만들기 on the shortcut bar; it starts in 더 많은 기능.
-      final shortcuts = stows.noteShortcutLayout.value;
-      stows.noteShortcutLayout.value = const ['L:pdfRemake'];
-      addTearDown(() => stows.noteShortcutLayout.value = shortcuts);
       final inbox = StudyWorkspace.pendingDocumentImport;
       final starter = OfficeTemplates.create(
         OfficeTemplateKind.presentation,
@@ -150,10 +147,12 @@ void main() {
           'The import choice must be presented.',
         );
         await tester.runAsync(() => tester.tap(choice));
+        // 새 엔진으로 PDF 다시 만들기 is a row of the PDF note's ⋯ 「더 보기」 (Task 17: no function row).
         final remake = find.byKey(const ValueKey('pdf-remake-from-original'));
         bool remakeReady() =>
-            remake.hitTestable().evaluate().isNotEmpty &&
-            tester.widget<IconButton>(remake).onPressed != null &&
+            find.byType(Editor).evaluate().length == 1 &&
+            (editorActions(tester).lookup(AppActionIds.pdfRemake)?.enabled ??
+                false) &&
             controller.pendingPdfPath == null &&
             !controller.inkBusy;
         await officePreviewUntil(
@@ -164,6 +163,11 @@ void main() {
         final first = controller.activeSession!.note;
 
         Future<void> convertAgain() async {
+          await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 400));
+          await tester.ensureVisible(remake);
+          await tester.pump();
           await tester.runAsync(() => tester.tap(remake));
           final confirm = find.text('새 노트로 만들기');
           await officePreviewUntil(

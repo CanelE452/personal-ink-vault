@@ -8,6 +8,7 @@ import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart' show PdfColors;
 import 'package:saber/components/canvas/image/editor_image.dart';
+import 'package:saber/components/kit/kit_menu.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -23,6 +24,7 @@ import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
 import '../office/annotation_store_test.dart' show annotationOfficeFile;
+import '../utils/kit_menu_finders.dart';
 import '../utils/office_preview.dart'
     show
         officePreviewDocumentsClosed,
@@ -252,7 +254,7 @@ void main() {
             return;
           }
           await tester.runAsync(() => tester.tap(more));
-          final item = find.text(label);
+          final item = findMenuText(label);
           await officePreviewUntil(
             tester,
             () => item.hitTestable().evaluate().length == 1,
@@ -262,7 +264,7 @@ void main() {
           // A closing menu still shows its labels, which the error check below would read as a page link error.
           await officePreviewUntil(
             tester,
-            () => find.byType(PopupMenuItem<void>).evaluate().isEmpty,
+            () => find.byType(KitMenu).evaluate().isEmpty,
             'The more menu must close.',
           );
         }

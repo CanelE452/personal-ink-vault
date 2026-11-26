@@ -58,6 +58,7 @@ import 'package:saber/pages/office/office_workspace.dart';
 import 'package:saber/pages/office/windows_office_editor.dart';
 import 'package:xml/xml.dart';
 
+import '../utils/temp_dirs.dart';
 import '../utils/test_editor.dart';
 import '../utils/test_mock_channel_handlers.dart';
 import 'annotation_store_test.dart' show annotationOfficeFile, annotationPdf;
@@ -2297,7 +2298,7 @@ void main() {
   });
   tearDown(() async {
     await repository.close();
-    await temp.delete(recursive: true);
+    await deleteTempDir(temp);
   });
 
   Future<void> receiveIncompleteSource({VaultNote? related}) async {
@@ -2663,8 +2664,10 @@ void main() {
         final cleanPeer = await openPdf(peerKey);
         expect(under(localKey, find.byType(SaveIndicator)), findsNothing);
         expect(under(peerKey, find.byType(SaveIndicator)), findsOneWidget);
-        expect(under(localKey, find.byTooltip('문서 개요')), findsOneWidget);
-        expect(under(peerKey, find.byTooltip('문서 개요')), findsOneWidget);
+        // 문서 개요 is the editor toolbar's 쪽 목록 (Task 17)
+        const pages = ValueKey('editor-page-list');
+        expect(under(localKey, find.byKey(pages)).hitTestable(), findsOneWidget);
+        expect(under(peerKey, find.byKey(pages)).hitTestable(), findsOneWidget);
         await withPumping(tester, localKey.currentState!.save);
         await withPumping(tester, peerKey.currentState!.save);
 

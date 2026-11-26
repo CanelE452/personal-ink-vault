@@ -10,19 +10,23 @@ import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/native/ink_vault_native.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/block_page_document.dart';
 import 'package:saber/data/vault/card_canvas_document.dart';
 import 'package:saber/data/vault/workspace_database.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';
+import 'package:saber/pages/settings/settings_entries.dart';
 import 'package:saber/pages/workspace/card_canvas.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
+import '../utils/kit_menu_finders.dart';
 import '../utils/test_mock_channel_handlers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   FlavorConfig.setup();
+  registerSettingsEntries(settingsRegistry);
   setupMockPathProvider();
   setupMockPrinting();
   setupMockWindowManager();
@@ -201,6 +205,65 @@ void main() {
   );
 
   testWidgets(
+    '⋯ 문서 내보내기 opens the formats over ⋯ and writes the export',
+    (tester) async {
+      tester.view.physicalSize = const Size(1100, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      // the user moved 문서 내보내기 off the bar, into 더 많은 기능
+      final shortcuts = stows.noteShortcutLayout.value;
+      stows.noteShortcutLayout.value = const ['!documentExport'];
+      addTearDown(() => stows.noteShortcutLayout.value = shortcuts);
+      await tester.runAsync(page);
+      final more = find.byKey(const ValueKey('workspace-more-actions'));
+      await mount(tester, ready: more);
+      final export = find.byKey(const ValueKey('portable-export-menu'));
+      expect(export, findsNothing, reason: 'not on the bar');
+      await tester.tap(more);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(export, findsOneWidget);
+      await tester.tap(export);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      // the kit window closed; the formats open over ⋯
+      expect(export, findsNothing);
+      final markdown = find.byWidgetPredicate(
+        (widget) =>
+            widget is PopupMenuItem &&
+            widget.child is Text &&
+            (widget.child as Text).data == 'Markdown',
+      );
+      expect(markdown, findsOneWidget);
+      final button = tester.getRect(more);
+      expect(
+        tester.getRect(markdown).top,
+        inInclusiveRange(button.top - 48, button.bottom + 48),
+      );
+      await tester.tap(markdown);
+      await tester.pump();
+      await wait(tester, () => picker.calls == 1);
+      await wait(
+        tester,
+        () => find.byType(LinearProgressIndicator).evaluate().isEmpty,
+      );
+      expect(picker.calls, 1);
+      expect(picker.mimeType, 'application/zip');
+      expect(picker.fileName, endsWith('.zip'));
+      final archive = ZipDecoder().decodeBytes(picker.bytes!);
+      expect(
+        archive.files.where(
+          (file) =>
+              file.name.endsWith('.md') && !file.name.startsWith('source/'),
+        ),
+        hasLength(1),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'Canvas export saves pending edits and bundles only referenced files',
     (tester) async {
       await tester.runAsync(() async {
@@ -348,12 +411,11 @@ void main() {
         expect(
           find.descendant(
             of: vaultExport,
-            matching: find.text('Obsidian 보관함 ZIP'),
+            matching: findMenuText('Obsidian 보관함 ZIP'),
           ),
           findsOneWidget,
         );
         expect(vaultExport.hitTestable(), findsOneWidget);
-        expect(tester.widget<PopupMenuItem<void>>(vaultExport).enabled, isTrue);
         expect(controller.activeSession, same(session));
         expect(controller.canCreateDocument, isFalse);
         expect(picker.calls, 0);
@@ -406,10 +468,15 @@ void main() {
       picker.result = null;
       final drawer = find.byType(DrawerButton);
       await mount(tester, ready: drawer);
-      // The vault tools are in the library's settings, the gear in its top bar.
+      // The vault tools are rows of the full screen settings page, opened by
+      // the gear in the library's top bar.
       await tester.tap(find.byKey(const ValueKey('library-settings')));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('settings-obsidian')),
+      );
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey('settings-obsidian')));
       await tester.pump();
       await wait(tester, () => picker.calls == 1);

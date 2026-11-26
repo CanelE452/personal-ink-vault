@@ -13,6 +13,7 @@ import 'package:saber/data/office/office_templates.dart';
 import 'package:saber/data/vault/thumbnail_cache.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';
+import 'package:saber/pages/settings/settings_entries.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
 import '../utils/test_mock_channel_handlers.dart';
@@ -20,6 +21,7 @@ import '../utils/test_mock_channel_handlers.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   FlavorConfig.setup();
+  registerSettingsEntries(settingsRegistry);
   setupMockPathProvider();
   setupMockPrinting();
   setupMockWindowManager();
@@ -114,13 +116,16 @@ void main() {
     return value as T;
   }
 
-  // The library's link and AI dialogs are in its settings, the gear in the
-  // library's top bar.
+  // The library's link and AI dialogs are rows of its full screen settings
+  // page, opened by the gear in the library's top bar.
   Future<void> openFromSettings(WidgetTester tester, String item) async {
     final settings = find.byKey(const ValueKey('library-settings'));
     await tester.tap(settings);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 400));
+    // The page is a list taller than the test screen; scroll the row in.
+    await tester.ensureVisible(find.byKey(ValueKey(item)));
+    await tester.pump();
     await tester.tap(find.byKey(ValueKey(item)));
   }
 

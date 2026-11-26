@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:saber/components/toolbar/ink_width_presets.dart';
-import 'package:saber/components/toolbar/tool_panels.dart';
+import 'package:saber/components/ink_ui/pen_panel/size_level.dart';
+import 'package:saber/components/kit/kit_controls.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
@@ -15,19 +15,10 @@ import 'package:saber/pages/editor/editor.dart';
 
 import '../utils/test_mock_channel_handlers.dart';
 
+/// The floating bar's width button and the window it opens (Task 12): the
+/// pen's three widths, named with the pen panel's numbers.
 const _group = ValueKey('toolbar-quick-ink-widths');
-const _slider = ValueKey('tool-panel-size');
-Finder _preset(int index) => find.byKey(ValueKey('ink-width-preset-$index'));
-
-Future<void> _dragToMiddle(WidgetTester tester) async {
-  final bounds = tester.getRect(find.byKey(_slider));
-  final gesture = await tester.startGesture(
-    Offset(bounds.left + 15, bounds.center.dy),
-  );
-  await gesture.moveTo(bounds.center);
-  await gesture.up();
-  await tester.pumpAndSettle();
-}
+const _window = ValueKey('floating-bar-widths');
 
 void main() {
   setUp(() async {
@@ -48,17 +39,14 @@ void main() {
     final priorPen = Pen.currentPen;
     final priorStroke = Pen.currentStroke;
     final priorOptions = stows.lastBallpointPenOptions.value;
-    final priorAlignment = stows.editorToolbarAlignment.value;
     stows.lastTool.value = .ballpointPen;
     stows.lastBallpointPenOptions.value = Pen.ballpointPenOptions;
-    stows.editorToolbarAlignment.value = AxisDirection.left;
     Pen.currentPen = Pen.ballpointPen();
     tester.view.physicalSize = const Size(1120, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
       stows.lastTool.value = priorTool;
       stows.lastBallpointPenOptions.value = priorOptions;
-      stows.editorToolbarAlignment.value = priorAlignment;
       Pen.currentPen = priorPen;
       Pen.currentStroke = priorStroke;
       tester.view.resetPhysicalSize();
@@ -115,11 +103,13 @@ void main() {
         final pen = editor.currentTool as Pen;
         final color = pen.color;
         final page = editor.coreInfo.pages.first;
+        // one width button: the floating bar's
         expect(find.byKey(_group), findsOneWidget);
-        expect(tester.widget<InkWidthPresets>(find.byKey(_group)).widths, [
-          3,
-          8,
-          15,
+        await tester.tap(find.byKey(_group));
+        await tester.pumpAndSettle();
+        expect(_levels(tester), [
+          for (final w in const [3.0, 8.0, 15.0])
+            '${sizeToLevel(w, min: pen.sizeMin, max: pen.sizeMax)}',
         ]);
 
         void beginStroke() {
@@ -128,24 +118,16 @@ void main() {
           pen.onDragUpdate(const Offset(50, 45), null);
         }
 
-        // The toolbar is one scrolling line; bring the width dots into view.
-        await tester.ensureVisible(_preset(2));
-        await tester.pump();
-        await tester.tap(_preset(0));
-        await tester.pump();
+        await _pick(tester, pen, 3);
         beginStroke();
         final inFlight = Pen.currentStroke!;
         expect(inFlight.options.size, 3);
-        await tester.tap(_preset(2));
-        await tester.pump();
+        await _pick(tester, pen, 15);
         expect(editor.currentTool, same(pen));
         expect(pen.color, color);
         expect(Pen.currentStroke, same(inFlight));
         expect(inFlight.options.size, 3);
-        expect(
-          tester.widget<InkWidthPresets>(find.byKey(_group)).selectedWidth,
-          15,
-        );
+        expect(pen.options.size, 15);
         expect(stows.lastBallpointPenOptions.value.size, 15);
         expect(Pen.ballpointPen().options.size, 15);
         editor.onDrawEnd(ScaleEndDetails());
@@ -172,52 +154,50 @@ void main() {
     );
   }
 
-  testWidgets('compact editor uses local width and retains exact pen slider', (
-    tester,
-  ) async {
+  testWidgets('the width window marks the width in hand', (tester) async {
     final editor = await mount(
       tester,
-      platform: TargetPlatform.android,
-      editorWidth: 320,
+      platform: TargetPlatform.windows,
+      editorWidth: 900,
     );
-    // The toolbar's values part keeps the width dots on every width and
-    // scrolls, as StarNote's does.
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('toolbar-params-scroll')),
-        matching: find.byKey(_group),
-      ),
-      findsOneWidget,
-    );
-    await tester.tap(find.byTooltip('펜'));
+    final pen = editor.currentTool as Pen;
+    await _pick(tester, pen, 8);
+    await tester.tap(find.byKey(_group));
     await tester.pumpAndSettle();
-    final slider = find.byKey(_slider);
-    expect(slider, findsOneWidget);
-    await _dragToMiddle(tester);
-    expect((editor.currentTool as Pen).options.size, 13);
-    expect(stows.lastBallpointPenOptions.value.size, 13);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('wide editor keeps presets and exact slider in sync', (
-    tester,
-  ) async {
-    await mount(tester, platform: TargetPlatform.windows, editorWidth: 900);
-    await tester.tap(find.byTooltip('펜'));
-    await tester.pumpAndSettle();
-    await _dragToMiddle(tester);
-    expect(
-      tester.widget<InkWidthPresets>(find.byKey(_group)).selectedWidth,
-      13,
-    );
-    await tester.tap(_preset(1));
-    await tester.pumpAndSettle();
-    expect(tester.widget<InkWidthPresets>(find.byKey(_group)).selectedWidth, 8);
+    final eight = '${sizeToLevel(8, min: pen.sizeMin, max: pen.sizeMax)}';
     expect(
       tester
-          .widget<Text>(find.byKey(const ValueKey('tool-panel-size-value')))
-          .data,
-      millimetres(8),
+          .getSemantics(
+            find.descendant(
+              of: find.byKey(_window),
+              matching: find.bySemanticsLabel(eight),
+            ),
+          )
+          .flagsCollection
+          .isSelected
+          .toBoolOrNull(),
+      isTrue,
     );
+    expect(tester.takeException(), isNull);
+    editor.cancelAutosaveAndMarkSaved();
   });
+}
+
+/// The open width window's choices (their numbers).
+List<String> _levels(WidgetTester tester) {
+  final segment = tester.widget<KitSegment<double?>>(find.byKey(_window));
+  return [for (final (_, label) in segment.options) label];
+}
+
+/// Opens the floating bar's width window and picks [width].
+Future<void> _pick(WidgetTester tester, Pen pen, double width) async {
+  if (find.byKey(_window).evaluate().isEmpty) {
+    await tester.tap(find.byKey(_group));
+    await tester.pumpAndSettle();
+  }
+  final level = '${sizeToLevel(width, min: pen.sizeMin, max: pen.sizeMax)}';
+  await tester.tap(
+    find.descendant(of: find.byKey(_window), matching: find.text(level)),
+  );
+  await tester.pumpAndSettle();
 }

@@ -9,10 +9,10 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as flutter_quill;
 import 'package:ink_vault_core/ink_vault_core.dart' show newId;
-import 'package:keybinder/keybinder.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:pdfrx/pdfrx.dart';
@@ -25,29 +25,44 @@ import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/page_link_layer.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
 import 'package:saber/components/editor/read_only_banner.dart';
+import 'package:saber/components/ink_ui/doc_menu/kit_doc_menu.dart';
+import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
+import 'package:saber/components/ink_ui/editor_toolbar/kit_note_sheet.dart';
+import 'package:saber/components/ink_ui/editor_toolbar/kit_save_chip.dart';
+import 'package:saber/components/ink_ui/editor_toolbar/toolbar_customize_sheet.dart';
+import 'package:saber/components/ink_ui/editor_toolbar/toolbar_tools_layout.dart'
+    show kitIconForTool;
+import 'package:saber/components/ink_ui/floating_bar/kit_floating_bar.dart';
+import 'package:saber/components/ink_ui/host_focus.dart';
+import 'package:saber/components/ink_ui/hover_badge.dart';
+import 'package:saber/components/ink_ui/kit_mode_pill.dart';
+import 'package:saber/components/ink_ui/pen_panel/kit_pen_color_row.dart'
+    show KitPenColorRow;
+import 'package:saber/components/ink_ui/pen_panel/pen_kinds.dart'
+    show isInkTool, toolForPenKind;
+import 'package:saber/components/ink_ui/pen_panel/pen_panel_common.dart'
+    show PenPanelSurface, inkInverted;
+import 'package:saber/components/ink_ui/selection_bars/kit_lasso_bar.dart';
+import 'package:saber/components/ink_ui/selection_bars/kit_text_bar.dart';
+import 'package:saber/components/kit/kit_icons.g.dart';
+import 'package:saber/components/kit/kit_pen_art.dart' show KitPenKind;
+import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/components/theming/adaptive_alert_dialog.dart';
-import 'package:saber/components/theming/adaptive_icon.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/saber_theme.dart';
-import 'package:saber/components/toolbar/color_bar.dart';
 import 'package:saber/components/toolbar/editor_bottom_sheet.dart';
 import 'package:saber/components/toolbar/editor_page_manager.dart';
 import 'package:saber/components/toolbar/export_dialog.dart';
-import 'package:saber/components/toolbar/note_function_row.dart';
-import 'package:saber/components/toolbar/other_settings_panel.dart';
-import 'package:saber/components/toolbar/shortcut_bar_editor.dart';
-import 'package:saber/components/toolbar/shortcut_layout.dart';
-import 'package:saber/components/toolbar/toolbar.dart';
-import 'package:saber/components/toolbar/toolbar_custom_dialog.dart';
-import 'package:saber/components/toolbar/toolbar_dock.dart';
-import 'package:saber/components/toolbar/toolbar_layout.dart';
-import 'package:saber/components/toolbar/toolbar_settings_sheet.dart';
+import 'package:saber/data/actions/app_action.dart';
+import 'package:saber/data/actions/app_action_ids.dart';
+import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/editor/page_link.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
+import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/nextcloud/saber_syncer.dart';
@@ -60,14 +75,18 @@ import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/shape_pen.dart';
+import 'package:saber/data/user_error.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor_chrome.dart';
 import 'package:saber/pages/editor/link_dialog.dart';
 import 'package:saber/pages/home/whiteboard.dart';
+import 'package:saber/pages/settings/app_settings_page.dart';
 import 'package:sbn/canvas_background_pattern.dart';
 import 'package:sbn/change.dart';
-import 'package:stow_plain/stow_plain.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+part 'editor_actions.dart';
+part 'editor_toolbar_area.dart';
 
 typedef _PhotoInfo = ({Uint8List bytes, String extension});
 
@@ -192,9 +211,15 @@ class EditorState extends State<Editor> {
   set currentTool(Tool tool) {
     _currentTool = tool;
     if (tool is! Eraser) _lastNonEraserTool = tool;
+    if (isInkTool(tool)) _lastInkTool = tool;
     stows.lastTool.value = tool.toolId;
     _rememberPenFamily(tool);
   }
+
+  /// The pen panel's pen (fine-nib pen, fine pen, pencil, highlighter) used
+  /// last: the pen action and leaving the text box bring it back. Unlike
+  /// [Pen.currentPenFamily] it keeps the highlighter and skips the shape pen.
+  late Tool _lastInkTool;
 
   /// Every way a pen kind gets in hand (the toolbar, leaving the text box,
   /// the stylus button giving the pen back) keeps the pen button in step.
@@ -225,6 +250,87 @@ class EditorState extends State<Editor> {
   /// Whether [_placingHint] has reached the screen (it may wait behind
   /// another message).
   var _placingHintShown = false;
+
+  /// The eyedropper waits for its tap on a page.
+  var _eyedropping = false;
+  Future<void>? _eyedropperPick;
+
+  /// The eyedropper's last reading of the page, for tests to wait for.
+  @visibleForTesting
+  Future<void>? get eyedropperPick => _eyedropperPick;
+
+  /// Ctrl+Z and the editor's other keys work while the focus is in here.
+  final _editorFocus = FocusNode(debugLabel: 'Editor');
+
+  /// Whether the floating bar is out: the toolbar's pen and eraser buttons
+  /// show and hide it (it shows only for the pens and the eraser).
+  final _floatingBarOpen = ValueNotifier(true);
+
+  /// Where across the screen the toolbar button that last showed or hid the
+  /// floating bar is: the bar grows from it and goes back into it.
+  final _floatingBarFrom = ValueNotifier<double?>(null);
+
+  /// The tip of the stroke on the page now, on the screen; null while none
+  /// is drawn. The floating bar and the save chip fade out of its way.
+  final _strokeAt = ValueNotifier<Offset?>(null);
+
+  /// Where the S Pen hovers over the page area, for the badge by its tip.
+  final _hoverBadge = HoverBadgeController();
+
+  /// The note window of the toolbar's second button.
+  final _noteSheetOpen = ValueNotifier(false);
+
+  /// 「도구 막대 사용자화」 is open over the page.
+  final _customizing = ValueNotifier(false);
+
+  /// Closes 「도구 막대 사용자화」 or the note window if one is open over
+  /// the page, and says whether one was: Android's back closes them before
+  /// the note (the host's back asks this first).
+  bool closeOpenWindow() {
+    if (_customizing.value) {
+      _customizing.value = false;
+      return true;
+    }
+    if (_noteSheetOpen.value) {
+      _noteSheetOpen.value = false;
+      return true;
+    }
+    return false;
+  }
+
+  /// ⋯ 「읽기 전용」: the pen and the fingers do not write, the page still
+  /// moves and zooms. Not saved; it goes with the editor.
+  final inkLocked = ValueNotifier(false);
+
+  /// When this editor last changed the note (「문서 정보」).
+  DateTime? _lastEditedAt;
+
+  /// When this editor last changed the note, for its host's tab ⌄.
+  DateTime? get lastEditedAt => _lastEditedAt;
+
+  /// The loaded note may not change (a newer version, a damaged file, a
+  /// preview), or it could not be read (the vault keeps no snapshot this app
+  /// can open safely, a note from a newer app among them): the toolbar is
+  /// folded away, so a host keeps its function row. Not while it is read.
+  bool get readOnlyNote =>
+      coreInfo.readOnly && (!_loadingSnapshot || _snapshotError != null);
+
+  AppActionRegistry? _ownRegistry;
+
+  /// The actions of an editor without a host (Saber's screen, an Office PDF
+  /// without the workspace).
+  AppActionRegistry get _ownActions => _ownRegistry ??= AppActionRegistry();
+
+  /// Where this editor publishes its actions: the host's document registry,
+  /// or its own.
+  AppActionRegistry get _actions => widget.chrome?.actions ?? _ownActions;
+
+  @visibleForTesting
+  AppActionRegistry get actions => _actions;
+
+  /// 「지금 저장」 dims when there is nothing to save; saving does not
+  /// always build the editor again.
+  void _savingChanged() => _actions.publish(this, _editorActions());
 
   void _reportBusy() => widget.onBusyChanged?.call(
     _drawing || _initialImportPending || _snapshotSave != null,
@@ -258,18 +364,29 @@ class EditorState extends State<Editor> {
   @override
   void initState() {
     DynamicMaterialApp.addFullscreenListener(_setState);
+    // The finger toggle's action shows whether it is on.
+    stows.editorFingerDrawing.addListener(_setState);
+    stows.editorGestureMode.addListener(_gestureModeChanged);
+    savingState.addListener(_savingChanged);
 
     _initializing = _initAsync();
-    _assignKeybindings();
 
     super.initState();
     widget.chrome?.attach(this);
+    _lastInkTool = _firstInkTool();
+    // A new note's name field keeps the focus it asks for.
+    if (!needsNaming) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) takeFocusFromHost(_editorFocus);
+      });
+    }
   }
 
   @override
   void didUpdateWidget(Editor oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.chrome, widget.chrome)) {
+      (oldWidget.chrome?.actions ?? _ownActions).withdraw(this);
       oldWidget.chrome?.detach(this);
       widget.chrome?.attach(this);
     }
@@ -399,30 +516,10 @@ class EditorState extends State<Editor> {
 
   void _setState() => setState(() {});
 
-  Keybinding? _ctrlZ, _ctrlY, _ctrlShiftZ;
-  void _assignKeybindings() {
-    _ctrlZ = Keybinding([
-      KeyCode.ctrl,
-      KeyCode.from(LogicalKeyboardKey.keyZ),
-    ], inclusive: true);
-    _ctrlY = Keybinding([
-      KeyCode.ctrl,
-      KeyCode.from(LogicalKeyboardKey.keyY),
-    ], inclusive: true);
-    _ctrlShiftZ = Keybinding([
-      KeyCode.ctrl,
-      KeyCode.shift,
-      KeyCode.from(LogicalKeyboardKey.keyZ),
-    ], inclusive: true);
-    Keybinder.bind(_ctrlZ!, undo);
-    Keybinder.bind(_ctrlY!, redo);
-    Keybinder.bind(_ctrlShiftZ!, redo);
-  }
-
-  void _removeKeybindings() {
-    if (_ctrlZ != null) Keybinder.remove(_ctrlZ!);
-    if (_ctrlY != null) Keybinder.remove(_ctrlY!);
-    if (_ctrlShiftZ != null) Keybinder.remove(_ctrlShiftZ!);
+  /// Gesture mode on: the pen tip badge forgets where the pen was, as
+  /// 「읽기 전용」 does; back to writing, it waits for the pen to move.
+  void _gestureModeChanged() {
+    if (stows.editorGestureMode.value) _hoverBadge.value = null;
   }
 
   /// Creates pages until the given page index exists,
@@ -674,7 +771,11 @@ class EditorState extends State<Editor> {
     if (coreInfo.readOnly ||
         _initialImportPending ||
         _loadingSnapshot ||
-        _placingLink)
+        _placingLink ||
+        _eyedropping ||
+        // gesture mode and 읽기 전용: pens and fingers move and zoom the page
+        stows.editorGestureMode.value ||
+        inkLocked.value)
       return false;
 
     CanvasImage.activeListener
@@ -728,6 +829,7 @@ class EditorState extends State<Editor> {
   }
 
   void onDrawStart(ScaleStartDetails details) {
+    _strokeAt.value = details.focalPoint;
     _drawing = true;
     _editGeneration++;
     _reportBusy();
@@ -787,6 +889,7 @@ class EditorState extends State<Editor> {
   }
 
   void onDrawUpdate(ScaleUpdateDetails details) {
+    _strokeAt.value = details.focalPoint;
     final page = coreInfo.pages[dragPageIndex!];
     final position = page.renderBox!.globalToLocal(details.focalPoint);
     final offset = position - previousPosition;
@@ -831,6 +934,7 @@ class EditorState extends State<Editor> {
   }
 
   void onDrawEnd(ScaleEndDetails details) {
+    _strokeAt.value = null;
     final page = coreInfo.pages[dragPageIndex!];
     bool shouldSave = true;
     _lastDrawRecorded = false;
@@ -1101,6 +1205,7 @@ class EditorState extends State<Editor> {
   void autosaveAfterDelay() {
     if (coreInfo.readOnly) return;
     _editGeneration++;
+    _lastEditedAt = DateTime.now();
     widget.onDirtyChanged?.call(
       _drawing || _initialImportPending || !history.isCurrentStateSaved,
     );
@@ -1180,7 +1285,7 @@ class EditorState extends State<Editor> {
         }
         if (mounted) setState(() => _snapshotError = null);
       } catch (error) {
-        savingState.value = .waitingToSave;
+        savingState.value = .failed;
         widget.onDirtyChanged?.call(true);
         if (mounted)
           setState(() => _snapshotError = '기기 저장 실패: $error. 다시 시도하세요.');
@@ -1201,6 +1306,7 @@ class EditorState extends State<Editor> {
         log.warning('saveToFile() called while already saving');
         return;
       case .waitingToSave:
+      case .failed:
         // continue
         _delayedSaveTimer?.cancel();
         savingState.value = .saving;
@@ -1239,7 +1345,7 @@ class EditorState extends State<Editor> {
       history.markLastChangeAsSaved();
     } catch (e, st) {
       log.severe('Failed to save file: $e', e, st);
-      savingState.value = .waitingToSave;
+      savingState.value = .failed;
       if (kDebugMode) rethrow;
       return;
     }
@@ -1312,12 +1418,11 @@ class EditorState extends State<Editor> {
   }
 
   void updateColorBar(Color color) {
-    if (stows.recentColorsDontSavePresets.value) {
-      if (ColorBar.colorPresets.any(
-        (colorPreset) => colorPreset.color == color,
-      )) {
-        return;
-      }
+    // 「기본 색」: the pen panel's first colour page (design 「기본 8색」);
+    // pastel and grey colours go into the recent ones
+    if (stows.recentColorsDontSavePresets.value &&
+        KitTokens.penPanelColorPages.first.contains(color)) {
+      return;
     }
 
     final newColorString = color.toARGB32().toString();
@@ -1651,12 +1756,9 @@ class EditorState extends State<Editor> {
 
   @override
   Widget build(BuildContext context) {
+    _actions.publish(this, _editorActions());
     final platform = Theme.of(context).platform;
-    final toolbarAlignment = _alignmentStow.value;
     _reportChrome();
-    final isToolbarVertical =
-        toolbarAlignment == AxisDirection.left ||
-        toolbarAlignment == AxisDirection.right;
 
     final Widget canvas = CanvasGestureDetector(
       key: _canvasGestureDetectorKey,
@@ -1703,213 +1805,50 @@ class EditorState extends State<Editor> {
           : null,
     );
 
-    final Widget toolbar = Collapsible(
-      axis: isToolbarVertical
-          ? CollapsibleAxis.horizontal
-          : CollapsibleAxis.vertical,
-      collapsed:
-          coreInfo.readOnly ||
-          DynamicMaterialApp.isFullscreen &&
-              !stows.editorToolbarShowInFullscreen.value,
-      maintainState: true,
-      child: SafeArea(
-        bottom: toolbarAlignment != AxisDirection.up,
-        child: Toolbar(
-          alignment: toolbarAlignment,
-          readOnly: coreInfo.readOnly,
-          setTool: (tool) {
-            if (tool is Eraser && currentTool is Eraser) {
-              // setTool(Eraser) is a special case to toggle the eraser on/off
-              tool = _lastNonEraserTool;
-            }
-
-            currentTool = tool;
-
-            if (tool is Highlighter) {
-              Highlighter.currentHighlighter = tool;
-            } else if (tool is Pencil) {
-              Pencil.currentPencil = tool;
-            } else if (tool is Pen) {
-              Pen.currentPen = tool;
-            }
-
-            if (mounted) setState(() {});
-          },
-          currentTool: currentTool,
-          duplicateSelection: () {
-            final select = currentTool as Select;
-            if (!select.doneSelecting) return;
-
-            setState(() {
-              final page = coreInfo.pages[select.selectResult.pageIndex];
-              final strokes = select.selectResult.strokes;
-              final images = select.selectResult.images;
-
-              const duplicationFeedbackOffset = Offset(25, -25);
-
-              final duplicatedStrokes = strokes.map((stroke) {
-                return stroke.copy()..shift(duplicationFeedbackOffset);
-              }).toList();
-
-              final duplicatedImages = images.map((image) {
-                return image.copy()
-                  ..id = coreInfo.nextImageId++
-                  ..dstRect.shift(duplicationFeedbackOffset);
-              }).toList();
-
-              page.strokes.addAll(duplicatedStrokes);
-              page.images.addAll(duplicatedImages);
-
-              select.selectResult = select.selectResult.copyWith(
-                strokes: duplicatedStrokes,
-                images: duplicatedImages,
-                path: select.selectResult.path.shift(duplicationFeedbackOffset),
-              );
-
-              history.recordChange(
-                EditorHistoryItem(
-                  type: .draw,
-                  pageIndex: select.selectResult.pageIndex,
-                  strokes: duplicatedStrokes,
-                  images: duplicatedImages,
-                ),
-              );
-              autosaveAfterDelay();
-            });
-          },
-          deleteSelection: () {
-            final select = currentTool as Select;
-            if (!select.doneSelecting) {
-              return;
-            }
-
-            setState(() {
-              final page = coreInfo.pages[select.selectResult.pageIndex];
-              final strokes = select.selectResult.strokes;
-              final images = select.selectResult.images;
-
-              for (final stroke in strokes) {
-                page.strokes.remove(stroke);
-              }
-              for (final image in images) {
-                page.images.remove(image);
-              }
-
-              select.unselect();
-
-              history.recordChange(
-                EditorHistoryItem(
-                  type: .erase,
-                  pageIndex: strokes.first.pageIndex,
-                  strokes: strokes,
-                  images: images,
-                ),
-              );
-              autosaveAfterDelay();
-            });
-          },
-          linkSelection: () => unawaited(_linkSelection()),
-          setColor: (color) {
-            setState(() {
-              updateColorBar(color);
-
-              // setColor also keeps the colour for the next pen of that kind.
-              if (currentTool is Highlighter) {
-                (currentTool as Highlighter).setColor(
-                  color.withAlpha(Highlighter.alpha),
-                );
-              } else if (currentTool is Pen) {
-                (currentTool as Pen).setColor(color);
-              } else if (currentTool is Select) {
-                // Changes color of selected strokes
-                final select = currentTool as Select;
-                if (select.doneSelecting) {
-                  final strokes = select.selectResult.strokes;
-
-                  final colorChange = <Stroke, Change<Color>>{};
-                  for (final stroke in strokes) {
-                    colorChange[stroke] = Change(
-                      previous: stroke.color,
-                      current: color,
-                    );
-                    stroke.color = color;
-                  }
-
-                  history.recordChange(
-                    EditorHistoryItem(
-                      type: .changeColor,
-                      pageIndex: strokes.first.pageIndex,
-                      strokes: strokes,
-                      colorChange: colorChange,
-                      images: [],
-                    ),
-                  );
-                  autosaveAfterDelay();
+    final Widget body = Column(
+      children: [
+        ..._toolbarArea(),
+        Expanded(
+          child: _pageArea(
+            // A touch on the page brings the keys here, unless the text box
+            // is in hand (it takes them for its text). Also from a field or
+            // button inside the editor: a finger on Android does not unfocus
+            // them. On lifting: as the touch lands, a text field elsewhere
+            // gives its focus back to the screen (a mouse or pen tapping
+            // outside it), after this editor would have asked.
+            Listener(
+              onPointerUp: (_) {
+                if (!_editorFocus.hasPrimaryFocus &&
+                    currentTool != Tool.textEditing) {
+                  _editorFocus.requestFocus();
                 }
-              }
-            });
-          },
-          quillFocus: quillFocus,
-          textEditing: currentTool == Tool.textEditing,
-          toggleTextEditing: () => setState(() {
-            if (currentTool == Tool.textEditing) {
-              // Back to the pen button's pen, the pencil if it was chosen.
-              currentTool = Pen.currentPenFamily;
-              for (final page in coreInfo.pages) {
-                // unselect text, but maintain cursor position
-                page.quill.controller.moveCursorToPosition(
-                  page.quill.controller.selection.extentOffset,
-                );
-                page.quill.focusNode.unfocus();
-              }
-            } else {
-              currentTool = Tool.textEditing;
-              quillFocus.value = coreInfo.pages[currentPageIndex].quill
-                ..focusNode.requestFocus();
-            }
-          }),
-          undo: undo,
-          isUndoPossible: history.canUndo,
-          redo: redo,
-          isRedoPossible: history.canRedo,
-          toggleFingerDrawing: _toggleFingerDrawing,
-          pickPhoto: _pickPhotos,
-          paste: paste,
-          exportAsSba: exportAsSba,
-          exportAsPdf: exportAsPdf,
-          exportAsPng: exportAsPng,
-          exportTitle: widget.customTitle ?? coreInfo.fileName,
-          leading: [
-            ToolbarDockHandle(
-              axis: isToolbarVertical ? Axis.vertical : Axis.horizontal,
+              },
+              child: canvas,
             ),
-          ],
+          ),
         ),
-      ),
+        readonlyBanner,
+      ],
     );
 
-    final Widget body = ToolbarDock(
-      alignment: toolbarAlignment,
-      onAlignmentChanged: _setToolbarAlignment,
-      toolbar: toolbar,
-      child: Column(
-        children: [
-          Expanded(child: canvas),
-          readonlyBanner,
-        ],
-      ),
-    );
-
-    return ValueListenableBuilder(
-      valueListenable: savingState,
-      builder: (context, savingState, child) {
-        // don't allow user to go back until saving is done
+    final Widget screen = ListenableBuilder(
+      listenable: Listenable.merge([savingState, _noteSheetOpen, _customizing]),
+      builder: (context, child) {
+        final saving = savingState.value;
+        // Back closes a window over the page first (a host asks
+        // closeOpenWindow itself); don't allow user to go back until saving
+        // is done
+        final windowOpen =
+            widget.onBack == null &&
+            (_noteSheetOpen.value || _customizing.value);
         return PopScope(
-          canPop: widget.onBack != null || savingState == .saved,
+          canPop: !windowOpen && (widget.onBack != null || saving == .saved),
           onPopInvokedWithResult: (didPop, _) {
             if (widget.onBack != null) return;
-            switch (savingState) {
+            if (!didPop && closeOpenWindow()) return;
+            switch (saving) {
               case .waitingToSave:
+              case .failed:
                 assert(!didPop);
                 saveToFile(); // trigger save now
                 snackBarNeedsToSaveBeforeExiting();
@@ -1930,7 +1869,6 @@ class EditorState extends State<Editor> {
             : AppBar(
                 primary: widget.showDocumentHeader,
                 automaticallyImplyLeading: widget.showDocumentHeader,
-                // 기타 설정 opens from the function row, not from a button the end drawer would add here.
                 automaticallyImplyActions: false,
                 toolbarHeight: widget.showDocumentHeader ? kToolbarHeight : 48,
                 title: !widget.showDocumentHeader
@@ -1958,21 +1896,8 @@ class EditorState extends State<Editor> {
                       )
                     : null,
               ),
-        // StarNote's "기타 설정" panel, when no host draws it.
-        endDrawer: widget.chrome != null
-            ? null
-            : Drawer(
-                width: 280,
-                child: OtherSettingsPanel(
-                  sections: otherSettingsSections(
-                    close: () => _scaffoldKey.currentState?.closeEndDrawer(),
-                  ),
-                ),
-              ),
         body: Column(
           children: [
-            if (widget.chrome == null && !DynamicMaterialApp.isFullscreen)
-              _ownFunctionRow(),
             if (_snapshotError != null)
               MaterialBanner(
                 content: Text(_snapshotError!),
@@ -2022,19 +1947,32 @@ class EditorState extends State<Editor> {
             : null,
       ),
     );
+
+    // Bars below read the actions with AppActionScope.read (the page and
+    // the canvas never rebuild for them).
+    return AppActionScope(
+      actions: _actions,
+      child: Shortcuts(
+        shortcuts: _keyboardShortcuts(),
+        child: Actions(
+          actions: {
+            _EditorKeyIntent: _EditorKeyAction(
+              _runKey,
+              () => _editorFocus.hasPrimaryFocus,
+            ),
+          },
+          child: Focus(
+            focusNode: _editorFocus,
+            autofocus: !needsNaming,
+            child: screen,
+          ),
+        ),
+      ),
+    );
   }
 
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   int? _chromeSignature;
-
-  /// Workspace notes keep their own toolbar position (top by default);
-  /// Saber's preference only moves the standalone editor's toolbar.
-  PlainStow<AxisDirection> get _alignmentStow => widget.onSaveSnapshot == null
-      ? stows.editorToolbarAlignment
-      : stows.workspaceToolbarAlignment;
-
-  void _setToolbarAlignment(AxisDirection alignment) =>
-      setState(() => _alignmentStow.value = alignment);
 
   /// The note is loaded and its PDF import saved. The function row stays on
   /// screen while the body shows the import's spinner, so its page actions
@@ -2042,6 +1980,9 @@ class EditorState extends State<Editor> {
   bool get _noteReady => !_loadingSnapshot && !_initialImportPending;
 
   bool get _showPageActions => !coreInfo.readOnly && _noteReady;
+
+  /// The note may not change now: read-only, or ⋯ 「읽기 전용」 is on.
+  bool get _noteLocked => coreInfo.readOnly || inkLocked.value;
 
   bool get _showPageMode =>
       !_loadingSnapshot && !_initialImportPending && coreInfo.pages.isNotEmpty;
@@ -2056,10 +1997,10 @@ class EditorState extends State<Editor> {
       _singlePageMode,
       coreInfo.pages.length,
       _loadingSnapshot,
+      _snapshotError != null,
       _initialImportPending,
       DynamicMaterialApp.isFullscreen,
       stows.editorFingerDrawing.value,
-      _alignmentStow.value,
       _placingLink,
     );
     if (signature == _chromeSignature) return;
@@ -2116,220 +2057,17 @@ class EditorState extends State<Editor> {
     ),
   );
 
-  void _openOtherSettings() {
-    final open = widget.chrome?.openOtherSettings;
-    if (open != null) return open();
-    _scaffoldKey.currentState?.openEndDrawer();
-  }
-
-  /// The editor's shortcuts for the note's function row (StarNote's shortcut
-  /// bar): the page actions and the screen toggles that were in the toolbar.
-  List<NoteShortcut> chromeShortcuts() {
-    final fullscreen = DynamicMaterialApp.isFullscreen;
-    return [
-      NoteShortcut(
-        id: 'insertPage',
-        label: '페이지 추가',
-        icon: const AdaptiveIcon(
-          icon: Icons.insert_page_break,
-          cupertinoIcon: CupertinoIcons.add,
-        ),
-        onPressed: _showPageActions ? _insertPageAfterCurrent : null,
+  /// ⋯ 「쪽으로 이동」: asks for the page number, then goes there.
+  void _openGoToPage(BuildContext context) => unawaited(
+    showDialog<int>(
+      context: context,
+      builder: (_) => _GoToPageDialog(
+        pages: coreInfo.pages.length,
+        current: currentPageIndex + 1,
       ),
-      NoteShortcut(
-        id: 'pageMode',
-        label: _singlePageMode ? '연속 스크롤' : '한 쪽씩 보기',
-        icon: Icon(
-          _singlePageMode
-              ? Icons.view_agenda_outlined
-              : Icons.description_outlined,
-        ),
-        buttonKey: const ValueKey('editor-single-page-toggle'),
-        onPressed: _showPageMode ? _togglePageMode : null,
-      ),
-      if (!stows.hideFingerDrawingToggle.value)
-        NoteShortcut(
-          id: 'finger',
-          label: '손가락 필기',
-          icon: const Icon(CupertinoIcons.hand_draw),
-          selected: stows.editorFingerDrawing.value,
-          onPressed: coreInfo.readOnly ? null : _toggleFingerDrawing,
-        ),
-      NoteShortcut(
-        id: 'fullscreen',
-        label: '전체 화면',
-        icon: AdaptiveIcon(
-          icon: fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
-          cupertinoIcon: fullscreen
-              ? CupertinoIcons.fullscreen_exit
-              : CupertinoIcons.fullscreen,
-        ),
-        selected: fullscreen,
-        onPressed: () =>
-            DynamicMaterialApp.setFullscreen(!fullscreen, updateSystem: true),
-      ),
-      NoteShortcut(
-        id: 'export',
-        label: '파일 내보내기',
-        icon: const AdaptiveIcon(
-          icon: Icons.share,
-          cupertinoIcon: CupertinoIcons.share,
-        ),
-        onPressed: _showPageActions ? _openExportDialog : null,
-      ),
-      NoteShortcut(
-        id: 'linkAdd',
-        label: '링크 추가',
-        icon: const Icon(Icons.add_link),
-        buttonKey: const ValueKey('editor-link-add'),
-        selected: _placingLink,
-        onPressed: _showPageActions ? _linkAdd : null,
-      ),
-    ];
-  }
-
-  /// StarNote's two shortcuts at the bar's right end.
-  List<NoteShortcut> chromeFixed() => [
-    NoteShortcut(
-      id: 'overview',
-      label: '문서 개요',
-      icon: const Icon(Icons.grid_view),
-      buttonKey: const ValueKey('note-overview'),
-      onPressed: _showPageActions ? _openOverview : null,
-    ),
-    NoteShortcut(
-      id: 'otherSettings',
-      label: '기타 설정',
-      icon: const Icon(Icons.tune),
-      buttonKey: const ValueKey('note-other-settings'),
-      onPressed: _noteReady ? _openOtherSettings : null,
-    ),
-  ];
-
-  /// The editor's sections of StarNote's "기타 설정" panel. [close] closes the
-  /// panel before a row opens something else.
-  List<Widget> otherSettingsSections({required VoidCallback close}) {
-    final pages = coreInfo.pages.length;
-    void then(VoidCallback action) {
-      close();
-      action();
-    }
-
-    return [
-      Padding(
-        key: const ValueKey('other-settings-title'),
-        padding: const EdgeInsets.only(top: 12),
-        child: Text(
-          widget.customTitle ?? coreInfo.fileName,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextTheme.of(context).titleSmall,
-        ),
-      ),
-      OtherSettingsSection(
-        title: '페이지 설정',
-        trailing: pages == 0 ? null : '${currentPageIndex + 1} / $pages',
-        children: [
-          OtherSettingsNavRow(
-            key: const ValueKey('other-settings-template'),
-            label: '템플릿 변경',
-            onTap: _showPageActions ? () => then(_openPageMenu) : null,
-          ),
-          _GoToPageRow(
-            pages: pages,
-            onGo: (page) => then(() => _scrollToPage(page - 1)),
-          ),
-          OtherSettingsNavRow(
-            key: const ValueKey('other-settings-overview'),
-            label: '문서 개요',
-            onTap: _showPageActions ? () => then(_openOverview) : null,
-          ),
-        ],
-      ),
-      OtherSettingsSection(
-        title: '문서 내보내기',
-        children: [
-          OtherSettingsNavRow(
-            key: const ValueKey('other-settings-export-image'),
-            label: '현재 페이지를 이미지로 내보내기',
-            onTap: _showPageActions ? () => then(_openExportDialog) : null,
-          ),
-          OtherSettingsNavRow(
-            key: const ValueKey('other-settings-export'),
-            label: '파일 내보내기',
-            onTap: _showPageActions ? () => then(_openExportDialog) : null,
-          ),
-        ],
-      ),
-      OtherSettingsSection(
-        title: '일반 설정',
-        children: [
-          ToolbarPositionRow(
-            alignment: _alignmentStow.value,
-            onChanged: _setToolbarAlignment,
-          ),
-          SwitchListTile(
-            key: const ValueKey('other-settings-continuous'),
-            contentPadding: EdgeInsets.zero,
-            title: const Text('연속 스크롤'),
-            value: !_singlePageMode,
-            onChanged: _showPageMode ? (_) => _togglePageMode() : null,
-          ),
-          OtherSettingsNavRow(
-            key: const ValueKey('other-settings-toolbar-custom'),
-            label: '사용자 지정 도구 모음',
-            onTap: () => then(() {
-              // The dialog rewrites pageToolbarLayout with the tools only; the
-              // shortcut bar still follows its 228 switches until it has its own.
-              final kept = keptShortcutLayout(
-                stows.noteShortcutLayout.value,
-                stows.pageToolbarLayout.value,
-              );
-              if (kept != null) stows.noteShortcutLayout.value = kept;
-              unawaited(
-                showToolbarCustomDialog(
-                  context,
-                  items: pageToolbarItems,
-                  layout: stows.pageToolbarLayout,
-                ),
-              );
-            }),
-          ),
-          OtherSettingsNavRow(
-            key: const ValueKey('other-settings-shortcut-custom'),
-            label: '사용자 지정 바로가기 막대',
-            onTap: () => then(_openShortcutEditor),
-          ),
-          const ToolbarWritingSettings(),
-        ],
-      ),
-    ];
-  }
-
-  void _openShortcutEditor() => unawaited(
-    showShortcutBarEditor(
-      context,
-      layout: stows.noteShortcutLayout,
-      legacyToolbar: stows.pageToolbarLayout.value,
-    ),
-  );
-
-  /// The function row the editor draws itself when no host does.
-  Widget _ownFunctionRow() => ListenableBuilder(
-    listenable: Listenable.merge([
-      stows.noteShortcutLayout,
-      stows.editorFingerDrawing,
-    ]),
-    builder: (context, _) => NoteFunctionRow(
-      shortcuts: chromeShortcuts(),
-      fixed: chromeFixed(),
-      layout: ShortcutLayout.decode(
-        noteShortcutItems,
-        stows.noteShortcutLayout.value,
-        legacyToolbar: stows.pageToolbarLayout.value,
-      ),
-      onCustomize: _openShortcutEditor,
-    ),
+    ).then((page) {
+      if (page != null && mounted) _scrollToPage(page - 1);
+    }),
   );
 
   void snackBarNeedsToSaveBeforeExiting() {
@@ -2349,7 +2087,7 @@ class EditorState extends State<Editor> {
       coreInfo: coreInfo,
       currentPageIndex: currentPageIndex,
       setBackgroundPattern: (pattern) => setState(() {
-        if (coreInfo.readOnly) return;
+        if (_noteLocked) return;
         final previous = coreInfo.backgroundPattern;
         coreInfo.backgroundPattern = pattern;
         stows.lastBackgroundPattern.value = pattern;
@@ -2368,19 +2106,19 @@ class EditorState extends State<Editor> {
         autosaveAfterDelay();
       }),
       setLineHeight: (lineHeight) => setState(() {
-        if (coreInfo.readOnly) return;
+        if (_noteLocked) return;
         coreInfo.lineHeight = lineHeight;
         stows.lastLineHeight.value = lineHeight;
         autosaveAfterDelay();
       }),
       setLineThickness: (lineThickness) => setState(() {
-        if (coreInfo.readOnly) return;
+        if (_noteLocked) return;
         coreInfo.lineThickness = lineThickness;
         stows.lastLineThickness.value = lineThickness;
         autosaveAfterDelay();
       }),
       removeBackgroundImage: () => setState(() {
-        if (coreInfo.readOnly) return;
+        if (_noteLocked) return;
 
         final page = coreInfo.pages[currentPageIndex];
         if (page.backgroundImage == null) return;
@@ -2395,7 +2133,7 @@ class EditorState extends State<Editor> {
       },
       clearAllPages: clearAllPages,
       redrawAndSave: () => setState(() {
-        if (coreInfo.readOnly) return;
+        if (_noteLocked) return;
         autosaveAfterDelay();
       }),
       pickPhotos: _pickPhotos,
@@ -2435,6 +2173,7 @@ class EditorState extends State<Editor> {
       page: page,
       pageIndex: pageIndex,
       textEditing: currentTool == Tool.textEditing,
+      inkLocked: inkLocked.value,
       coreInfo: coreInfo,
       currentStroke: currentStroke,
       currentStrokeDetectedShape:
@@ -2479,12 +2218,15 @@ class EditorState extends State<Editor> {
         links: page.links,
         pageSize: page.size,
         screenScale: _screenScale(page),
-        readOnly: coreInfo.readOnly,
+        readOnly: _noteLocked,
         ignoring: currentTool is Select || currentTool == Tool.textEditing,
         onAction: (link, action) =>
             unawaited(_onLinkAction(page, link, action)),
-        onPlace: _placingLink
+        // The eyedropper waits for its tap on the same layer as 링크 추가.
+        onPlace: _placingLink && !inkLocked.value
             ? (point) => unawaited(_placeLink(page, point))
+            : _eyedropping
+            ? (point) => _pickColour(page, point)
             : null,
       ),
     );
@@ -2505,50 +2247,17 @@ class EditorState extends State<Editor> {
   Widget pageManager(BuildContext context) {
     return EditorPageManager(
       coreInfo: coreInfo,
+      readOnly: _noteLocked,
       currentPageIndex: currentPageIndex,
       redrawAndSave: () => setState(() {
-        if (coreInfo.readOnly) return;
+        if (_noteLocked) return;
         autosaveAfterDelay();
       }),
       insertPageAfter: insertPageAfter,
-      duplicatePage: (int pageIndex) => setState(() {
-        if (coreInfo.readOnly) return;
-        final page = coreInfo.pages[pageIndex];
-        final newPage = page.copyWith(
-          newIdentity: true,
-          strokes: page.strokes
-              .map((stroke) => stroke.copy()..pageIndex += 1)
-              .toList(),
-          images: page.images
-              .map((image) => image.copy()..pageIndex += 1)
-              .toList(),
-          quill: QuillStruct(
-            controller: flutter_quill.QuillController(
-              document: flutter_quill.Document.fromDelta(
-                page.quill.controller.document.toDelta(),
-              ),
-              selection: const TextSelection.collapsed(offset: 0),
-            ),
-            focusNode: FocusNode(debugLabel: 'Quill Focus Node'),
-          ),
-          backgroundImage: page.backgroundImage?.copy()?..pageIndex += 1,
-        );
-        coreInfo.pages.insert(pageIndex + 1, newPage);
-        listenToQuillChanges(newPage.quill);
-        history.recordChange(
-          EditorHistoryItem(
-            type: .insertPage,
-            pageIndex: pageIndex,
-            strokes: const [],
-            images: const [],
-            page: newPage,
-          ),
-        );
-        autosaveAfterDelay();
-      }),
+      duplicatePage: _duplicatePage,
       clearPage: clearPage,
       deletePage: (int pageIndex) => setState(() {
-        if (coreInfo.readOnly) return;
+        if (_noteLocked) return;
         final page = coreInfo.pages.removeAt(pageIndex);
         createPage(pageIndex - 1);
         history.recordChange(
@@ -2566,8 +2275,45 @@ class EditorState extends State<Editor> {
     );
   }
 
+  /// Puts a copy of page [pageIndex] after it, as one undo step.
+  void _duplicatePage(int pageIndex) => setState(() {
+    if (_noteLocked) return;
+    final page = coreInfo.pages[pageIndex];
+    final newPage = page.copyWith(
+      newIdentity: true,
+      strokes: page.strokes
+          .map((stroke) => stroke.copy()..pageIndex += 1)
+          .toList(),
+      images: page.images
+          .map((image) => image.copy()..pageIndex += 1)
+          .toList(),
+      quill: QuillStruct(
+        controller: flutter_quill.QuillController(
+          document: flutter_quill.Document.fromDelta(
+            page.quill.controller.document.toDelta(),
+          ),
+          selection: const TextSelection.collapsed(offset: 0),
+        ),
+        focusNode: FocusNode(debugLabel: 'Quill Focus Node'),
+      ),
+      backgroundImage: page.backgroundImage?.copy()?..pageIndex += 1,
+    );
+    coreInfo.pages.insert(pageIndex + 1, newPage);
+    listenToQuillChanges(newPage.quill);
+    history.recordChange(
+      EditorHistoryItem(
+        type: .insertPage,
+        pageIndex: pageIndex,
+        strokes: const [],
+        images: const [],
+        page: newPage,
+      ),
+    );
+    autosaveAfterDelay();
+  });
+
   void insertPageAfter(int pageIndex) => setState(() {
-    if (coreInfo.readOnly) return;
+    if (_noteLocked) return;
     final page = EditorPage();
     coreInfo.pages.insert(pageIndex + 1, page);
     listenToQuillChanges(page.quill);
@@ -2584,7 +2330,7 @@ class EditorState extends State<Editor> {
   });
 
   void clearPage(int pageIndex) {
-    if (coreInfo.readOnly) return;
+    if (_noteLocked) return;
     final page = coreInfo.pages[pageIndex];
     setState(() {
       final removedStrokes = page.strokes.toList();
@@ -2605,7 +2351,7 @@ class EditorState extends State<Editor> {
   }
 
   void clearAllPages() {
-    if (coreInfo.readOnly) return;
+    if (_noteLocked) return;
     setState(() {
       final removedStrokes = <Stroke>[];
       final removedImages = <EditorImage>[];
@@ -2735,7 +2481,7 @@ class EditorState extends State<Editor> {
   /// 「링크 추가」: a link over the lasso's selection or, without one,
   /// Notein's way: the next tap on a page puts a link icon there.
   void _linkAdd() {
-    if (coreInfo.readOnly) return;
+    if (_noteLocked) return;
     if (currentTool is Select && Select.currentSelect.doneSelecting) {
       unawaited(_linkSelection());
       return;
@@ -2805,7 +2551,7 @@ class EditorState extends State<Editor> {
   Future<bool> _addLink(EditorPage page, Rect area) async {
     final note = coreInfo;
     final index = note.pages.indexOf(page);
-    if (note.readOnly || index < 0) return false;
+    if (note.readOnly || inkLocked.value || index < 0) return false;
     final target = await showPageLinkDialog(
       context,
       pages: _linkablePages(),
@@ -2827,7 +2573,7 @@ class EditorState extends State<Editor> {
   Future<void> _editLink(EditorPage page, PageLink link) async {
     final note = coreInfo;
     final index = note.pages.indexOf(page);
-    if (note.readOnly || index < 0) return;
+    if (note.readOnly || inkLocked.value || index < 0) return;
     final target = await showPageLinkDialog(
       context,
       pages: _linkablePages(),
@@ -2851,7 +2597,7 @@ class EditorState extends State<Editor> {
   /// step. False when [page] has left the note or the note is read-only.
   bool _changeLink(EditorPage page, {PageLink? added, PageLink? removed}) {
     final pageIndex = coreInfo.pages.indexOf(page);
-    if (pageIndex < 0 || coreInfo.readOnly) return false;
+    if (pageIndex < 0 || _noteLocked) return false;
     setState(() {
       _replaceLink(page, remove: removed, put: added);
       history.recordChange(
@@ -2996,15 +2742,29 @@ class EditorState extends State<Editor> {
     unawaited(_cleanUpAsync());
 
     DynamicMaterialApp.removeFullscreenListener(_setState);
+    stows.editorFingerDrawing.removeListener(_setState);
+    stows.editorGestureMode.removeListener(_gestureModeChanged);
+    savingState.removeListener(_savingChanged);
+    // Only this editor's: a new editor in the same host may hold them now.
+    widget.chrome?.actions.withdraw(this);
     widget.chrome?.detach(this);
+    _ownRegistry?.dispose();
+    _editorFocus.dispose();
+    _floatingBarOpen.dispose();
+    _floatingBarFrom.dispose();
+    _strokeAt.dispose();
+    _hoverBadge.dispose();
+    _noteSheetOpen.dispose();
+    _customizing.dispose();
+    inkLocked.dispose();
+    // Leaving the note leaves full screen (the old toolbar did this).
+    DynamicMaterialApp.setFullscreen(false, updateSystem: true);
     // The hint lives in the app's messenger, which outlives the editor.
     _closePlacingHint();
 
     _delayedSaveTimer?.cancel();
     _watchServerTimer?.cancel();
     _lastSeenPointerCountTimer?.cancel();
-
-    _removeKeybindings();
 
     // manually save pen properties since the listeners don't fire if a property is changed
     stows.lastFountainPenOptions.notifyListeners();
@@ -3032,62 +2792,53 @@ class EditorState extends State<Editor> {
   }
 }
 
-/// StarNote's "페이지로 이동 [n] 페이지" in the 기타 설정 panel.
-class _GoToPageRow extends StatefulWidget {
-  const new({required this.pages, required this.onGo});
+/// ⋯ 「쪽으로 이동」: the number of the page to go to, 1 to [pages].
+class _GoToPageDialog extends StatefulWidget {
+  const new({required this.pages, required this.current});
 
   final int pages;
-  final ValueChanged<int> onGo;
+  final int current;
 
   @override
-  State<_GoToPageRow> createState() => _GoToPageRowState();
+  State<_GoToPageDialog> createState() => _GoToPageDialogState();
 }
 
-class _GoToPageRowState extends State<_GoToPageRow> {
-  final _controller = TextEditingController();
+class _GoToPageDialogState extends State<_GoToPageDialog> {
+  final _field = TextEditingController();
 
   @override
   void dispose() {
-    _controller.dispose();
+    _field.dispose();
     super.dispose();
   }
 
-  void _go(String text) {
-    final page = int.tryParse(text.trim());
+  void _go() {
+    final page = int.tryParse(_field.text.trim());
     if (page == null || page < 1 || page > widget.pages) return;
-    widget.onGo(page);
+    Navigator.pop(context, page);
   }
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    key: const ValueKey('other-settings-go-to-page'),
-    height: 48,
-    child: Row(
-      children: [
-        Expanded(
-          child: Text('페이지로 이동', style: TextTheme.of(context).bodyLarge),
-        ),
-        SizedBox(
-          width: 76,
-          height: 36,
-          child: TextField(
-            key: const ValueKey('other-settings-go-to-page-field'),
-            controller: _controller,
-            enabled: widget.pages > 0,
-            keyboardType: TextInputType.number,
-            textInputAction: TextInputAction.done,
-            textAlign: TextAlign.center,
-            decoration: const InputDecoration(
-              hintText: '1',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: _go,
-          ),
-        ),
-        const SizedBox(width: 8),
-        const Text('페이지'),
-      ],
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('쪽으로 이동'),
+    content: TextField(
+      key: const ValueKey('go-to-page-field'),
+      controller: _field,
+      autofocus: true,
+      keyboardType: TextInputType.number,
+      textInputAction: TextInputAction.done,
+      decoration: InputDecoration(
+        hintText: '${widget.current}',
+        suffixText: '/ ${widget.pages}',
+      ),
+      onSubmitted: (_) => _go(),
     ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('취소'),
+      ),
+      TextButton(onPressed: _go, child: const Text('이동')),
+    ],
   );
 }

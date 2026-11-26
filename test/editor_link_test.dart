@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/canvas/canvas_gesture_detector.dart';
+import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/editor/page_link.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -39,18 +40,15 @@ void main() {
     Size size = const Size(1200, 2000),
     Widget Function(Widget editor)? around,
   }) async {
-    final previousAlignment = stows.workspaceToolbarAlignment.value;
     final previousShortcuts = stows.noteShortcutLayout.value;
     final previousFinger = stows.editorFingerDrawing.value;
     final previousRectangle = stows.selectRectangle.value;
     final previousTool = stows.lastTool.value;
-    stows.workspaceToolbarAlignment.value = AxisDirection.up;
     stows.noteShortcutLayout.value = const [];
     stows.editorFingerDrawing.value = true;
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
-      stows.workspaceToolbarAlignment.value = previousAlignment;
       stows.noteShortcutLayout.value = previousShortcuts;
       stows.editorFingerDrawing.value = previousFinger;
       stows.selectRectangle.value = previousRectangle;
@@ -110,10 +108,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// ⋯ 「더 보기」 링크 추가 (the editor has no function row: Task 17).
   Future<void> pressLinkAdd(WidgetTester tester) async {
-    await tester.tap(find.byKey(const ValueKey('workspace-more-actions')));
+    await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('링크 추가'));
+    await tester.ensureVisible(find.byKey(const ValueKey('editor-link-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('editor-link-add')));
     await tester.pumpAndSettle();
   }
 
@@ -146,6 +147,9 @@ void main() {
       await drag(tester, page, const Offset(150, 250), const Offset(560, 440));
       expect(Select.currentSelect.selectResult.strokes, page.strokes);
 
+      // 「링크」 is in the lasso bar's ⋯ menu
+      await tester.tap(find.byKey(const ValueKey('lasso-bar-more')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('selection-link')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('link-dialog')), findsOneWidget);
@@ -595,5 +599,50 @@ void main() {
     expect(find.text('이 화면에서는 다른 노트를 열 수 없습니다'), findsOneWidget);
     await tester.pumpAndSettle();
     editor.cancelAutosaveAndMarkSaved();
+  });
+
+  testWidgets('read-only: the badge menu opens and copies but does not edit', (
+    tester,
+  ) async {
+    final editor = await mountEditor(tester);
+    final page = editor.coreInfo.pages.first;
+    await putLink(
+      tester,
+      editor,
+      const PageLink(id: 'menu', rect: webArea, target: 'https://example.com/a'),
+    );
+    editor.actions.run(
+      AppActionIds.readOnly,
+      tester.element(find.byType(Editor)),
+    );
+    await tester.pumpAndSettle();
+    await tester.longPress(find.byKey(const ValueKey('page-link-badge-menu')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('page-link-menu-open')), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-link-menu-copy')), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-link-menu-edit')), findsNothing);
+    expect(find.byKey(const ValueKey('page-link-menu-delete')), findsNothing);
+    await tester.tapAt(const Offset(5, 1990));
+    await tester.pumpAndSettle();
+    expect(page.links, hasLength(1));
+  });
+
+  testWidgets('locking while 링크 추가 waits for its tap adds no link', (
+    tester,
+  ) async {
+    final editor = await mountEditor(tester);
+    final page = editor.coreInfo.pages.first;
+    await holdPen(tester, editor);
+    final context = tester.element(find.byType(Editor));
+    editor.actions.run(AppActionIds.linkAdd, context);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('page-link-place')), findsWidgets);
+    editor.actions.run(AppActionIds.readOnly, context);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('page-link-place')), findsNothing);
+    await tester.tapAt(page.renderBox!.localToGlobal(const Offset(420, 640)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('link-dialog')), findsNothing);
+    expect(page.links, isEmpty);
   });
 }

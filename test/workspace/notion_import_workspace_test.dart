@@ -20,6 +20,7 @@ import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/workspace/database_editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
+import '../utils/temp_dirs.dart';
 import '../utils/test_mock_channel_handlers.dart';
 
 void main() {
@@ -230,7 +231,7 @@ Future<void> _withWorkspace(
         final system = await Directory.systemTemp.resolveSymbolicLinks();
         expect(p.isWithin(system, resolved), isTrue);
         expect(p.basename(resolved), startsWith('notion-ui-'));
-        await Directory(resolved).delete(recursive: true);
+        await deleteTempDir(Directory(resolved));
       }
     });
   }

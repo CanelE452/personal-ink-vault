@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golden_screenshot/golden_screenshot.dart';
+import 'package:saber/components/kit/kit_pill.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/i18n/strings.g.dart';
@@ -36,18 +37,11 @@ void main() {
     );
     addTearDown(editorState.cancelAutosaveAndMarkSaved);
 
-    IconButton getUndoBtn() => tester.widget<IconButton>(
-      find.ancestor(
-        of: find.byIcon(Icons.undo),
-        matching: find.byType(IconButton),
-      ),
-    );
-    IconButton getRedoBtn() => tester.widget<IconButton>(
-      find.ancestor(
-        of: find.byIcon(Icons.redo),
-        matching: find.byType(IconButton),
-      ),
-    );
+    // undo and redo are the floating bar's (Task 13B-1)
+    const undo = ValueKey('floating-bar-undo');
+    const redo = ValueKey('floating-bar-redo');
+    KitPillButton getUndoBtn() => tester.widget<KitPillButton>(find.byKey(undo));
+    KitPillButton getRedoBtn() => tester.widget<KitPillButton>(find.byKey(redo));
 
     expect(
       [getUndoBtn().onPressed, getRedoBtn().onPressed],
@@ -57,6 +51,7 @@ void main() {
 
     await drawOnEditor(tester);
     await tester.pump();
+    await tester.pump();
     expect(editorState.coreInfo.pages.first.strokes, hasLength(1));
     expect(
       [getUndoBtn().onPressed, getRedoBtn().onPressed],
@@ -65,7 +60,8 @@ void main() {
     );
 
     // undo
-    await tester.tap(find.byIcon(Icons.undo));
+    await tester.tap(find.byKey(undo));
+    await tester.pump();
     await tester.pump();
     expect(editorState.coreInfo.pages.first.strokes, hasLength(0));
     expect(
@@ -75,7 +71,8 @@ void main() {
     );
 
     // redo
-    await tester.tap(find.byIcon(Icons.redo));
+    await tester.tap(find.byKey(redo));
+    await tester.pump();
     await tester.pump();
     expect(editorState.coreInfo.pages.first.strokes, hasLength(1));
     expect(
@@ -85,10 +82,12 @@ void main() {
     );
 
     // undo, then draw again
-    await tester.tap(find.byIcon(Icons.undo));
+    await tester.tap(find.byKey(undo));
+    await tester.pump();
     await tester.pump();
     expect(editorState.coreInfo.pages.first.strokes, hasLength(0));
     await drawOnEditor(tester);
+    await tester.pump();
     await tester.pump();
     expect(editorState.coreInfo.pages.first.strokes, hasLength(1));
     expect(

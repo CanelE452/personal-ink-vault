@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:saber/data/planner/google_calendar.dart';
 import 'package:saber/data/planner/planner_models.dart';
+import 'package:saber/data/user_error.dart';
 
 /// Month cache of Google Calendar events in `<cacheDir>/google-yyyy-MM.json`.
 class CalendarSync {
@@ -15,6 +16,16 @@ class CalendarSync {
 
   /// Why the last [month] call could not use the network, or null.
   String? lastError;
+
+  static const _syncFailed = 'Google 캘린더와 동기화하지 못했습니다.';
+  static const _cacheFailed = '받아 둔 일정을 기기에 저장하지 못했습니다.';
+
+  /// [userErrorMessage] of [error], or [fallback] when it has no Korean, so no
+  /// English OS or HTTP text reaches the screen.
+  static String _korean(Object error, String fallback) {
+    final text = userErrorMessage(error);
+    return RegExp('[가-힣]').hasMatch(text) ? text : fallback;
+  }
 
   static const _notConnected = 'Google 캘린더에 연결되어 있지 않습니다.';
 
@@ -53,8 +64,9 @@ class CalendarSync {
       events.sort((a, b) => a.start.compareTo(b.start));
       await _write(key, events);
       return events;
-    } catch (e) {
-      lastError = e is CalendarApiException ? e.message : '$e';
+    } catch (e, stackTrace) {
+      logUserError(e, stackTrace);
+      lastError = _korean(e, _syncFailed);
       return cached ?? const [];
     }
   }
@@ -113,8 +125,9 @@ class CalendarSync {
   Future<void> _mirror({String? remove, PlannerEvent? add}) async {
     try {
       await _serial(() => _mirrorNow(remove: remove, add: add));
-    } catch (e) {
-      lastError = '$e';
+    } catch (e, stackTrace) {
+      logUserError(e, stackTrace);
+      lastError = _korean(e, _cacheFailed);
     }
   }
 

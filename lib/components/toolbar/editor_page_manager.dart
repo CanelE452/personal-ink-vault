@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:saber/components/canvas/canvas_preview.dart';
+import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/components/theming/adaptive_icon.dart';
 import 'package:saber/components/theming/saber_theme.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
@@ -11,6 +12,7 @@ class EditorPageManager extends StatefulWidget {
     super.key,
     required this.coreInfo,
     required this.currentPageIndex,
+    this.readOnly = false,
     required this.redrawAndSave,
     required this.insertPageAfter,
     required this.duplicatePage,
@@ -21,6 +23,11 @@ class EditorPageManager extends StatefulWidget {
 
   final EditorCoreInfo coreInfo;
   final int? currentPageIndex;
+
+  /// The pages may be looked at and gone to, not changed (the editor's
+  /// 「읽기 전용」).
+  final bool readOnly;
+
   final VoidCallback redrawAndSave;
 
   final void Function(int) insertPageAfter;
@@ -35,6 +42,22 @@ class EditorPageManager extends StatefulWidget {
 }
 
 class _EditorPageManagerState extends State<EditorPageManager> {
+  /// A page's button, dimmed as the kit dims while off: its own colour at
+  /// [KitTokens.disabledOpacity], not Material's own fade.
+  Widget _pageButton({
+    required String tooltip,
+    required Widget icon,
+    required VoidCallback? onPressed,
+  }) => Opacity(
+    opacity: onPressed == null ? KitTokens.disabledOpacity : 1,
+    child: IconButton(
+      tooltip: tooltip,
+      icon: icon,
+      disabledColor: ColorScheme.of(context).onSurfaceVariant,
+      onPressed: onPressed,
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final platform = Theme.of(context).platform;
@@ -77,13 +100,22 @@ class _EditorPageManagerState extends State<EditorPageManager> {
                           ),
                         ),
                       ),
-                      MouseRegion(
-                        cursor: SystemMouseCursors.resizeUpDown,
-                        child: ReorderableDragStartListener(
-                          index: pageIndex,
-                          child: const Padding(
-                            padding: .all(8),
-                            child: Icon(Icons.drag_handle),
+                      // locked, the handle does not drag and is dimmed
+                      Opacity(
+                        opacity: widget.readOnly
+                            ? KitTokens.disabledOpacity
+                            : 1,
+                        child: MouseRegion(
+                          cursor: widget.readOnly
+                              ? MouseCursor.defer
+                              : SystemMouseCursors.resizeUpDown,
+                          child: ReorderableDragStartListener(
+                            index: pageIndex,
+                            enabled: !widget.readOnly,
+                            child: const Padding(
+                              padding: .all(8),
+                              child: Icon(Icons.drag_handle),
+                            ),
                           ),
                         ),
                       ),
@@ -92,48 +124,52 @@ class _EditorPageManagerState extends State<EditorPageManager> {
                   Wrap(
                     alignment: .center,
                     children: [
-                      IconButton(
+                      _pageButton(
                         tooltip: t.editor.menu.insertPage,
                         icon: const AdaptiveIcon(
                           icon: Icons.insert_page_break,
                           cupertinoIcon: CupertinoIcons.add,
                         ),
-                        onPressed: () => setState(() {
-                          widget.insertPageAfter(pageIndex);
-                          widget.onPageSelected(pageIndex + 1);
-                        }),
+                        onPressed: widget.readOnly
+                            ? null
+                            : () => setState(() {
+                                widget.insertPageAfter(pageIndex);
+                                widget.onPageSelected(pageIndex + 1);
+                              }),
                       ),
-                      IconButton(
+                      _pageButton(
                         tooltip: t.editor.menu.duplicatePage,
                         icon: const AdaptiveIcon(
                           icon: Icons.content_copy,
                           cupertinoIcon: CupertinoIcons.doc_on_clipboard,
                         ),
-                        onPressed: () => setState(() {
-                          widget.duplicatePage(pageIndex);
-                          widget.onPageSelected(pageIndex + 1);
-                        }),
+                        onPressed: widget.readOnly
+                            ? null
+                            : () => setState(() {
+                                widget.duplicatePage(pageIndex);
+                                widget.onPageSelected(pageIndex + 1);
+                              }),
                       ),
-                      IconButton(
+                      _pageButton(
                         tooltip: t.editor.menu.clearPage(
                           page: pageIndex + 1,
                           totalPages: widget.coreInfo.pages.length,
                         ),
                         icon: const Icon(Icons.cleaning_services),
-                        onPressed: isEmptyLastPage
+                        onPressed: isEmptyLastPage || widget.readOnly
                             ? null
                             : () => setState(() {
                                 widget.clearPage(pageIndex);
                                 widget.onPageSelected(pageIndex);
                               }),
                       ),
-                      IconButton(
+                      _pageButton(
                         tooltip: t.editor.menu.deletePage,
                         icon: const AdaptiveIcon(
                           icon: Icons.delete,
                           cupertinoIcon: CupertinoIcons.delete,
                         ),
-                        onPressed: isEmptyLastPage
+                        onPressed: isEmptyLastPage || widget.readOnly
                             ? null
                             : () => setState(() {
                                 widget.deletePage(pageIndex);
@@ -148,7 +184,7 @@ class _EditorPageManagerState extends State<EditorPageManager> {
           );
         },
         onReorderItem: (oldIndex, newIndex) {
-          if (oldIndex == newIndex) return;
+          if (oldIndex == newIndex || widget.readOnly) return;
           widget.coreInfo.pages.insert(
             newIndex,
             widget.coreInfo.pages.removeAt(oldIndex),

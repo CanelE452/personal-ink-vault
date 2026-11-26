@@ -237,7 +237,6 @@ Package | Version | License text identification | Native sources
 [is_ios_simulator](https://pub.dev/packages/is_ios_simulator/versions/1.0.1/license) | 1.0.1 | MIT |
 [js](https://pub.dev/packages/js/versions/0.7.2/license) | 0.7.2 | BSD-style (see full text) |
 [json_annotation](https://pub.dev/packages/json_annotation/versions/4.12.0/license) | 4.12.0 | BSD-style (see full text) |
-[keybinder](https://pub.dev/packages/keybinder/versions/1.0.1/license) | 1.0.1 | BSD-style (see full text) |
 [leak_tracker](https://pub.dev/packages/leak_tracker/versions/11.0.2/license) | 11.0.2 | BSD-style (see full text) |
 [leak_tracker_flutter_testing](https://pub.dev/packages/leak_tracker_flutter_testing/versions/3.0.10/license) | 3.0.10 | BSD-style (see full text) |
 [leak_tracker_testing](https://pub.dev/packages/leak_tracker_testing/versions/3.0.2/license) | 3.0.2 | BSD-style (see full text) |

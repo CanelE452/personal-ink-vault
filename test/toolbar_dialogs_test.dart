@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/toolbar/shortcut_bar_editor.dart';
 import 'package:saber/components/toolbar/shortcut_layout.dart';
-import 'package:saber/components/toolbar/toolbar_custom_dialog.dart';
-import 'package:saber/components/toolbar/toolbar_layout.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/prefs.dart';
 
-/// StarNote's two customise dialogs (popup_shape_toolbar_custom and
-/// popup_shortcut_bar_custom): changes wait for 완료, 닫기 drops them.
+/// StarNote's shortcut bar customise dialog (popup_shortcut_bar_custom):
+/// changes wait for 완료, 닫기 drops them. (The tool bar's customise dialog,
+/// popup_shape_toolbar_custom, went with the 229 toolbar in Task 19; the new
+/// bar's is toolbar_customize_sheet_test.)
 void main() {
   setUp(FlavorConfig.setup);
 
@@ -33,22 +33,9 @@ void main() {
   }
 
   void keepStows() {
-    final toolbar = stows.pageToolbarLayout.value;
     final shortcuts = stows.noteShortcutLayout.value;
-    addTearDown(() {
-      stows.pageToolbarLayout.value = toolbar;
-      stows.noteShortcutLayout.value = shortcuts;
-    });
+    addTearDown(() => stows.noteShortcutLayout.value = shortcuts);
   }
-
-  Future<void> openToolbar(WidgetTester tester) => open(
-    tester,
-    (context) => showToolbarCustomDialog(
-      context,
-      items: pageToolbarItems,
-      layout: stows.pageToolbarLayout,
-    ),
-  );
 
   Future<void> openShortcuts(WidgetTester tester) => open(
     tester,
@@ -61,45 +48,6 @@ void main() {
     await tester.tap(find.byKey(ValueKey(key)));
     await tester.pumpAndSettle();
   }
-
-  testWidgets('hiding a tool and applying saves it; closing discards', (tester) async {
-    keepStows();
-    stows.pageToolbarLayout.value = const [];
-    await openToolbar(tester);
-    expect(find.text('사용자 지정 도구 모음'), findsOneWidget);
-    expect(find.text('개인 선호에 따라 도구 모음 사용자 지정'), findsOneWidget);
-    expect(find.text('표시된 도구'), findsOneWidget);
-    expect(find.text('숨겨진 도구'), findsOneWidget);
-    await tapKey(tester, 'toolbar-custom-eye-pen');
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('toolbar-custom-hidden-list')),
-        matching: find.text('펜'),
-      ),
-      findsOneWidget,
-    );
-    await tapKey(tester, 'toolbar-custom-apply');
-    expect(stows.pageToolbarLayout.value, contains('!pen'));
-    expect(find.byKey(const ValueKey('toolbar-custom-dialog')), findsNothing);
-
-    await openToolbar(tester);
-    await tapKey(tester, 'toolbar-custom-eye-highlighter');
-    await tapKey(tester, 'toolbar-custom-close');
-    expect(stows.pageToolbarLayout.value, contains('!pen'));
-    expect(stows.pageToolbarLayout.value, isNot(contains('!highlighter')));
-  });
-
-  testWidgets('restore default settings saves the default layout', (tester) async {
-    keepStows();
-    stows.pageToolbarLayout.value = const ['!pen', 'laser'];
-    await openToolbar(tester);
-    await tapKey(tester, 'toolbar-custom-reset');
-    await tapKey(tester, 'toolbar-custom-apply');
-    expect(
-      ToolbarLayout.decode(pageToolbarItems, stows.pageToolbarLayout.value).shownIds,
-      ToolbarLayout.decode(pageToolbarItems, const []).shownIds,
-    );
-  });
 
   testWidgets('an 11th shortcut is refused with the limit message', (tester) async {
     keepStows();

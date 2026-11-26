@@ -23,6 +23,7 @@ import 'package:saber/data/tools/stroke_properties.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/logs.dart';
+import 'package:saber/pages/settings/settings_entries.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:worker_manager/worker_manager.dart';
@@ -77,6 +78,7 @@ Future<void> appRunner(AppStartupOptions options) async {
 
   StrokeOptionsExtension.setDefaults();
   Stows.markAsOnMainIsolate();
+  registerSettingsEntries(settingsRegistry);
 
   await Future.wait([
     stows.customDataDir.waitUntilRead().then((_) => FileManager.init()),

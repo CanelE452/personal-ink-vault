@@ -16,6 +16,7 @@ class Canvas extends StatelessWidget {
     required this.page,
     required this.pageIndex,
     required this.textEditing,
+    this.inkLocked = false,
     required this.coreInfo,
     required this.currentStroke,
     required this.currentStrokeDetectedShape,
@@ -32,6 +33,9 @@ class Canvas extends StatelessWidget {
   final int pageIndex;
 
   final bool textEditing;
+
+  /// The editor's 「읽기 전용」: the text box and the pictures take no input.
+  final bool inkLocked;
   final EditorCoreInfo coreInfo;
   final Stroke? currentStroke;
   final RecognizedUnistroke? currentStrokeDetectedShape;
@@ -74,6 +78,7 @@ class Canvas extends StatelessWidget {
                       width: page.size.width,
                       height: page.size.height,
                       textEditing: textEditing,
+                      inkLocked: inkLocked,
                       coreInfo: coreInfo,
                       currentStroke: currentStroke,
                       currentStrokeDetectedShape: currentStrokeDetectedShape,

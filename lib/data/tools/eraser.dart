@@ -4,6 +4,7 @@ import 'package:saber/components/canvas/_stroke.dart';
 
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
+import 'package:saber/data/tools/eraser_targets.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:sbn/tool_id.dart';
 
@@ -31,17 +32,18 @@ class Eraser extends Tool {
   @override
   ToolId get toolId => .eraser;
 
-  /// Returns any [strokes] that are close to the given [eraserPos].
+  /// Returns any [strokes] that are close to the given [eraserPos], of the
+  /// kinds the eraser rubs out ([EraserTargets]).
   List<Stroke> checkForOverlappingStrokes(
     Offset eraserPos,
     List<Stroke> strokes,
   ) {
     final List<Stroke> overlapping = [];
     final sqrSize = this.sqrSize;
-    final highlighterOnly = stows.eraseHighlighterOnly.value;
+    final targets = EraserTargets.value;
     for (int i = 0; i < strokes.length; i++) {
       final stroke = strokes[i];
-      if (highlighterOnly && stroke.toolId != ToolId.highlighter) continue;
+      if (!targets.contains(StrokeKind.of(stroke))) continue;
       if (_shouldStrokeBeErased(eraserPos, stroke, sqrSize)) {
         overlapping.add(stroke);
         _erased.add(stroke);
@@ -70,18 +72,18 @@ class Eraser extends Tool {
   }
 
   /// Closes the loop and returns the [strokes] mostly inside it, by the
-  /// lasso's own rule ([Select.minPercentInside]); with the panel's
-  /// highlighter-only switch, only highlighter strokes. The caller removes
-  /// them; [onDragEnd] reports them like rubbed-out strokes.
+  /// lasso's own rule ([Select.minPercentInside]), of the kinds the eraser
+  /// rubs out ([EraserTargets]). The caller removes them; [onDragEnd]
+  /// reports them like rubbed-out strokes.
   List<Stroke> finishLasso(List<Stroke> strokes) {
     final path = lassoPath?..close();
     lassoPath = null;
     lassoPageIndex = null;
     if (path == null) return const [];
-    final highlighterOnly = stows.eraseHighlighterOnly.value;
+    final targets = EraserTargets.value;
     final inside = [
       for (final stroke in strokes)
-        if ((!highlighterOnly || stroke.toolId == ToolId.highlighter) &&
+        if (targets.contains(StrokeKind.of(stroke)) &&
             Select.polygonPercentInside(path, stroke.lowQualityPolygon) >
                 Select.minPercentInside)
           stroke,

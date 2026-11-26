@@ -16,9 +16,9 @@ import 'package:saber/pages/workspace/study_workspace.dart';
 
 import '../utils/test_mock_channel_handlers.dart';
 
-/// StarNote's note screen (229): a tab row with only the tabs, the function
-/// row under it (back, shortcuts, 문서 개요, 기타 설정, ⋯), and the 기타 설정
-/// panel.
+/// The note screen: the tab row (home, the tabs, +; Task 17) over the ink
+/// editor, whose toolbar and ⋯ hold what 229's function row held (the
+/// other documents keep that row: tab_row_test.dart).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   FlavorConfig.setup();
@@ -141,18 +141,22 @@ void main() {
   Finder inPart(String part, Finder matching) =>
       find.descendant(of: find.byKey(ValueKey(part)), matching: matching);
 
-  androidTest('the tab row holds only tabs; back and shortcuts sit in the function row', (
+  androidTest('the tab row starts with home; the ink editor has no function row', (
     tester,
   ) async {
     final ids = await createNotes(tester, ['첫 노트']);
     await mount(tester);
     expect(inPart('note-tab-row', find.byKey(ValueKey('document-tab-${ids.single}'))), findsOneWidget);
-    expect(inPart('note-tab-row', find.byKey(const ValueKey('workspace-back-to-library'))), findsNothing);
+    expect(inPart('note-tab-row', find.byKey(const ValueKey('workspace-back-to-library'))), findsOneWidget);
     expect(inPart('note-tab-row', find.byTooltip('이전 위치')), findsNothing);
-    expect(inPart('note-function-row', find.byKey(const ValueKey('workspace-back-to-library'))), findsOneWidget);
-    expect(inPart('note-function-row', find.byTooltip('이전 위치')), findsOneWidget);
-    expect(inPart('note-function-row', find.byKey(const ValueKey('note-other-settings'))), findsOneWidget);
-    expect(inPart('note-function-row', find.byKey(const ValueKey('note-overview'))), findsOneWidget);
+    expect(find.byKey(const ValueKey('note-function-row')), findsNothing);
+    // 기타 설정 is gone; its rows are in the editor's ⋯ (Task 14), as 이전 위치 (Task 17)
+    expect(find.byKey(const ValueKey('note-other-settings')), findsNothing);
+    expect(find.byKey(const ValueKey('editor-page-list')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(const ValueKey('editor-doc-prev')), findsOneWidget);
   });
 
   androidTest('long-pressing a tab offers 닫기 and 다른 탭 닫기; 다른 탭 닫기 keeps the open document', (
@@ -175,7 +179,7 @@ void main() {
   androidTest('다른 탭 닫기 in the tab list saves the open note first', (tester) async {
     final ids = await createNotes(tester, ['하나', '둘']);
     await mount(tester);
-    await tester.tap(inPart('note-function-row', find.byTooltip('페이지 추가')));
+    await tester.tap(find.byKey(const ValueKey('editor-insert-page')));
     await drain(tester);
     expect(controller.dirty, isTrue);
     await tester.tap(find.byKey(const ValueKey('workspace-tab-switcher')));
@@ -187,7 +191,7 @@ void main() {
     expect(controller.dirty, isFalse);
   });
 
-  androidTest('hiding the tab row leaves a button to bring it back', (tester) async {
+  androidTest('hiding the tab row leaves ⋯ 탭 줄 보이기 to bring it back', (tester) async {
     await createNotes(tester, ['첫 노트']);
     await mount(tester);
     await tester.tap(find.byKey(const ValueKey('workspace-tab-switcher')));
@@ -197,79 +201,81 @@ void main() {
     await drain(tester);
     expect(stows.noteTabBarHidden.value, isTrue);
     expect(find.byKey(const ValueKey('note-tab-row')), findsNothing);
-    expect(find.byKey(const ValueKey('note-tab-bar-show')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('note-tab-bar-show')));
+    await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.ensureVisible(find.byKey(const ValueKey('editor-doc-tabBarHide')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('editor-doc-tabBarHide')));
     await drain(tester);
     expect(stows.noteTabBarHidden.value, isFalse);
     expect(find.byKey(const ValueKey('note-tab-row')), findsOneWidget);
   });
 
-  androidTest('기타 설정 opens the panel with page, export and general sections', (
+  androidTest('⋯ opens the document menu with its groups; back closes it, not the note', (
     tester,
   ) async {
     await createNotes(tester, ['설정 노트']);
     await mount(tester);
-    await tester.tap(find.byKey(const ValueKey('note-other-settings')));
+    await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
     await drain(tester);
-    final panel = find.byKey(const ValueKey('other-settings-panel'));
-    expect(panel, findsOneWidget);
-    for (final text in const ['설정 노트', '페이지 설정', '문서 내보내기', '일반 설정']) {
-      expect(find.descendant(of: panel, matching: find.text(text)), findsOneWidget, reason: text);
+    for (final text in const ['설정 노트', '쪽 배치', '보기', '정렬·설정', '더 보기']) {
+      expect(find.text(text), findsWidgets, reason: text);
     }
-    await tester.tap(find.byKey(const ValueKey('other-settings-close')));
-    await drain(tester);
-    expect(panel, findsNothing);
-    // Closing the panel is not leaving the note.
-    expect(controller.activeSession?.note.title, '설정 노트');
-    expect(find.byType(Editor), findsOneWidget);
-    // Nor is the system back while the panel is open: it closes the panel.
-    await tester.tap(find.byKey(const ValueKey('note-other-settings')));
-    await drain(tester);
-    expect(panel, findsOneWidget);
+    // the system back while it is open closes it
     await tester.binding.handlePopRoute();
     await drain(tester);
-    expect(panel, findsNothing);
+    expect(find.text('쪽 배치'), findsNothing);
     expect(controller.activeSession?.note.title, '설정 노트');
+    expect(find.byType(Editor), findsOneWidget);
   });
 
-  androidTest('full screen hides both rows and the toolbar offers the way back', (tester) async {
+  androidTest('full screen hides the tab row and the toolbar offers the way back', (tester) async {
     addTearDown(() => DynamicMaterialApp.setFullscreen(false, updateSystem: false));
     await createNotes(tester, ['전체 노트']);
     await mount(tester);
-    await tester.tap(inPart('note-function-row', find.byTooltip('전체 화면')));
+    await tester.tap(find.byKey(const ValueKey('editor-fullscreen')));
     await drain(tester);
     expect(DynamicMaterialApp.isFullscreen, isTrue);
-    expect(find.byKey(const ValueKey('note-function-row')), findsNothing);
     expect(find.byKey(const ValueKey('note-tab-row')), findsNothing);
     await tester.tap(find.byTooltip('전체 화면 끝내기'));
     await drain(tester);
     expect(DynamicMaterialApp.isFullscreen, isFalse);
-    expect(find.byKey(const ValueKey('note-function-row')), findsOneWidget);
+    expect(find.byKey(const ValueKey('note-tab-row')), findsOneWidget);
   });
 
-  androidTest('the shortcut 페이지 추가 adds a page to the open note', (tester) async {
+  androidTest('노트 추가 adds a page and ⋯ 기기에 저장 saves the open note', (tester) async {
     await createNotes(tester, ['쪽 노트']);
     await mount(tester);
     final editor = tester.state<EditorState>(find.byType(Editor));
     final pages = editor.coreInfo.pages.length;
-    await tester.tap(inPart('note-function-row', find.byTooltip('페이지 추가')));
+    await tester.tap(find.byKey(const ValueKey('editor-insert-page')));
     await drain(tester);
     expect(editor.coreInfo.pages, hasLength(pages + 1));
     expect(controller.dirty, isTrue);
-    await tester.tap(inPart('note-function-row', find.byTooltip('기기에 저장')));
+    await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.ensureVisible(find.byKey(const ValueKey('editor-doc-save')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('editor-doc-save')));
     await drain(tester, 30);
     expect(controller.dirty, isFalse);
   });
 
-  androidTest('the Markdown view keeps the function row', (tester) async {
+  androidTest('the Markdown view has the function row; its toggle comes back to ink', (tester) async {
     await createNotes(tester, ['보기 노트']);
     await mount(tester);
+    await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.byKey(const ValueKey('note-view-toggle')));
     await drain(tester);
     expect(find.byKey(const ValueKey('note-function-row')), findsOneWidget);
     expect(find.byKey(const ValueKey('note-view-toggle')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('note-view-toggle')));
     await drain(tester);
-    expect(find.byKey(const ValueKey('note-other-settings')), findsOneWidget);
+    expect(find.byKey(const ValueKey('note-function-row')), findsNothing);
+    expect(find.byKey(const ValueKey('editor-page-list')).hitTestable(), findsOneWidget);
   });
 }

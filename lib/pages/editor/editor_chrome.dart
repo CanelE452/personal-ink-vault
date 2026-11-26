@@ -1,20 +1,36 @@
 import 'package:flutter/widgets.dart';
-import 'package:saber/components/toolbar/note_function_row.dart';
+import 'package:saber/components/ink_ui/doc_menu/kit_doc_menu.dart';
+import 'package:saber/data/actions/app_action_ids.dart';
+import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/pages/editor/editor.dart';
 
-/// Lets a host draw the open note's function row and "기타 설정" panel
-/// (StarNote's layout_function_tool and popup_note_document_more_settings):
-/// the editor attaches itself and says when its shortcuts change; the host
-/// asks for them when it builds. An editor without a controller draws them
-/// itself.
+/// Hands the open note's actions to its host (the workspace): the editor
+/// attaches itself and says when its shortcuts change. The editor's own
+/// toolbar draws them; the host's function row of an Office PDF reads them
+/// (Task 17: the ink editor has no function row).
 class EditorChromeController extends ChangeNotifier {
+  new({AppActionRegistry? appActions})
+    : actions = AppActionRegistry(parent: appActions);
+
+  /// The open document's actions: the editor's and the host's own, then the
+  /// app's through the parent ([appActions]).
+  final AppActionRegistry actions;
+
   EditorState? _editor;
 
   /// The attached editor, if any.
   EditorState? get editor => _editor;
 
-  /// Opens the host's "기타 설정" panel; set by the host.
-  VoidCallback? openOtherSettings;
+  /// The attached editor's note may not change and its toolbar is folded
+  /// away: the host keeps the function row (Task 17 fix 1).
+  bool get editorReadOnly => _editor?.readOnlyNote ?? false;
+
+  /// When the attached editor last changed its note.
+  DateTime? get editorLastEdited => _editor?.lastEditedAt;
+
+  /// What ⋯ 「문서 정보」 shows of the open note that the host knows (the
+  /// file's time, the Drive state); set by the host.
+  DocInfo Function()? docInfo;
 
   /// Opens a link to another note or a web address from a link in the note
   /// (the workspace's `_openLink`); set by the host. Without it the editor
@@ -50,17 +66,21 @@ class EditorChromeController extends ChangeNotifier {
     WidgetsBinding.instance.ensureVisualUpdate();
   }
 
-  List<NoteShortcut> get shortcuts => _editor?.chromeShortcuts() ?? const [];
-
-  /// 문서 개요 and 기타 설정, at the bar's right end.
-  List<NoteShortcut> get fixed => _editor?.chromeFixed() ?? const [];
-
-  List<Widget> settingsSections({required VoidCallback close}) =>
-      _editor?.otherSettingsSections(close: close) ?? const [];
-
   @override
   void dispose() {
     _disposed = true;
+    actions.dispose();
     super.dispose();
   }
 }
+
+/// The 229 shortcuts the editor publishes: a host's function row leaves
+/// them out while the editor is not on screen.
+const editorShortcutIds = [
+  AppActionIds.insertPage,
+  AppActionIds.pageMode,
+  AppActionIds.finger,
+  AppActionIds.fullscreen,
+  AppActionIds.export,
+  AppActionIds.linkAdd,
+];

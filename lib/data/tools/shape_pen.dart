@@ -35,7 +35,7 @@ class ShapePen extends Pen {
   }
 
   static Timer? _detectShapeDebouncer;
-  static var debounceDuration = getDebounceFromPref();
+  static Duration get debounceDuration => getDebounceFromPref();
   static Duration getDebounceFromPref() {
     assert(stows.shapeRecognitionDelay.loaded);
     final ms = stows.shapeRecognitionDelay.value;

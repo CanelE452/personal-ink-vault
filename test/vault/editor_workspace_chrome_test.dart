@@ -4,8 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/canvas/canvas_gesture_detector.dart';
 import 'package:saber/components/canvas/interactive_canvas.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
-import 'package:saber/components/toolbar/toolbar.dart';
-import 'package:saber/components/toolbar/toolbar_dock.dart';
+import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
@@ -26,98 +25,38 @@ void main() {
     await FileManager.init();
   });
 
-  testWidgets(
-    'workspace drawing tools use the top layout with a side preference',
-    (tester) async {
-      final previous = stows.editorToolbarAlignment.value;
-      stows.editorToolbarAlignment.value = AxisDirection.left;
-      addTearDown(() => stows.editorToolbarAlignment.value = previous);
-
-      await tester.pumpWidget(
-        TranslationProvider(
-          child: MaterialApp(
-            home: Editor(
-              path: '/workspace-top',
-              onSaveSnapshot: (_, _) async {},
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final layout = tester.widget<Flex>(
-        find
-            .descendant(of: find.byType(Toolbar), matching: find.byType(Flex))
-            .first,
-      );
-      expect(layout.direction, Axis.vertical);
-      expect(layout.verticalDirection, VerticalDirection.up);
-    },
-  );
-
-  testWidgets('workspace editor follows the workspace toolbar position', (
+  // The toolbar no longer moves (user answer 3, Task 13B-1): neither the
+  // old position keys nor 기타 설정 take it off the top.
+  testWidgets('the toolbar stays on top whatever the old position keys say', (
     tester,
   ) async {
-    final previous = stows.workspaceToolbarAlignment.value;
-    stows.workspaceToolbarAlignment.value = AxisDirection.right;
-    addTearDown(() => stows.workspaceToolbarAlignment.value = previous);
+    final editorSide = stows.editorToolbarAlignment.value;
+    stows.editorToolbarAlignment.value = AxisDirection.left;
+    addTearDown(() {
+      stows.editorToolbarAlignment.value = editorSide;
+    });
 
     await tester.pumpWidget(
       TranslationProvider(
         child: MaterialApp(
-          home: Editor(
-            path: '/workspace-right',
-            onSaveSnapshot: (_, _) async {},
-          ),
+          home: Editor(path: '/workspace-top', onSaveSnapshot: (_, _) async {}),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    final layout = tester.widget<Flex>(
-      find
-          .descendant(of: find.byType(Toolbar), matching: find.byType(Flex))
-          .first,
-    );
-    expect(layout.direction, Axis.horizontal);
-    expect(
-      tester.widget<ToolbarDock>(find.byType(ToolbarDock)).alignment,
-      AxisDirection.right,
-    );
-    expect(find.byKey(const ValueKey('toolbar-dock-handle')), findsOneWidget);
-  });
+    final bar = tester.getRect(find.byType(KitEditorToolbar));
+    final canvas = tester.getRect(find.byType(InteractiveCanvasViewer));
+    expect(bar.width, greaterThan(bar.height));
+    expect(bar.bottom, lessThanOrEqualTo(canvas.top));
+    expect(find.byKey(const ValueKey('toolbar-dock-handle')), findsNothing);
 
-  testWidgets('기타 설정 moves the workspace toolbar', (
-    tester,
-  ) async {
-    final previous = stows.workspaceToolbarAlignment.value;
-    stows.workspaceToolbarAlignment.value = AxisDirection.up;
-    addTearDown(() => stows.workspaceToolbarAlignment.value = previous);
-
-    await tester.pumpWidget(
-      TranslationProvider(
-        child: MaterialApp(
-          home: Editor(
-            path: '/workspace-settings',
-            onSaveSnapshot: (_, _) async {},
-          ),
-        ),
-      ),
-    );
+    // 기타 설정 is gone (Task 14); ⋯ has no toolbar position either
+    expect(find.byKey(const ValueKey('note-other-settings')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('note-other-settings')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('other-settings-panel')), findsOneWidget);
-    final right = find.byKey(const ValueKey('toolbar-position-right'));
-    await tester.ensureVisible(right);
-    await tester.pumpAndSettle();
-    await tester.tap(right);
-    await tester.pumpAndSettle();
-    expect(stows.workspaceToolbarAlignment.value, AxisDirection.right);
-    expect(
-      tester.widget<ToolbarDock>(find.byType(ToolbarDock)).alignment,
-      AxisDirection.right,
-    );
+    expect(find.text('쪽 배치'), findsOneWidget);
+    expect(find.byKey(const ValueKey('toolbar-position-right')), findsNothing);
   });
 
   testWidgets('standalone snapshot editor keeps its own title and back', (
@@ -171,10 +110,14 @@ void main() {
 
       expect(find.text('Workspace note'), findsOneWidget);
       expect(find.byType(SaveIndicator), findsNothing);
-      expect(find.byTooltip('문서 개요'), findsOneWidget);
+      // 문서 개요 and 페이지 추가 are the toolbar's (Task 17)
+      expect(
+        find.byKey(const ValueKey('editor-page-list')).hitTestable(),
+        findsOneWidget,
+      );
       final editor = tester.state<EditorState>(find.byType(Editor));
       final count = editor.coreInfo.pages.length;
-      await tester.tap(find.byTooltip('페이지 추가'));
+      await tester.tap(find.byKey(const ValueKey('editor-insert-page')));
       expect(editor.coreInfo.pages.length, count + 1);
       await tester.pumpAndSettle();
       await tester.tap(find.byType(BackButton));

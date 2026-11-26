@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:saber/components/canvas/canvas_gesture_detector.dart';
-import 'package:saber/components/toolbar/toolbar.dart';
+import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/vault/workspace_store.dart';
@@ -95,7 +95,7 @@ void main() {
     await tester.runAsync(() => controller.createNote('Toolbar'));
     await mount(tester);
     expect(
-      tester.getCenter(find.byType(Toolbar)).dy,
+      tester.getCenter(find.byType(KitEditorToolbar)).dy,
       lessThan(tester.getCenter(find.byType(CanvasGestureDetector)).dy),
     );
     await backArrow(tester);
@@ -201,10 +201,15 @@ void main() {
     await backArrow(tester);
     expect(controller.activeSession, same(session));
     expect(controller.inkBusy, isTrue);
-    await tester.runAsync(() async {
-      session.release.complete();
-      await pending;
-    });
+    // The save's commit waits in the vault's queue, which the test's fake
+    // time also drives: pump until it is done instead of waiting outside.
+    var committed = false;
+    unawaited(pending!.whenComplete(() => committed = true));
+    session.release.complete();
+    for (var i = 0; i < 10 && !committed; i++) {
+      await drain(tester);
+    }
+    expect(committed, isTrue);
     await drain(tester);
     expect(controller.activeSession, isNull);
     final saved = await tester.runAsync(
@@ -272,7 +277,13 @@ void main() {
     expect(controller.inkDirty, isTrue);
     expect(find.textContaining('기기 저장 실패'), findsWidgets);
     session.failSave = false;
-    await tester.runAsync(editor.saveToFile);
+    // Pumped until done, as above.
+    var retried = false;
+    unawaited(editor.saveToFile().whenComplete(() => retried = true));
+    for (var i = 0; i < 10 && !retried; i++) {
+      await drain(tester);
+    }
+    expect(retried, isTrue);
     controller.setInkBusy(true, session: session);
     await backArrow(tester);
     expect(controller.activeSession, same(session));

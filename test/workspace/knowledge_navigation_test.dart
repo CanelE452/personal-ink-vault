@@ -15,6 +15,7 @@ import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/workspace/markdown_editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
+import '../utils/kit_menu_finders.dart';
 import '../utils/test_mock_channel_handlers.dart';
 
 class _FailingMarkdownSession extends NoteSession {
@@ -291,7 +292,7 @@ void main() {
       await mount(tester);
       // The open note keeps this action in its note bar's "더 많은 작업" menu.
       await tap(tester, find.byKey(const ValueKey('workspace-more-actions')));
-      await tap(tester, find.text('문서 연결 · 태그 · 그래프'));
+      await tap(tester, findMenuText('문서 연결 · 태그 · 그래프'));
       expect(find.text('미연결 언급'), findsOneWidget);
       expect(find.text('이 문서를 가리키는 링크가 없습니다.'), findsOneWidget);
       expect(find.widgetWithText(TextButton, '링크로 연결'), findsNWidgets(2));

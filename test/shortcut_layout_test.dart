@@ -1,7 +1,8 @@
+import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/toolbar/shortcut_layout.dart';
-import 'package:saber/components/toolbar/toolbar_layout.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/highlighter.dart';
 
 void main() {
@@ -106,20 +107,12 @@ void main() {
   test('StarNote defaults', () {
     // The highlighter reads its last options from the preferences.
     FlavorConfig.setup();
-    expect(toolbarQuickColors, [
-      0xff000000,
-      0xffb33333,
-      0xff2b4faf,
-      0xff007355,
-      0xffdaa001,
-    ]);
-    expect(highlighterQuickColors, [
-      0xffffe60f,
-      0xffffa047,
-      0xff60f748,
-      0xffa0c6fe,
-      0xffbe9aff,
-    ]);
+    // StarNote's first highlighter colour; the toolbars' five quick colours
+    // left with the 229 toolbar (Task 19).
+    expect(
+      stows.lastHighlighterColor.defaultValue,
+      const Color(0xffffe60f).withAlpha(Highlighter.alpha).toARGB32(),
+    );
     expect(Highlighter().sizePresets, [25, 35, 50]);
     expect(Highlighter.alpha, 100);
   });

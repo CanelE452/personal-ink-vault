@@ -1,12 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:saber/components/kit/kit_icon.dart';
+import 'package:saber/components/kit/kit_menu.dart';
 import 'package:saber/data/vault/workspace_navigation.dart';
 import 'package:saber/pages/workspace/workspace_tab_switcher.dart';
 
 const _button = ValueKey('workspace-tab-switcher');
 Finder _item(String id) =>
     find.byKey(ValueKey('workspace-tab-switcher-item-$id'));
+
+/// The open document's row carries the kit window's check.
+bool _checked(String id) => find
+    .descendant(
+      of: _item(id),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is KitIcon && widget.name == KitIconName.check,
+      ),
+    )
+    .evaluate()
+    .isNotEmpty;
 
 void main() {
   testWidgets('compact tab switcher stays outside the scrolling strip', (
@@ -75,14 +88,10 @@ void main() {
 
     await tester.tap(button);
     await tester.pumpAndSettle();
-    expect(
-      tester.widget<CheckedPopupMenuItem<String>>(_item('note-0')).checked,
-      isTrue,
-    );
-    expect(
-      tester.widget<CheckedPopupMenuItem<String>>(_item('note-11')).checked,
-      isFalse,
-    );
+    // the list is a kit window (Task 17 fix 1), the open one checked
+    expect(find.byType(KitMenu), findsOneWidget);
+    expect(_checked('note-0'), isTrue);
+    expect(_checked('note-11'), isFalse);
     await tester.ensureVisible(_item('note-11'));
     await tester.pumpAndSettle();
     await tester.tap(_item('note-11'));
@@ -174,7 +183,10 @@ void main() {
     await pump(const [WorkspaceDocumentTab('first', 'First document')]);
     final button = find.byKey(_button);
     expect(find.byTooltip('열린 문서 1개'), findsOneWidget);
-    expect(tester.widget<PopupMenuButton<String>>(button).enabled, isFalse);
+    expect(
+      tester.getSemantics(button).flagsCollection.isEnabled.toBoolOrNull(),
+      isFalse,
+    );
     await tester.tap(button);
     await tester.pumpAndSettle();
     expect(_item('first'), findsNothing);

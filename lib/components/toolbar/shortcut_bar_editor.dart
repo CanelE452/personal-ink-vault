@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:saber/components/toolbar/customize_dialog_frame.dart';
 import 'package:saber/components/toolbar/shortcut_layout.dart';
-import 'package:saber/components/toolbar/toolbar_custom_dialog.dart';
 import 'package:stow_plain/stow_plain.dart';
 
 /// StarNote's "사용자 지정 바로가기 막대" (popup_shortcut_bar_custom): the bar's

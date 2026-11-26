@@ -34,6 +34,7 @@ class ResponsiveNavbar extends HookWidget {
         case .saved:
           break;
         case .waitingToSave:
+        case .failed:
           Whiteboard.triggerSave();
           return;
         case .saving:

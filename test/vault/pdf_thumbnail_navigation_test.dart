@@ -18,6 +18,7 @@ import 'package:saber/data/prefs.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 
+import '../utils/kit_menu_finders.dart';
 import '../utils/office_preview.dart'
     show
         officePreviewDocumentsClosed,
@@ -82,12 +83,8 @@ void main() {
           Offset viewedPoint() =>
               selected.renderBox!.globalToLocal(tester.getCenter(viewer));
           final viewedBefore = viewedPoint();
-          final toggle = find.byKey(
-            const ValueKey('editor-single-page-toggle'),
-          );
-          expect(toggle, findsOneWidget);
-          await tester.tap(toggle);
-          await tester.pumpAndSettle();
+          expect(find.byKey(const ValueKey('editor-doc-menu')), findsOneWidget);
+          await togglePageLayout(tester);
           _expectVisiblePage(tester, editor, target, pageIds[target]);
           expect(tester.state<EditorState>(find.byType(Editor)), same(editor));
           expect(
@@ -104,14 +101,12 @@ void main() {
                 .map((page) => page.pageId),
             [pageIds[target]],
           );
-          await tester.tap(toggle);
-          await tester.pumpAndSettle();
+          await togglePageLayout(tester);
           _expectVisiblePage(tester, editor, target, pageIds[target]);
           expect(find.byTooltip('다음 쪽'), findsNothing);
           expect(transform.value.getMaxScaleOnAxis(), closeTo(zoom, .001));
           expect((viewedPoint() - viewedBefore).distance, lessThan(1));
-          await tester.tap(toggle);
-          await tester.pumpAndSettle();
+          await togglePageLayout(tester);
           await tester.tap(find.byTooltip('다음 쪽'));
           await tester.pumpAndSettle();
           _expectVisiblePage(tester, editor, target + 1, pageIds[target + 1]);
@@ -165,7 +160,8 @@ void main() {
       (editor, pageIds) async {
         _expectVisiblePage(tester, editor, 1, pageIds[1]);
         expect(editor.coreInfo.pages.first.renderBox, isNull);
-        expect(find.byTooltip('연속 스크롤'), findsOneWidget);
+        // one page at a time is on (⋯ 쪽 배치 shows 가로)
+        expect(singlePageLayout(tester), isTrue);
         expect(find.byTooltip('이전 쪽'), findsOneWidget);
       },
       initialPageIndex: 1,
@@ -219,7 +215,8 @@ void main() {
 }
 
 Future<void> _tapThumbnail(WidgetTester tester, int target) async {
-  await tester.tap(find.byTooltip('문서 개요'));
+  // 문서 개요 is the toolbar's 쪽 목록 (Task 17)
+  await tester.tap(find.byKey(const ValueKey('editor-page-list')));
   await tester.pumpAndSettle();
   final manager = find.byType(EditorPageManager);
   final thumbnail = find.descendant(

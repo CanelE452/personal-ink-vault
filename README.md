@@ -4,15 +4,28 @@
 
 ## Android 휴대폰·태블릿에 설치
 
-**[Android 231 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.231/personal-ink-vault-android-0.2.0-build231-136231-arm64-release.apk)**
+**[Android 232 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.232/personal-ink-vault-android-0.2.0-build232-136232-arm64-release.apk)**
 
 1. Android 휴대폰 또는 태블릿에서 위 링크를 누릅니다.
 2. 다운로드한 APK를 열고 기존 Personal Ink Vault 앱을 업데이트합니다.
 3. 앱에서 새 노트, PDF 필기 또는 Office·한글 원본을 엽니다. Drive를 연결하려면 앱의 **Drive → Google 로그인 / 재연결**을 사용합니다.
 
-Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 404MB입니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.231) · [Android 231 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.231)
+Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 405MB입니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.232) · [Android 232 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.232)
 
-### 229 이후 바뀐 점
+### 231 이후 바뀐 점
+
+필기 화면을 새로 지었습니다. 보관함·리마인더·달력은 231 그대로입니다.
+
+- 위쪽 도구 막대: 쪽 목록과 노트 창 단추, 필기/제스처 바꾸기, 도구(올가미·펜·지우개·텍스트·모양·사진·레이저 펜), 오른쪽의 노트 추가·전체 화면·⋯ 한 줄입니다. 막대에는 도구를 최대 6개 두고 나머지는 ⌄에서 고르며, 거기서 「도구 막대 사용자화」를 엽니다. 휴대폰처럼 좁으면 단추를 숨기지 않고 옆으로 밉니다.
+- 떠 있는 막대: 펜이나 지우개 단추를 누르면 위에 떠서 종류·색·굵기를 고르게 하고, 같은 단추를 다시 누르면 사라집니다.
+- 펜 창: 펜 종류, 굵기, 색을 한 창에서 고르며 고른 설정이 바로 선에 반영됩니다.
+- 지우개 창과 올가미 창: 지우개는 방식(획 지우개·원형 선택 지우기)과 크기 셋, 고급 설정(지울 대상, 자동 해제, 쪽 지우기)을 둡니다. 올가미는 단추를 한 번 더 누르면 유형(자유·사각형)과 선택 대상(손글씨·형광펜·도형·사진)을 고르는 창이 열립니다.
+- ⋯ 메뉴: 맨 위에 문서 정보·이름 바꾸기·쪽 배치(세로로 이어 보기/가로로 넘기기)가 있고, 그 아래에 검색·보기·지우기·설정 묶음이 이어집니다.
+- 예전 도구 막대와 그 설정 창, 오른쪽 기타 설정 패널은 없어졌습니다. 아직 기능이 없는 이모지·녹음·자는 보이지 않습니다.
+
+232는 PC에서 위젯 시험과 빌드 검사를 거쳤고 실기기 확인 전입니다. 새 필기 화면을 태블릿에서 확인할 예정입니다.
+
+### 229 이후 바뀐 점(230·231)
 
 230과 231의 변경입니다. 필기 화면은 229 그대로 두고, 그 밖의 화면을 Notein처럼 바꿨습니다.
 
@@ -24,7 +37,7 @@ Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 404MB�
 - 리마인더와 달력: 보관함에 하나씩 있습니다. 달력에는 편집 모드와 필기 모드가 있고, 「Google 캘린더 연결」로 Google 캘린더 일정을 읽고 씁니다. 홈 화면 위젯 두 개(리마인더, 달력)와 리마인더 알림이 있습니다. 알림을 위해 알림 권한을 묻고, 정확한 시각 알람과 기기 재시작 후 알림 다시 예약 권한을 씁니다.
 - 손글씨 인식(231): 달력 필기 모드에서 날짜 칸에 쓴 글씨를 「글자로 바꾸기」로 그날 일정의 글자로 바꿉니다. Google ML Kit 손글씨 인식을 쓰며, 한국어·영어 모델을 처음 쓸 때 Google에서 받습니다. 받기 전에 크기를 알려 줍니다. ML Kit 관련 고지는 [고지](THIRD_PARTY_NOTICES.md)에 있습니다.
 
-231은 PC에서 위젯 시험과 빌드 검사를 거쳤고 실기기 확인 전입니다. 홈 화면 위젯, 반복 리마인더 알림, 가져오는 카드, 표지, Google 캘린더 연결, 손글씨 인식을 태블릿에서 확인할 예정입니다. 229의 필기 화면, 228의 Office·한글 편집기 동작, 227의 닫을 때 묻는 조건, 226의 스트로크 안정화, 217에서 남은 한글 저장·HWPX 편집 확인, 두 Android 기기의 Drive 왕복 검증도 아직 기기 확인 전입니다.
+231의 홈 화면 위젯, 반복 리마인더 알림, 가져오는 카드, 표지, Google 캘린더 연결, 손글씨 인식은 아직 기기 확인 전입니다. 228의 Office·한글 편집기 동작, 227의 닫을 때 묻는 조건, 226의 스트로크 안정화, 217에서 남은 한글 저장·HWPX 편집 확인, 두 Android 기기의 Drive 왕복 검증도 아직 기기 확인 전입니다.
 
 "PDF 필기용"으로 저장한 노트는 일반 PDF 노트로 열리며, Office 편집용으로 바꿀 수 없습니다. Office·한글 문서에서 "PDF로 새 문서 만들기"를 누르면 같은 폴더에 별도 PDF 노트가 생기고, 원본은 그대로 남습니다.
 
@@ -70,10 +83,10 @@ Drive 자동 동기화와 독립 백업/복원을 함께 구현합니다. portab
 1. Flutter `3.47.7`의 [고정 소스](https://github.com/flutter/flutter/tree/abaf9c523780a608bd46686fd5e53740a07077f8), Dart `3.13.5`, JDK `25.0.4.1+1`, Android SDK 및 Python 3.11 이상을 준비합니다. Flutter SDK가 래퍼를 준비하고 `android/gradle/wrapper/gradle-wrapper.properties`에서 Gradle `9.5.0`을 선택합니다. Gradle 데몬에는 저장소의 JVM 설정에 따라 JetBrains JDK 21을 자동으로 준비하거나 기존 설치를 사용합니다.
 2. Android SDK의 `platforms;android-37.0`, `ndk;28.2.13676358`, `ndk;29.0.14206865`, `cmake;3.22.1`을 준비합니다. Rust `1.99.1`에 `aarch64-linux-android` 타깃을 추가합니다. Android SDK 경로를 `ANDROID_SDK_ROOT`로 지정하세요.
 3. 한글 PDF 엔진은 아직 출시되지 않은 rhwp 커밋을 씁니다. 먼저 [한글 엔진·편집 화면 빌드](docs/hwp-rhwp-build.md)에 따라 rhwp 원본을 받아 `packages/ink_hwp_native/Cargo.toml`의 임시 경로를 맞춥니다. 같은 문서에 따라 한글 편집 화면(rhwp-studio)을 빌드해 `android/app/src/main/assets/hwp-studio/`에 넣으면 APK의 `assets/hwp-studio/`로 들어갑니다.
-4. 소스 루트에서 `bash scripts/build-android-231.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
+4. 소스 루트에서 `bash scripts/build-android-232.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
 5. 사용자 본인의 서명 키로 설치용 APK를 만들려면 `android/key.properties`에 `storeFile`, `storePassword`, `keyAlias`, `keyPassword`를 로컬로 지정합니다. 서명 전 빌드만 하려면 이 파일 없이 빌드할 수 있습니다. 본인의 OAuth 공개 클라이언트 ID로 테스트하려면 `DRIVE_ANDROID_SERVER_CLIENT_ID`를 설정합니다.
 
-스크립트는 ARM64의 빌드 번호를 `136231`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
+스크립트는 ARM64의 빌드 번호를 `136232`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
 
 ## 고정된 업스트림 소스
 

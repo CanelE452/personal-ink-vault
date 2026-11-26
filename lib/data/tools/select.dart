@@ -3,6 +3,7 @@ import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
+import 'package:saber/data/tools/eraser_targets.dart';
 import 'package:sbn/tool_id.dart';
 
 class Select extends Tool {
@@ -75,16 +76,24 @@ class Select extends Tool {
   }
 
   /// Adds the indices of any [strokes] that are inside the selection area
-  /// to [selectResult.indices]. The lasso panel decides which kinds count.
+  /// to [selectResult.indices]. The lasso window decides which kinds count:
+  /// handwriting (pens and pencil), highlighter and shapes each have their
+  /// own switch.
   void onDragEnd(List<Stroke> strokes, List<EditorImage> images) {
     selectResult.path.close();
     doneSelecting = true;
     final ink = stows.selectInk.value;
     final highlighter = stows.selectHighlighter.value;
+    final shapes = stows.selectShapes.value;
 
     for (int i = 0; i < strokes.length; i++) {
       final stroke = strokes[i];
-      if (!(stroke.toolId == ToolId.highlighter ? highlighter : ink)) continue;
+      final picks = switch (StrokeKind.of(stroke)) {
+        StrokeKind.highlighter => highlighter,
+        StrokeKind.shape => shapes,
+        StrokeKind.pen || StrokeKind.pencil => ink,
+      };
+      if (!picks) continue;
       final percentInside = polygonPercentInside(
         selectResult.path,
         stroke.lowQualityPolygon,

@@ -12,6 +12,7 @@ import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/workspace/database_editor.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 
+import '../utils/kit_menu_finders.dart';
 import '../utils/test_mock_channel_handlers.dart';
 
 void main() {
@@ -70,7 +71,7 @@ void main() {
         isNull,
         reason: 'The workspace actions must fit in the 320px app bar.',
       );
-      // The tab row shows the note; the function row under it holds back, the shortcuts and ⋯.
+      // The tab row shows the note and home; the function row under it holds the shortcuts and ⋯.
       final title = find.descendant(
         of: find.byKey(const ValueKey('note-tab-row')),
         matching: find.text(note.title),
@@ -118,13 +119,13 @@ void main() {
         '현재 페이지 링크 복사',
         '노트 링크 열기',
       ]) {
-        expect(find.text(label), findsOneWidget);
+        expect(findMenuText(label), findsOneWidget, reason: label);
       }
       await tester.binding.setSurfaceSize(const Size(700, 820));
       await tester.pumpAndSettle();
       // An open note keeps its slim note bar, and so this menu, at every tablet or phone width.
       expect(more, findsOneWidget);
-      await tester.tap(find.text('노트 링크 열기'));
+      await tester.tap(findMenuText('노트 링크 열기'));
       final linkDialog = find.text('inkvault 링크 열기');
       final cancelLink = find.widgetWithText(TextButton, '취소');
       await _until(tester, () => cancelLink.hitTestable().evaluate().isNotEmpty);

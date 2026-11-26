@@ -50,6 +50,7 @@ import '../utils/office_preview.dart'
         officePreviewPdfiumAvailable,
         officePreviewUntil,
         withOfficePreviewPdfium;
+import '../utils/temp_dirs.dart';
 import '../utils/test_mock_channel_handlers.dart';
 
 void main() {
@@ -82,20 +83,7 @@ void main() {
       controller.dispose();
       await controller.repository.close();
     }
-    for (var attempt = 0; ; attempt++) {
-      try {
-        await temp.delete(recursive: true);
-        break;
-      } on PathAccessException catch (error) {
-        if (!controllerDisposed ||
-            !Platform.isWindows ||
-            error.osError?.errorCode != 32 ||
-            attempt == 19) {
-          rethrow;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      }
-    }
+    await deleteTempDir(temp);
   });
   Future<void> drain(WidgetTester tester) async {
     for (var i = 0; i < 16; i++) {
@@ -2329,6 +2317,11 @@ void main() {
       find.byKey(const ValueKey('library-search')),
     );
     expect(search.controller?.text, '특별 검색어');
+    // The results list reads the vault on real time: it can show a moment
+    // after the query is set (this failed now and then, Task 19).
+    for (var i = 0; i < 12 && find.text('변경한 제목').evaluate().isEmpty; i++) {
+      await drain(tester);
+    }
     expect(find.text('변경한 제목'), findsWidgets);
     expect(find.text('다른 어순'), findsNothing);
     if (controller.native != null) {
@@ -2399,15 +2392,21 @@ void main() {
     expect(note.title, '빠른 메모');
     expect(note.folderId, folder.id);
     expect(note.documentKind, VaultDocumentKind.handwriting);
-    // The note bar's view switch (it replaced the bottom bar) shows the note itself, not its Markdown: a wide bar
-    // selects the note segment, a narrow one offers Markdown as the other view.
-    final toggle = tester.widget(find.byKey(const ValueKey('note-view-toggle')));
+    // The view switch (the editor's ⋯ 「보기」 since Task 17) shows the note itself, not its Markdown: it offers
+    // Markdown as the other view.
+    await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(
-      toggle is SegmentedButton
-          ? (toggle.selected.single as Enum).name
-          : (toggle as IconButton).tooltip,
-      toggle is SegmentedButton ? 'note' : 'Markdown',
+      find.descendant(
+        of: find.byKey(const ValueKey('note-view-toggle')),
+        matching: find.text('Markdown'),
+      ),
+      findsOneWidget,
     );
+    await tester.binding.handlePopRoute();
+    await drain(tester);
+    expect(find.byKey(const ValueKey('note-view-toggle')), findsNothing);
     expect(
       (await readWhilePumping(
         tester,
@@ -2442,8 +2441,10 @@ void main() {
       tester.state<EditorState>(find.byType(Editor)).coreInfo.pages,
       hasLength(1),
     );
-    await tester.pumpWidget(const SizedBox());
-    debugDefaultTargetPlatformOverride = null;
+    // The editor's last save starts when the screen goes; closing the vault
+    // while the test's time runs lets it finish here, not in tearDown, where
+    // it waited forever now and then (the 10-minute timeout, Task 19).
+    await closeOfficeFlow(tester);
   });
 
   for (final platform in [TargetPlatform.android, TargetPlatform.windows]) {

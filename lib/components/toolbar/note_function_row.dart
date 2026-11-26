@@ -1,44 +1,37 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:saber/components/ink_ui/doc_menu/kit_doc_menu.dart'
+    show DocZoom, closeMenuThen, zoomSubmenu;
+import 'package:saber/components/kit/kit_icon.dart';
+import 'package:saber/components/kit/kit_menu.dart';
+import 'package:saber/components/kit/kit_tokens.dart';
+import 'package:saber/components/kit/kit_toolbar.dart';
 import 'package:saber/components/toolbar/shortcut_layout.dart';
+import 'package:saber/data/actions/app_action.dart';
 
-/// One action of a note's function row. The workspace and the editor each
-/// provide the ones that apply to the open document; [ShortcutLayout] places
-/// them by [id].
-@immutable
-class NoteShortcut {
-  const new({
-    required this.id,
-    required this.label,
-    required this.icon,
-    this.onPressed,
-    this.selected = false,
-    this.buttonKey,
-    this.menuBuilder,
-  });
+/// An on/off row at the top of the function row's ⋯: its action and how to
+/// read whether it is on now (the window shows it as it changes, not as the
+/// action was published).
+typedef NoteSwitch = ({AppAction action, bool Function() on});
 
-  final String id;
-
-  /// Its tooltip on the bar and its name in "더 많은 기능".
-  final String label;
-  final Widget icon;
-
-  /// Null turns the shortcut off. A [menuBuilder] shortcut is on when this
-  /// is not null, and opens its menu instead of calling it.
-  final VoidCallback? onPressed;
-  final bool selected;
-
-  /// The key of its button on the bar, or of its item in "더 많은 기능".
-  final Key? buttonKey;
-
-  /// For a shortcut that offers choices, such as the export formats.
-  final List<PopupMenuEntry<void>> Function(BuildContext)? menuBuilder;
-}
-
-/// StarNote's function row (layout_function_tool), under the tab row: back,
-/// the shortcut bar's left part and right part (each scrolling on its own),
-/// the [fixed] shortcuts at the right end, and ⋯ "더 많은 기능" with the
-/// shortcuts the bar does not show and "사용자 지정 바로가기 막대".
-class NoteFunctionRow extends StatelessWidget {
+/// The function row of the open documents that are not the ink editor
+/// (블록 페이지, 데이터베이스, 카드 캔버스, Office·한글, the Markdown view;
+/// design 「다른 문서와 무한 노트」): StarNote's layout_function_tool items
+/// in the kit tool bar's look. [back] and [leading] start it, then the
+/// shortcut bar's left part; its right part, the [fixed] shortcuts and ⋯
+/// "더 많은 기능" end it. The two parts scroll on their own on a narrow row.
+///
+/// The shortcuts are the open document's actions, placed by [layout] (an
+/// id with no action is not shown). A button runs its action with its own
+/// context; a row of ⋯ closes the window and runs it with ⋯'s, in the same
+/// frame (as the editor's ⋯).
+///
+/// A document whose own bar has no ⋯ (the infinite note, Task 18 fix 1)
+/// puts its settings at the top of ⋯: [switches] (손가락 필기) and 확대 비율
+/// ([zoom], the editor's list of scales and 확대 잠금).
+class NoteFunctionRow extends StatefulWidget {
   const new({
     super.key,
     this.back,
@@ -47,196 +40,204 @@ class NoteFunctionRow extends StatelessWidget {
     this.fixed = const [],
     required this.layout,
     required this.onCustomize,
+    this.switches = const [],
+    this.zoom,
   });
 
+  /// A tool bar button, as each of [leading] (the button that shows a
+  /// hidden tab row).
   final Widget? back;
-
-  /// Placed after [back], for example the button that shows a hidden tab row.
   final List<Widget> leading;
-  final List<NoteShortcut> shortcuts;
+  final List<AppAction> shortcuts;
 
-  /// StarNote's 문서 개요 and 기타 설정: always at the right end.
-  final List<NoteShortcut> fixed;
+  /// Always at the right end (an Office PDF's 문서 개요).
+  final List<AppAction> fixed;
   final ShortcutLayout layout;
   final VoidCallback onCustomize;
 
-  static const height = 44.0;
+  /// On/off actions shown as switches at the top of ⋯ (they stay open).
+  final List<NoteSwitch> switches;
+
+  /// The document's zoom, for 「확대 비율」 at the top of ⋯.
+  final DocZoom? zoom;
+
+  static const height = KitTokens.toolbarHeight;
+
+  /// The ⋯ window: as wide as the editor's ⋯.
+  static const moreWidth = 224.0;
 
   @override
-  Widget build(BuildContext context) {
-    final byId = {for (final shortcut in shortcuts) shortcut.id: shortcut};
-    final left = [for (final id in layout.left) ?byId[id]];
-    final right = [for (final id in layout.right) ?byId[id]];
-    final more = [for (final id in layout.more) ?byId[id]];
-    final colorScheme = ColorScheme.of(context);
-    Widget part(String key, List<NoteShortcut> items) => SingleChildScrollView(
-      key: ValueKey(key),
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [for (final item in items) _ShortcutButton(item)],
-      ),
-    );
-    return Material(
-      key: const ValueKey('note-function-row'),
-      color: colorScheme.surface,
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: colorScheme.outlineVariant, width: 0.5),
+  State<NoteFunctionRow> createState() => _NoteFunctionRowState();
+}
+
+class _NoteFunctionRowState extends State<NoteFunctionRow> {
+  final _moreButton = GlobalKey();
+  final _moreAnchor = GlobalKey();
+
+  List<AppAction> _placed(List<String> ids) {
+    final byId = {for (final action in widget.shortcuts) action.id: action};
+    return [for (final id in ids) ?byId[id]];
+  }
+
+  Widget _button(AppAction action) => Builder(
+    builder: (context) => KitToolbarButton(
+      key: action.widgetKey,
+      icon: action.icon,
+      tooltip: action.label,
+      selected: action.checked ?? false,
+      onPressed: action.enabled ? () => action.run(context) : null,
+    ),
+  );
+
+  /// One part of the shortcut bar, at most [width] wide.
+  Widget _part(String key, List<AppAction> actions, double width) =>
+      ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: width),
+        child: SingleChildScrollView(
+          key: ValueKey(key),
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: KitTokens.toolbarGroupGap,
+            children: [for (final action in actions) _button(action)],
           ),
         ),
-        child: Row(
-          children: [
-            ?back,
-            ...leading,
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) => Row(
-                  children: [
-                    // StarNote gives the left part up to 300 of its bar.
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: constraints.maxWidth * .5,
-                      ),
-                      child: part('note-function-left', left),
-                    ),
-                    if (left.isNotEmpty)
-                      Container(
-                        width: 0.5,
-                        height: 20,
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        color: colorScheme.outlineVariant,
-                      ),
-                    Expanded(
-                      child: Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: part('note-function-right', right),
-                      ),
-                    ),
-                  ],
+      );
+
+  /// ⋯'s window, right under the row with its right edge on ⋯'s, inside
+  /// the screen (a long one slides inside).
+  Future<void> _openMore() => showKitMenu(
+    context: context,
+    anchor: _moreAnchor,
+    within: Navigator.of(context).context.findRenderObject() as RenderBox?,
+    builder: _moreMenu,
+  );
+
+  KitMenu _moreMenu() {
+    final at = _moreButton.currentContext ?? context;
+    final zoom = widget.zoom;
+    final scale = zoom?.scale();
+    return KitMenu(
+      width: NoteFunctionRow.moreWidth,
+      window: true,
+      groups: [
+        if (widget.switches.isNotEmpty || zoom != null)
+          KitMenuGroup(
+            rows: [
+              for (final (:action, :on) in widget.switches)
+                KitMenuRow.toggle(
+                  key: action.widgetKey ?? ValueKey('note-more-${action.id}'),
+                  icon: action.icon,
+                  label: action.label,
+                  value: on(),
+                  onChanged: (_) => action.run(at),
                 ),
+              if (zoom != null && scale != null)
+                zoomSubmenu(
+                  context: at,
+                  keyPrefix: 'note-more-zoom',
+                  zoom: zoom,
+                  scale: scale,
+                ),
+            ],
+          ),
+        KitMenuGroup(
+          rows: [
+            for (final action in _placed(widget.layout.more))
+              KitMenuRow.action(
+                key: action.widgetKey ?? ValueKey('note-more-${action.id}'),
+                icon: action.icon,
+                label: action.label,
+                checked: action.checked ?? false,
+                enabled: action.enabled,
+                onTap: () => closeMenuThen(at, () => action.run(at)),
               ),
-            ),
-            // StarNote's fixed pair stays in view on any width.
-            for (final item in fixed) _ShortcutButton(item),
-            _MoreFunctions(more: more, onCustomize: onCustomize),
           ],
         ),
-      ),
+        KitMenuGroup(
+          rows: [
+            KitMenuRow.action(
+              key: const ValueKey('shortcut-bar-customize'),
+              icon: KitIconName.tune,
+              label: '사용자 지정 바로가기 막대',
+              onTap: () => closeMenuThen(at, widget.onCustomize),
+            ),
+          ],
+        ),
+      ],
     );
   }
-}
 
-class _ShortcutButton extends StatelessWidget {
-  const new(this.shortcut);
-
-  final NoteShortcut shortcut;
+  Widget _more() => Stack(
+    clipBehavior: Clip.none,
+    children: [
+      KeyedSubtree(
+        key: _moreButton,
+        child: KitToolbarButton(
+          key: const ValueKey('workspace-more-actions'),
+          icon: KitIconName.more,
+          tooltip: '더 많은 기능',
+          onPressed: () => unawaited(_openMore()),
+        ),
+      ),
+      Positioned(
+        left: KitTokens.toolbarButton - NoteFunctionRow.moreWidth,
+        top:
+            (KitTokens.toolbarHeight + KitTokens.toolbarButton) / 2 +
+            KitTokens.toolWindowGapToolbar,
+        width: 0,
+        height: 0,
+        child: SizedBox(key: _moreAnchor),
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.of(context);
-    final menu = shortcut.menuBuilder;
-    if (menu != null) {
-      return PopupMenuButton<void>(
-        key: shortcut.buttonKey,
-        tooltip: shortcut.label,
-        enabled: shortcut.onPressed != null,
-        icon: shortcut.icon,
-        itemBuilder: menu,
-      );
-    }
-    return IconButton(
-      key: shortcut.buttonKey,
-      tooltip: shortcut.label,
-      onPressed: shortcut.onPressed,
-      icon: shortcut.icon,
-      style: IconButton.styleFrom(
-        fixedSize: const Size.square(40),
-        minimumSize: const Size.square(40),
-        padding: EdgeInsets.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        backgroundColor: shortcut.selected
-            ? colorScheme.secondaryContainer
-            : null,
+    final left = _placed(widget.layout.left);
+    final right = _placed(widget.layout.right);
+    final back = widget.back;
+    return KeyedSubtree(
+      key: const ValueKey('note-function-row'),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          // the room the two parts share: each takes up to half of what
+          // the buttons that never scroll leave
+          const button = KitTokens.toolbarButton + KitTokens.toolbarGroupGap;
+          final still =
+              (back == null ? 0 : 1) +
+              widget.leading.length +
+              widget.fixed.length +
+              1;
+          final divider = left.isEmpty
+              ? 0.0
+              : KitTokens.toolbarDividerWidth + KitTokens.toolbarGroupGap;
+          final half =
+              math.max(
+                0.0,
+                box.maxWidth -
+                    2 * KitTokens.toolbarPadding -
+                    still * button -
+                    divider -
+                    2 * KitTokens.toolbarGroupGap,
+              ) /
+              2;
+          return KitToolbar(
+            start: [
+              ?back,
+              ...widget.leading,
+              _part('note-function-left', left, half),
+              if (left.isNotEmpty) const KitToolbarDivider(),
+            ],
+            middle: const [],
+            end: [
+              _part('note-function-right', right, half),
+              for (final action in widget.fixed) _button(action),
+              _more(),
+            ],
+          );
+        },
       ),
     );
   }
-}
-
-/// ⋯ "더 많은 기능" (popup_shortcut_bar_more_functions).
-class _MoreFunctions extends StatelessWidget {
-  const new({required this.more, required this.onCustomize});
-
-  final List<NoteShortcut> more;
-  final VoidCallback onCustomize;
-
-  @override
-  Widget build(BuildContext context) => PopupMenuButton<void>(
-    key: const ValueKey('workspace-more-actions'),
-    tooltip: '더 많은 기능',
-    icon: const Icon(Icons.more_horiz),
-    position: PopupMenuPosition.under,
-    itemBuilder: (_) => [
-      for (final shortcut in more)
-        PopupMenuItem<void>(
-          key: shortcut.buttonKey,
-          enabled: shortcut.onPressed != null,
-          onTap: shortcut.menuBuilder == null
-              ? shortcut.onPressed
-              : () => _openMenuAfterClose(context, shortcut),
-          child: _MenuRow(icon: shortcut.icon, label: shortcut.label),
-        ),
-      if (more.isNotEmpty) const PopupMenuDivider(),
-      PopupMenuItem<void>(
-        key: const ValueKey('shortcut-bar-customize'),
-        onTap: onCustomize,
-        child: const _MenuRow(
-          icon: Icon(Icons.dashboard_customize_outlined),
-          label: '사용자 지정 바로가기 막대',
-        ),
-      ),
-    ],
-  );
-
-  /// A choice shortcut picked from this menu opens its own menu once this one
-  /// has closed, under the ⋯ button.
-  void _openMenuAfterClose(BuildContext context, NoteShortcut shortcut) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!context.mounted) return;
-      final box = context.findRenderObject() as RenderBox?;
-      final overlay =
-          Overlay.of(context).context.findRenderObject() as RenderBox?;
-      if (box == null || overlay == null) return;
-      final position = RelativeRect.fromRect(
-        Rect.fromPoints(
-          box.localToGlobal(box.size.bottomLeft(Offset.zero), ancestor: overlay),
-          box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
-        ),
-        Offset.zero & overlay.size,
-      );
-      showMenu<void>(
-        context: context,
-        position: position,
-        items: shortcut.menuBuilder!(context),
-      );
-    });
-  }
-}
-
-class _MenuRow extends StatelessWidget {
-  const new({required this.icon, required this.label});
-
-  final Widget icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      IconTheme.merge(data: const IconThemeData(size: 22), child: icon),
-      const SizedBox(width: 12),
-      Flexible(child: Text(label)),
-    ],
-  );
 }

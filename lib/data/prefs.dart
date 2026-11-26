@@ -9,6 +9,7 @@ import 'package:saber/components/home/home_layout_button.dart';
 import 'package:saber/components/home/sort_button.dart';
 import 'package:saber/components/navbar/responsive_navbar.dart';
 import 'package:saber/data/codecs/base64_codec.dart';
+import 'package:saber/data/codecs/name_list_codec.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/quota.dart';
 import 'package:saber/data/sentry/sentry_consent.dart';
@@ -129,28 +130,30 @@ class Stows {
     codec: const EnumCodec(AxisDirection.values),
     volatile: !_isOnMainIsolate,
   );
-  /// Where the pen toolbar sits in the workspace notes (PDF, page and
-  /// infinite notes). It is separate from [editorToolbarAlignment], whose
-  /// Saber default is the bottom, so updating keeps the toolbar on top.
-  final workspaceToolbarAlignment = PlainStow(
-    'workspaceToolbarAlignment',
-    AxisDirection.up,
-    codec: const EnumCodec(AxisDirection.values),
-    volatile: !_isOnMainIsolate,
-  );
 
-  /// The user's order and visibility of the PDF/page pen toolbar items
-  /// (`ToolbarLayout.encode`); empty means the default layout.
+  /// The 229 PDF/page pen toolbar's tools in the user's order, `!` before a
+  /// hidden one; empty means its default. Read only to move it into
+  /// [editorToolbarTools] (`ToolbarToolsLayout`).
   final pageToolbarLayout = PlainStow(
     'pageToolbarLayout',
     <String>[],
     volatile: !_isOnMainIsolate,
   );
 
-  /// The same for the infinite note toolbar.
-  final infiniteToolbarLayout = PlainStow(
-    'infiniteToolbarLayout',
+  /// The editor toolbar's tools in the user's order, `!` before a tool kept
+  /// in the ⌄ window (`ToolbarToolsLayout.encode`). Empty until the toolbar
+  /// is customized; until then the [pageToolbarLayout] of 229 is read.
+  final editorToolbarTools = PlainStow(
+    'editorToolbarTools',
     <String>[],
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Whether the editor is in gesture mode: pens and fingers move and zoom
+  /// the page and draw nothing.
+  final editorGestureMode = PlainStow(
+    'editorGestureMode',
+    false,
     volatile: !_isOnMainIsolate,
   );
 
@@ -205,6 +208,17 @@ class Stows {
     false,
     volatile: !_isOnMainIsolate,
   );
+
+  /// What the eraser rubs out (its advanced settings' 「지울 대상」), by
+  /// name; read through EraserTargets (tools/eraser_targets.dart). Empty until
+  /// first changed: [eraseHighlighterOnly] decides until then. A kept value
+  /// that is not a list of names reads as unknown names (all four).
+  final eraserTargets = PlainStow(
+    'eraserTargets',
+    <String>[],
+    codec: const NameListCodec(),
+    volatile: !_isOnMainIsolate,
+  );
   final highlighterStraightLine = PlainStow(
     'highlighterStraightLine',
     false,
@@ -239,6 +253,22 @@ class Stows {
   /// Pens kept with the pen panel's "펜박스에 추가", one JSON object each
   /// (see PenBoxEntry in tools/pen_box.dart).
   final penBox = PlainStow('penBox', <String>[], volatile: !_isOnMainIsolate);
+
+  /// Whether the pen panel shows only its pen row. Kept while the app runs,
+  /// never saved: the floating bar hands it to each panel it opens.
+  final penPanelCollapsed = PlainStow(
+    'penPanelCollapsed',
+    false,
+    volatile: true,
+  );
+
+  /// Where the floating bar sits: across the top of the canvas (`'top'`) or
+  /// upright at its left (`'left'`). Any other value is taken as the top.
+  final floatingBarPosition = PlainStow(
+    'floatingBarPosition',
+    'top',
+    volatile: !_isOnMainIsolate,
+  );
   final selectRectangle = PlainStow(
     'selectRectangle',
     false,
@@ -247,6 +277,14 @@ class Stows {
   final selectInk = PlainStow('selectInk', true, volatile: !_isOnMainIsolate);
   final selectHighlighter = PlainStow(
     'selectHighlighter',
+    true,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Whether the lasso picks up the shape pen's strokes (도형), apart from
+  /// handwriting ([selectInk]).
+  final selectShapes = PlainStow(
+    'selectShapes',
     true,
     volatile: !_isOnMainIsolate,
   );
@@ -359,6 +397,17 @@ class Stows {
     volatile: !_isOnMainIsolate,
   );
 
+  /// Why the settings table turned a setting off (key → one line); the
+  /// settings page shows it under that row while the row stays off.
+  final settingsAutoOffReasons = PlainStow.json(
+    'settingsAutoOffReasons',
+    const <String, String>{},
+    fromJson: _stringMapFromJson,
+    volatile: !_isOnMainIsolate,
+  );
+  static Map<String, String> _stringMapFromJson(Object json) =>
+      Map<String, String>.from(json as Map);
+
   final lastTool = PlainStow(
     'lastTool',
     ToolId.fountainPen,
@@ -409,7 +458,7 @@ class Stows {
       ),
       lastHighlighterColor = PlainStow(
         'lastHighlighterColor',
-        // StarNote's first highlighter colour (highlighterQuickColors).
+        // StarNote's first highlighter colour (shape_color_list_mark_pen).
         const Color(0xffffe60f).withAlpha(Highlighter.alpha).toARGB32(),
         volatile: !_isOnMainIsolate,
       ),

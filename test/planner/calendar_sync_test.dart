@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:logging/logging.dart';
 import 'package:saber/data/planner/calendar_sync.dart';
 import 'package:saber/data/planner/google_calendar.dart';
 import 'package:saber/data/planner/planner_models.dart';
+import 'package:saber/data/user_error.dart';
 
 http.Response _json(Object body, [int status = 200]) =>
     http.Response(jsonEncode(body), status);
@@ -123,7 +126,11 @@ void main() {
     final failing = online(_failing);
     final events = await failing.month(november, refresh: true);
     expect(events.single.title, 'Lunch');
-    expect(failing.lastError, contains('down'));
+    expect(
+      failing.lastError,
+      userErrorMessage(const CalendarApiException(500, 'down')),
+    );
+    expect(failing.lastError, isNot(contains('down')));
   });
 
   test('save inserts and adds the event to the cached month', () async {
@@ -187,5 +194,69 @@ void main() {
     final cached = await offline().month(november);
     expect(cached.where((e) => e.googleId == 'new'), hasLength(1));
     expect(cached.any((e) => e.googleId == 'e1'), isTrue);
+  });
+
+  test('a Google error is shown as the app sentence, the original is logged', () async {
+    final records = <LogRecord>[];
+    final listening = Logger.root.onRecord.listen(records.add);
+    addTearDown(listening.cancel);
+    final sync = online(
+      (_) async => _json({
+        'error': {'message': 'Invalid Credentials'},
+      }, 403),
+    );
+    await sync.month(november, refresh: true);
+    const original = CalendarApiException(403, 'Invalid Credentials');
+    expect(sync.lastError, userErrorMessage(original));
+    expect(sync.lastError, isNot(contains('Invalid Credentials')));
+    expect(sync.lastError, isNot(contains('Google Calendar 403')));
+    expect(
+      records.any((r) => '${r.error}'.contains('Invalid Credentials')),
+      isTrue,
+    );
+  });
+
+  test('a network error is shown as the app sentence', () async {
+    const error = SocketException('Failed host lookup: www.googleapis.com');
+    final sync = CalendarSync(cacheDir: dir, api: () async => throw error);
+    await sync.month(november, refresh: true);
+    expect(sync.lastError, userErrorMessage(error));
+    expect(sync.lastError, isNot(contains('Failed host lookup')));
+    expect(sync.lastError, matches(RegExp('[가-힣]')));
+  });
+
+  test('an app Korean sentence in any exception is kept', () async {
+    final error = StateError('일정을 읽지 못했습니다.');
+    final sync = CalendarSync(cacheDir: dir, api: () async => throw error);
+    await sync.month(november, refresh: true);
+    expect(sync.lastError, userErrorMessage(error));
+    expect(sync.lastError, '일정을 읽지 못했습니다.');
+  });
+
+  test('not connected is already an app sentence', () async {
+    final sync = offline();
+    await sync.month(november, refresh: true);
+    expect(sync.lastError, matches(RegExp('[가-힣]')));
+  });
+
+  test('a message with no Korean never reaches lastError', () async {
+    final errors = <Object>[
+      Exception('Connection closed before full header was received'),
+      const FileSystemException('Cannot rename file', '/x'),
+      TimeoutException('Future not completed'),
+    ];
+    for (final error in errors) {
+      final sync = CalendarSync(cacheDir: dir, api: () async => throw error);
+      await sync.month(november, refresh: true);
+      expect(sync.lastError, 'Google 캘린더와 동기화하지 못했습니다.', reason: '$error');
+    }
+  });
+
+  test('a device cache write error is a Korean sentence, not the OS text', () async {
+    final sync = online(_server);
+    await sync.month(november);
+    Directory('${cacheFile().path}.tmp').createSync();
+    await sync.save(_event(calendarId: 'cal'));
+    expect(sync.lastError, '받아 둔 일정을 기기에 저장하지 못했습니다.');
   });
 }

@@ -19,7 +19,10 @@ class const Whiteboard({super.key}) extends StatelessWidget {
   static void triggerSave() {
     final editorState = _whiteboardKey.currentState;
     if (editorState == null) return;
-    assert(editorState.savingState.value == .waitingToSave);
+    assert(
+      editorState.savingState.value == .waitingToSave ||
+          editorState.savingState.value == .failed,
+    );
     editorState.saveToFile();
     editorState.snackBarNeedsToSaveBeforeExiting();
   }
