@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136232,
+  "versionCode": 136233,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,11 +17,11 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "bbb0837536b9433f0af12c57e32f4a1970ca3b0ae2a59c03bdafd10e201a1f0a",
+      "sha256": "08cd4a09131566d6bfee0ffc7bbc7ee966216dc6a5ad4708824e81342ef6ed29",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
-      "sha256": "46eda7644759777868e0958d8481756908d1660d391ba9c503306d3f8dcd90fd",
+      "sha256": "17c5d26a88ed488a498f5e47bfcfd4ae31bc0e67276b849f33e1b4d332e91fa1",
       "mode": "100644"
     },
     "android/.gitignore": {
@@ -81,7 +81,7 @@
       "mode": "100644"
     },
     "android/app/src/main/kotlin/com/adilhanney/saber/MainActivity.kt": {
-      "sha256": "53572c55abcc311130ca5ae9ac71534f1977ea7ad529c9e5ccb91fe2fd3572d6",
+      "sha256": "3bb128bd41ec125c7fd66e283d6dbc97da4baad5f7af2e5cf3e485508f8a381c",
       "mode": "100644"
     },
     "android/app/src/main/kotlin/com/adilhanney/saber/ObsidianFolderBridge.kt": {
@@ -605,7 +605,7 @@
       "mode": "100644"
     },
     "lib/components/canvas/canvas_gesture_detector.dart": {
-      "sha256": "d543a3865dfe6c7019c5c53c40b1f0b40b448aa9866bafcb2dd1d34e9a6da6ae",
+      "sha256": "2c466c21cbdd58e89019d27a17bb0cce6cb1e10777bb9cacfe6fdd4d717ecd34",
       "mode": "100644"
     },
     "lib/components/canvas/canvas_image.dart": {
@@ -645,7 +645,7 @@
       "mode": "100644"
     },
     "lib/components/canvas/inner_canvas.dart": {
-      "sha256": "3761cee2ad471503faf8e8f861fb252c61cfc92102bc3e8fd337e2f093aa5561",
+      "sha256": "7f1e26f9387fe208f1c7696e111307a0a9eff4f5879747c6506aec4ddd3af658",
       "mode": "100644"
     },
     "lib/components/canvas/interactive_canvas.dart": {
@@ -760,16 +760,24 @@
       "sha256": "385234d7463262c598669113b2b5203fd074d59fed82aecbffd6f6dd65ca3379",
       "mode": "100644"
     },
+    "lib/components/ink_ui/add_page/kit_add_page_window.dart": {
+      "sha256": "940c15f075dba5eb7f1cbc3d831d474f84d713f5b82cb21580b5e39ac0c82680",
+      "mode": "100644"
+    },
+    "lib/components/ink_ui/audio/listen_bar.dart": {
+      "sha256": "af70aef18d973ec5eb3a39c1f8c7366739e07a7dafe300347ec53a756774ffd7",
+      "mode": "100644"
+    },
+    "lib/components/ink_ui/audio/record_pill.dart": {
+      "sha256": "c3e3af505c85b8b6b463eb4a337b74c7ed0bb6454318846fc2b1a2b3fe9cf935",
+      "mode": "100644"
+    },
     "lib/components/ink_ui/doc_menu/kit_doc_menu.dart": {
-      "sha256": "999e1cf939b0e4a5acc66fd2c2017b3933c23902982d1534fd5f87fa90a00adb",
+      "sha256": "b0aecb57ec43321e55a4253e5a0a01de1e070023ebc3a92420a7454f68de23c3",
       "mode": "100644"
     },
     "lib/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart": {
-      "sha256": "273e44c3ebb1664d8c19117c4bf2fc75011c42d0c3a73a35ef5afeaa707f43bf",
-      "mode": "100644"
-    },
-    "lib/components/ink_ui/editor_toolbar/kit_note_sheet.dart": {
-      "sha256": "d38f3e5e3840082128156934e65ab0cba808ebb6bc05326ad90ef1fbdad06609",
+      "sha256": "ca2995e40f3a7ec83707ea12b96804607064386521547c500d8b158072523097",
       "mode": "100644"
     },
     "lib/components/ink_ui/editor_toolbar/kit_save_chip.dart": {
@@ -777,7 +785,7 @@
       "mode": "100644"
     },
     "lib/components/ink_ui/editor_toolbar/toolbar_customize_sheet.dart": {
-      "sha256": "28db90b84ff5c11e8864112585c56fff21b6e830c2930e413899d3ff066192ab",
+      "sha256": "f67548d206078313325b1ff27da5a70f80ab3682bd9d216197dec40a55d5189c",
       "mode": "100644"
     },
     "lib/components/ink_ui/editor_toolbar/toolbar_tools_layout.dart": {
@@ -785,7 +793,7 @@
       "mode": "100644"
     },
     "lib/components/ink_ui/floating_bar/floating_bar_parts.dart": {
-      "sha256": "8190a357239126195a53037ebde15f3497a913838e7087a5943a7c2b2b744abd",
+      "sha256": "583964a7ba7a23acdf2226b8aefe52da7ff6c1ce94b68e70cf14ef6461dec623",
       "mode": "100644"
     },
     "lib/components/ink_ui/floating_bar/kit_floating_bar.dart": {
@@ -821,7 +829,7 @@
       "mode": "100644"
     },
     "lib/components/ink_ui/pen_panel/kit_pen_box.dart": {
-      "sha256": "cfda830d22721f28203f7577c239b824a8947668dc1c6fde57686b044b45959e",
+      "sha256": "532dcef3d520a130c8f6c123b9bd3ecc8633c7d62d5db3e179193b60b8f2e8fa",
       "mode": "100644"
     },
     "lib/components/ink_ui/pen_panel/kit_pen_color_row.dart": {
@@ -848,6 +856,14 @@
       "sha256": "6d85cdfe9c5a5d69644f18af29bb7162bd6c8ec68199f1b42562c26bc1e18258",
       "mode": "100644"
     },
+    "lib/components/ink_ui/quick_note/kit_quick_note.dart": {
+      "sha256": "098b6772bbbf4c30a90902b719866b6dbbfb1727541cc923a8ced91a8c313caf",
+      "mode": "100644"
+    },
+    "lib/components/ink_ui/quick_note/quick_note_paper.dart": {
+      "sha256": "61b04eecc4cd29fff7982521535a7d9cc06b2114e9b02ab70d3440393f567922",
+      "mode": "100644"
+    },
     "lib/components/ink_ui/selection_bars/kit_lasso_bar.dart": {
       "sha256": "550b0531f07d40afa1c1844e00595d96a47998272c234da9119b7cef0790cf2c",
       "mode": "100644"
@@ -864,8 +880,28 @@
       "sha256": "f4646bb13c4fa6a5942171093303ac95b6cb4e12ef58448b497844f78dd78810",
       "mode": "100644"
     },
+    "lib/components/ink_ui/side_panel/audio_tab.dart": {
+      "sha256": "46d2f4f9acda7baa89b4c920c736f26db3a2eaf3ada9795eece4ab43a0a328f5",
+      "mode": "100644"
+    },
+    "lib/components/ink_ui/side_panel/kit_side_pages.dart": {
+      "sha256": "7f365c3e2413747975a917132cfad405c696a6c8b4ac4880f1eff8dcdb337e95",
+      "mode": "100644"
+    },
+    "lib/components/ink_ui/side_panel/kit_side_panel.dart": {
+      "sha256": "694162d8603c750ee08199cd3263f84bcf88cefa6290261e31083227b6f64e5d",
+      "mode": "100644"
+    },
+    "lib/components/ink_ui/side_panel/outline_tab.dart": {
+      "sha256": "ba6055b05eb7dbba5518feaccc2c67c8009bfa5ec9ca021e81e475e1acb74cd6",
+      "mode": "100644"
+    },
+    "lib/components/ink_ui/side_panel/side_row_parts.dart": {
+      "sha256": "1a14a35f32b2df964c024c4da655712be7cbe584509f28c05a9e7111594352e2",
+      "mode": "100644"
+    },
     "lib/components/ink_ui/tool_panels/kit_eraser_panel.dart": {
-      "sha256": "fcc241e7d4b7c2b18fd4d0aeb72a22fb1c8059a8347abdca0556822dadcc12bb",
+      "sha256": "f04de5a1c00a8b004c2fabe71ec555787908a98c2fa9d024ec4251ac82758aba",
       "mode": "100644"
     },
     "lib/components/ink_ui/tool_panels/kit_lasso_panel.dart": {
@@ -873,11 +909,11 @@
       "mode": "100644"
     },
     "lib/components/ink_ui/tool_panels/tool_panel_common.dart": {
-      "sha256": "cec87c8b793530053daf7e6920768402e5944a9a377dc9f11c5c579f53f74270",
+      "sha256": "18db6ad4be852f50919411be77e84956eb957c392ed4100f853c6440fc92ff1b",
       "mode": "100644"
     },
     "lib/components/kit/kit_controls.dart": {
-      "sha256": "cb073e8482f8ea2674e9ca57c336cd04008be32b5383388c28ff394e39c3283e",
+      "sha256": "4516a01fb3463e9abc0a9a702667ba242f2f9aa90662205dfad8281da05227d7",
       "mode": "100644"
     },
     "lib/components/kit/kit_icon.dart": {
@@ -885,7 +921,7 @@
       "mode": "100644"
     },
     "lib/components/kit/kit_icons.g.dart": {
-      "sha256": "3ee3e9f61150bd0fb82ddf3bffa569fa576901d730f100ad61de858331823dc7",
+      "sha256": "06c3e69c975f9c697062c5f249a5814b2609d4be162d6baa223534f32a045144",
       "mode": "100644"
     },
     "lib/components/kit/kit_menu.dart": {
@@ -897,7 +933,7 @@
       "mode": "100644"
     },
     "lib/components/kit/kit_motion.dart": {
-      "sha256": "3f093eaa944431428486e12d277621b538896bd6a13c54b0bbe3ff5293c84605",
+      "sha256": "c5f9a4f50ba8b03d6f678fc2420511d84f9748a4ada31b844ac6f9f6e1f6c359",
       "mode": "100644"
     },
     "lib/components/kit/kit_pen_art.dart": {
@@ -913,7 +949,7 @@
       "mode": "100644"
     },
     "lib/components/kit/kit_popover.dart": {
-      "sha256": "df214db56e1e3a03229d5bd3f186700f94619e42c45cb800edac41031ebf3974",
+      "sha256": "b8ed9b3595da75580e5012e258ee13b46aadaca3bc98860b2742d647e48fd418",
       "mode": "100644"
     },
     "lib/components/kit/kit_selection_bar.dart": {
@@ -921,7 +957,7 @@
       "mode": "100644"
     },
     "lib/components/kit/kit_swatches.dart": {
-      "sha256": "7264ace40bebb17c6fe477e1a66153a70b2a63bcd10203bd35a42129456ebee6",
+      "sha256": "34edb11db02c2d3329f7543e047ab01782e6f2b493304b09db880e5a5218ac8f",
       "mode": "100644"
     },
     "lib/components/kit/kit_text.dart": {
@@ -929,11 +965,15 @@
       "mode": "100644"
     },
     "lib/components/kit/kit_tokens.dart": {
-      "sha256": "83e160f1d4af174ab19d51b1b8602ca54a64ff027b6e337430a4c9fa1e5ebb2d",
+      "sha256": "19f31319fc6390f91c9d0533724d339a6d38e1cc1fa078e125d3900ff79018ea",
       "mode": "100644"
     },
     "lib/components/kit/kit_toolbar.dart": {
       "sha256": "317c82a3163323963431e1fb379d9752273f358ffe728e36f7639d502ab3cc01",
+      "mode": "100644"
+    },
+    "lib/components/kit/kit_undo_notice.dart": {
+      "sha256": "610c7c35b11c73c515c69becac448f3490c99ee6038b18bebc1393c402e42659",
       "mode": "100644"
     },
     "lib/components/misc/faq.dart": {
@@ -1073,7 +1113,7 @@
       "mode": "100644"
     },
     "lib/components/toolbar/editor_page_manager.dart": {
-      "sha256": "8f3625bb533db3f4f3e05ad404526fa63e84c862e0f9b5225c853fb8b3aaddef",
+      "sha256": "3197fb8d7c148f0ba4144b9394f8161920787878d788d7ce54c5facd80e59670",
       "mode": "100644"
     },
     "lib/components/toolbar/export_dialog.dart": {
@@ -1101,7 +1141,7 @@
       "mode": "100644"
     },
     "lib/data/actions/app_action_ids.dart": {
-      "sha256": "bb37ba3265663d274fa7bd11b5b5f476893297f49163a78e6b63ceaa8d76ecd9",
+      "sha256": "acb140cb9245370ba39e8a141a838bd32bf05f431c41a05d4c9e2de9fd7678bc",
       "mode": "100644"
     },
     "lib/data/actions/app_action_registry.dart": {
@@ -1109,11 +1149,23 @@
       "mode": "100644"
     },
     "lib/data/app_external_screen.dart": {
-      "sha256": "bea2a57e0a4fb2159c01bc479e32a6a3f3590aaf3ad38cb152196a81180b5040",
+      "sha256": "564b24208454a37a1aaff2f968d9e60792955d0c9a98974dbdbfba1bca299e47",
       "mode": "100644"
     },
     "lib/data/app_profile.dart": {
       "sha256": "0dd932c6125fc4b272bc9ea9eb2a18201c28ade66e213ff2866c9471ce11a513",
+      "mode": "100644"
+    },
+    "lib/data/audio/note_player.dart": {
+      "sha256": "a93591588e2e394378bef940334b2642f67b5f5970203af0c8418f811811593b",
+      "mode": "100644"
+    },
+    "lib/data/audio/note_recorder.dart": {
+      "sha256": "3d0de708837c6c5e259f94cae6be63c8745d84a8da2a322a4fbb17d83ca4f76c",
+      "mode": "100644"
+    },
+    "lib/data/audio/recording_entry.dart": {
+      "sha256": "b946adfbff7a2ffa9fdfc60c79197b50a0ac0d156edb230c855a057bbdda6d50",
       "mode": "100644"
     },
     "lib/data/codecs/base64_codec.dart": {
@@ -1145,7 +1197,7 @@
       "mode": "100644"
     },
     "lib/data/editor/editor_core_info.dart": {
-      "sha256": "4ecc55dded75d0ba5ac74bacf1b161476cc97354f712a07681704a5d8a835d70",
+      "sha256": "7c09e2e22fc23db9f921d3a6fc41a70b5a46fd4b12fb2578fd690e1a88d12ccd",
       "mode": "100644"
     },
     "lib/data/editor/editor_exporter.dart": {
@@ -1153,15 +1205,23 @@
       "mode": "100644"
     },
     "lib/data/editor/editor_history.dart": {
-      "sha256": "c63e44b08abdad28a58ecaaacccbaf3626f24099b18bf393f133ab9a199e33f5",
+      "sha256": "47462d7f2a62772b68954415fa092c28a2d8b38fa31c134f4220986a31c0a5fb",
       "mode": "100644"
     },
     "lib/data/editor/page.dart": {
-      "sha256": "8bc0736b9d88a02d55fb69270de224e31bf0ea9db63450a9e0dec56fc6b0e124",
+      "sha256": "0e0ae91e4b7606e2b22c57443268f29d7279f89e2e4a59c3d1e12157a5859907",
       "mode": "100644"
     },
     "lib/data/editor/page_link.dart": {
       "sha256": "a3ce6e31656f67283a98dd8e472e58cd92cf1a1ab152e944f082e1a8eb719c49",
+      "mode": "100644"
+    },
+    "lib/data/editor/pdf_outline.dart": {
+      "sha256": "78c8c580c1e0157ce74e699e23973e491da95e7d7b77e154fbd092b81d019d8e",
+      "mode": "100644"
+    },
+    "lib/data/editor/quick_note.dart": {
+      "sha256": "ddb4c12dbefce1300670174e57bef76ec38c9264f261b36bad560f9324983ebf",
       "mode": "100644"
     },
     "lib/data/editor/saving_state.dart": {
@@ -1509,7 +1569,7 @@
       "mode": "100644"
     },
     "lib/data/prefs.dart": {
-      "sha256": "828a9f3e6f3408d4d6e178569fb8ad3bb063eee7d96e721ca6b8efe015d7ec83",
+      "sha256": "d38c7ec3b84c0cb9fe9d72f7d5e5e35bf783dd3c8aaf10815bb63b5c2b5bdbc6",
       "mode": "100644"
     },
     "lib/data/quota.dart": {
@@ -1573,7 +1633,7 @@
       "mode": "100644"
     },
     "lib/data/tools/pen.dart": {
-      "sha256": "23cef80418c851ad95494e6206682ce31d416aa514f2c8b0cefdfb4c4c48cdb5",
+      "sha256": "08c5940e589d8e5a38c1515cff6aa2aeb79e27c19096618773753b8045869155",
       "mode": "100644"
     },
     "lib/data/tools/pen_box.dart": {
@@ -1754,6 +1814,14 @@
     },
     "lib/data/vault/note_link.dart": {
       "sha256": "7b0edc21158dfb28540a6281d846787ac600ae15f3a1c783eed224bf8a9b6005",
+      "mode": "100644"
+    },
+    "lib/data/vault/note_page_marks.dart": {
+      "sha256": "13059d095081247a1d2a0ba6a3b9b5acf06fac6713c4033e2910de766f89a4f3",
+      "mode": "100644"
+    },
+    "lib/data/vault/note_side_store.dart": {
+      "sha256": "8a9e25671088a9c7d6d19930d757ca4632afa46605fe85b20de89149df260013",
       "mode": "100644"
     },
     "lib/data/vault/notion_export_csv.dart": {
@@ -2093,19 +2161,39 @@
       "mode": "100644"
     },
     "lib/pages/editor/editor.dart": {
-      "sha256": "94906778bdfe62f9671696070087b306d54faaee7e7516775d54f371616975f9",
+      "sha256": "82008ec4c1ec6b6f365b3308947e8d52a2274b30320191fed6053f52f5d63aed",
       "mode": "100644"
     },
     "lib/pages/editor/editor_actions.dart": {
-      "sha256": "bec1357b5f5747e30379336920cc047513f241b7ccad1a8f862f710ace9a8087",
+      "sha256": "1109f8423a40330dea4928649fc16f95cce62029638c5a14a2037377f44e231b",
+      "mode": "100644"
+    },
+    "lib/pages/editor/editor_add_page.dart": {
+      "sha256": "0ad2a4347d5a7e005ce206fae20e9e083c10e3982bd3dc4acb398fd627b1555a",
+      "mode": "100644"
+    },
+    "lib/pages/editor/editor_add_page_host.dart": {
+      "sha256": "493377bae7d6da3e6033875b32aa14273094415f465ab5f73c7a6134c29e9bcc",
+      "mode": "100644"
+    },
+    "lib/pages/editor/editor_audio_host.dart": {
+      "sha256": "363f6cb51bf69069b91db43afc702d552f6cffc39a7d494571a43955fda0f44f",
       "mode": "100644"
     },
     "lib/pages/editor/editor_chrome.dart": {
-      "sha256": "ca10205226188ea4e5eb03685b6ab5998b1b3e67791c1b0d2cd09393859a06b7",
+      "sha256": "515dc0a7e86b2ff6aa1afbaf4812eb9a80afc53fcc2cf0a833208feb30f02648",
+      "mode": "100644"
+    },
+    "lib/pages/editor/editor_quick_note_host.dart": {
+      "sha256": "058f67e0977ccd7563610a258721d6c19e5e2bbbcc29edfeaaf7fd2fc755bd7e",
+      "mode": "100644"
+    },
+    "lib/pages/editor/editor_side_host.dart": {
+      "sha256": "26238ce1384b2570b2b6997876a5a501ddce217d82b076e284bdf2c789a54305",
       "mode": "100644"
     },
     "lib/pages/editor/editor_toolbar_area.dart": {
-      "sha256": "d59cfbbb4cf3c7c04e7950e41def943f4eef4c739e03effaba8a87b0cbd58293",
+      "sha256": "f422d470dab23f1e9a77152085b82b0e62b26d9dad64ab83148ae2c6b2464f3a",
       "mode": "100644"
     },
     "lib/pages/editor/link_dialog.dart": {
@@ -2345,7 +2433,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/infinite_canvas.dart": {
-      "sha256": "03f8a9e00c59fca63ae27b7bfc41d680c56e937be05c7565effb4ee61ccd3e46",
+      "sha256": "3852645d0280e61b54d3ca5ff7a52a9eca7c87900364db98c942a08dc4e16a04",
       "mode": "100644"
     },
     "lib/pages/workspace/infinite_ink_adapter.dart": {
@@ -2413,7 +2501,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/study_workspace.dart": {
-      "sha256": "880adefcfd1eaae40784f64a6853eb1172f68f9e83c9b9ef073f2086ee2552b0",
+      "sha256": "8402ef818d0d0120afa7deecbe945484ce5fc259b90fa79850b386f1bc19774f",
       "mode": "100644"
     },
     "lib/pages/workspace/synced_block_view.dart": {
@@ -2421,7 +2509,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_actions.dart": {
-      "sha256": "5359f6488c215cd83d36a4603314dadb95bc172890b59d3828c99f5f5b2e2a9f",
+      "sha256": "fca93e69085dcf07610c86b12bb4bc85c40ac6a519034af93dd7d4532faf82e5",
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_bookmark_sheet.dart": {
@@ -2429,7 +2517,7 @@
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_controller.dart": {
-      "sha256": "5679c926bd819fb763409103b44fd287d66908ea2ded2da443d472be8681f20e",
+      "sha256": "7d034a4cf6bf16b59bbef2e21e6eff3148d1c73035867ab81fee2ce44472edb8",
       "mode": "100644"
     },
     "lib/pages/workspace/workspace_quick_switcher.dart": {
@@ -3025,15 +3113,15 @@
       "mode": "100644"
     },
     "pubspec.lock": {
-      "sha256": "f7af1fba5f1c62e2af7f4d092081b907c809c19a712b311eaad2a7fb155aae3d",
+      "sha256": "b6e244ed1535cb5b855fe0bfebd5625d19e628b87daee2880580afac86b3ef8a",
       "mode": "100644"
     },
     "pubspec.yaml": {
-      "sha256": "1a589ba5a954f8be3ee120b12fa78c7c10feff6df99f274ebed4f56b5c1cb84f",
+      "sha256": "dab5f3197f960f89e7225725aeadd9695934f6ef2399dd27a2669415e04da87a",
       "mode": "100644"
     },
-    "scripts/build-android-232.sh": {
-      "sha256": "0de1b752b0ef7734d777faa811de9ae9a0e19c9d265613f4b8f5cdcb7ccb8692",
+    "scripts/build-android-233.sh": {
+      "sha256": "e4ac4b59f3f492bd628543b44f6ac311ab97fbb2703411cd91375bc8afa40ff2",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {

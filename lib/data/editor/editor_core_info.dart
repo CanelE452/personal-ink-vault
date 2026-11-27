@@ -29,6 +29,11 @@ class EditorCoreInfo {
   /// Increment this if earlier versions of the app can't satisfiably read the file.
   ///
   /// Version history:
+  /// - 21: Kept for the pen engine stage (new tool ids, new stroke keys,
+  ///   text boxes). Not written yet.
+  /// - 20: A page's own background pattern (`bp`, a pattern other than the
+  ///   note's: [EditorPage.hasOwnPattern]), and nothing else.
+  ///   Only notes that use it are written as 20, see [versionToWrite].
   /// - 19: Assets are now stored in separate files, and added the `sba` file format.
   /// - 18: [Pencil] tool introduced
   /// - 17: [PdfEditorImage] introduced
@@ -49,6 +54,18 @@ class EditorCoreInfo {
   /// - 2: Store width and height in sbn
   /// - 1: Store version in sbn
   static const sbnVersion = 19;
+
+  /// The newest version this app reads and writes. A note is written as this
+  /// only when it uses something a [sbnVersion] app would drop on its next
+  /// save; other notes stay [sbnVersion], so 232 and Windows 226 still open
+  /// them (they cannot open a newer note at all).
+  /// The pen engine stage raises this to 21: this app (233) opens version 20
+  /// notes for editing, so it must not be given pen engine notes as 20.
+  static const newestSbnVersion = 20;
+
+  /// The version a note with a page of its own pattern is written as. It
+  /// stays 20 when [newestSbnVersion] goes up.
+  static const pagePatternVersion = 20;
 
   /// The reason why the note is read-only,
   /// or `null` if the note is editable.
@@ -127,10 +144,10 @@ class EditorCoreInfo {
   }) {
     ReadOnlyReason? readOnlyReason;
     final fileVersion = json['v'] as int? ?? 0;
-    if (fileVersion > sbnVersion) {
+    if (fileVersion > newestSbnVersion) {
       readOnlyReason ??= .versionTooNew;
       log.warning(
-        'File version $fileVersion is newer than supported $sbnVersion. '
+        'File version $fileVersion is newer than supported $newestSbnVersion. '
         'Note may be read incorrectly or incompletely.',
       );
     }
@@ -464,6 +481,17 @@ class EditorCoreInfo {
     }
   }
 
+  /// The version to save this note as: 20 if a page has a pattern of its
+  /// own ([EditorPage.hasOwnPattern]), else [sbnVersion].
+  /// The pen engine stage adds its conditions here (version 21); when several
+  /// conditions hold, the note is written as the highest version they need.
+  int versionToWrite() {
+    final pageHasOwnPattern = pages.any(
+      (page) => page.hasOwnPattern(backgroundPattern),
+    );
+    return pageHasOwnPattern ? pagePatternVersion : sbnVersion;
+  }
+
   /// Returns the json map and a list of assets.
   /// Assets are stored in separate files.
   (Map<String, dynamic> json, OrderedAssetCache) toJson() {
@@ -471,13 +499,18 @@ class EditorCoreInfo {
     final OrderedAssetCache assets = OrderedAssetCache();
 
     final json = {
-      'v': sbnVersion,
+      'v': versionToWrite(),
       'ni': nextImageId,
       'b': backgroundColor?.toARGB32(),
       'p': backgroundPattern.name,
       'l': lineHeight,
       'lt': lineThickness,
-      'z': pages.map((EditorPage page) => page.toJson(assets)).toList(),
+      'z': pages
+          .map(
+            (EditorPage page) =>
+                page.toJson(assets, notePattern: backgroundPattern),
+          )
+          .toList(),
       'c': initialPageIndex,
     };
 
@@ -530,6 +563,38 @@ class EditorCoreInfo {
     }
     assetCache.dispose();
   }
+
+  /// Makes [pattern] the note's. A page whose own pattern it is follows the
+  /// note from then on, as it does once saved and read again (it is saved
+  /// without `bp`); those pages are handed back. [followers] get their own
+  /// pattern back first: the undo or the redo of such a change.
+  List<EditorPage> setNotePattern(
+    CanvasBackgroundPattern pattern, [
+    PatternFollowers? followers,
+  ]) {
+    backgroundPattern = pattern;
+    for (final page in followers?.pages ?? const <EditorPage>[]) {
+      page.backgroundPattern = followers!.own;
+    }
+    return [
+      for (final page in pages)
+        if (page.backgroundPattern == pattern) page..backgroundPattern = null,
+    ];
+  }
+
+  /// A copy without lines, grid or dots (the export's 「배경 끄기」): the
+  /// note's pattern none and every page following it. Its pages are copies
+  /// that share what the pages hold.
+  EditorCoreInfo withoutPatterns() => copyWith(
+    backgroundPattern: CanvasBackgroundPattern.none,
+    pages: [
+      for (final page in pages)
+        if (page.backgroundPattern == null)
+          page
+        else
+          page.copyWith(backgroundPattern: null),
+    ],
+  );
 
   EditorCoreInfo copyWith({
     String? filePath,

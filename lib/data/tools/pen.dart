@@ -161,11 +161,23 @@ class Pen extends Tool {
     double? pressure, {
     double screenScale = 1,
   }) {
+    currentStroke = createStroke(page, pageIndex, screenScale: screenScale);
+    onDragUpdate(position, pressure);
+  }
+
+  /// A new empty stroke in this pen's colour, width and stabiliser, on
+  /// [page]. It leaves [currentStroke] alone, so the quick note can draw
+  /// without the editor drawing the same stroke on its page [pageIndex].
+  Stroke createStroke(
+    EditorPage page,
+    int pageIndex, {
+    double screenScale = 1,
+  }) {
     // The pens and the pencil smooth with the stabiliser and leave out
     // perfect_freehand's much weaker streamline; the highlighter and the
     // shape pen keep drawing as before.
     final stabilised = this is! Highlighter && this is! ShapePen;
-    currentStroke = Stroke(
+    final stroke = Stroke(
       color: color,
       pressureEnabled: pressureEnabled,
       options: options.copyWith(
@@ -177,11 +189,11 @@ class Pen extends Tool {
       toolId: toolId,
     );
     if (stabilised) {
-      currentStroke!.stabilise(
+      stroke.stabilise(
         options.streamline * stabiliserWidthAtFull / screenScale,
       );
     }
-    onDragUpdate(position, pressure);
+    return stroke;
   }
 
   void onDragUpdate(Offset position, double? pressure) {

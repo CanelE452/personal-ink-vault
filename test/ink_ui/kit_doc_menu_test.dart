@@ -70,7 +70,7 @@ void main() {
     );
     actions.publish(owner, [
       for (final a in [
-        action(AppActionIds.pageList, '문서 개요', KitIconName.sidebar),
+        action(AppActionIds.pageList, '쪽 목록', KitIconName.sidebar),
         action(AppActionIds.toolPen, '펜', KitIconName.pen, on: true),
         action(AppActionIds.insertPage, '페이지 추가', KitIconName.pageAdd),
         action(AppActionIds.fullscreen, '전체 화면', KitIconName.expand, on: false),
@@ -549,7 +549,17 @@ void main() {
   testWidgets('while read-only the rows that change the note are dimmed', (
     tester,
   ) async {
-    publish(locked: true);
+    publish(
+      locked: true,
+      extra: [
+        AppAction(
+          id: AppActionIds.outlineAdd,
+          label: '개요에 추가',
+          icon: KitIconName.outlineAdd,
+          run: (_) => ran.add(AppActionIds.outlineAdd),
+        ),
+      ],
+    );
     await pumpBar(tester);
     await openMenu(tester);
     bool on(String key) =>
@@ -565,6 +575,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(ran, isEmpty);
     expect(on('editor-doc-rename'), isTrue, reason: 'naming is not writing');
+    // the outline is the note's attachment, not the note (Task 10 ruling)
+    expect(on('editor-doc-${AppActionIds.outlineAdd}'), isTrue);
   });
 
   /// The three rows left only in the old function row (Task 17 ruling):

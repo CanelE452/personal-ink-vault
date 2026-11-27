@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
-import 'package:saber/components/ink_ui/editor_toolbar/kit_note_sheet.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/toolbar_customize_sheet.dart';
 import 'package:saber/components/ink_ui/floating_bar/kit_floating_bar.dart';
 import 'package:saber/components/ink_ui/pen_panel/pen_kinds.dart';
@@ -20,6 +19,7 @@ import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/pen.dart';
+import 'package:saber/pages/editor/editor_side_host.dart';
 
 import '../utils/screen_capture.dart';
 
@@ -88,7 +88,7 @@ void _publish(AppActionRegistry actions, Tool tool) {
     a(AppActionIds.toolShapes, KitIconName.shapes, checked: false),
     a(AppActionIds.toolLaser, KitIconName.laser, checked: false),
     a(AppActionIds.pickPhoto, KitIconName.image),
-    a(AppActionIds.insertPage, KitIconName.pageAdd),
+    a(AppActionIds.insertPageMenu, KitIconName.pageAdd),
     a(AppActionIds.fullscreen, KitIconName.expand, checked: false),
     a(AppActionIds.toolbarCustomize, KitIconName.tune),
     a(AppActionIds.docInfo, KitIconName.info),
@@ -135,10 +135,13 @@ void main() {
     final actions = AppActionRegistry();
     final open = ValueNotifier(floatingBar);
     final sheet = ValueNotifier(note);
+    // the quick note window (supplement Task 13), its page not read
+    final quick = EditorQuickNoteHost(open: sheet)..available.value = true;
     final collapsed = ValueNotifier(false);
     addTearDown(() {
       actions.dispose();
       open.dispose();
+      quick.dispose();
       sheet.dispose();
       collapsed.dispose();
       stows.editorGestureMode.value = false;
@@ -180,7 +183,13 @@ void main() {
                           visible: floatingBar && !gesture,
                         ),
                       ),
-                      Positioned.fill(child: KitNoteSheet(open: sheet)),
+                      Positioned.fill(
+                        child: EditorQuickNoteLayer(
+                          host: quick,
+                          pen: Pen.fountainPen,
+                          erasing: () => false,
+                        ),
+                      ),
                       if (customize)
                         Positioned.fill(
                           child: ToolbarCustomizeSheet(onClose: () {}),

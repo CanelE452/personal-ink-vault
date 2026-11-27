@@ -31,6 +31,10 @@ class EditorHistory {
   /// reject strokes (i.e. accidental strokes when zooming).
   var _isRedoPossible = false;
 
+  /// Heard after a change is recorded, undone or redone. One listener only
+  /// (the editor's 노트 추가 notice); a second one would make it a list.
+  VoidCallback? onChange;
+
   /// Removes an element from the [_past] stack,
   /// adds it to the [_future] stack, and returns it.
   ///
@@ -40,6 +44,7 @@ class EditorHistory {
     if (_past.isEmpty) throw Exception('Nothing to undo');
     final item = _past.removeLast();
     _future.add(item);
+    onChange?.call();
     return item;
   }
 
@@ -52,6 +57,7 @@ class EditorHistory {
     if (_future.isEmpty) throw Exception('Nothing to redo');
     final item = _future.removeLast();
     _past.add(item);
+    onChange?.call();
     return item;
   }
 
@@ -85,6 +91,7 @@ class EditorHistory {
     _past.add(item);
     if (_past.length > maxHistoryLength) _past.removeAt(0);
     _isRedoPossible = false;
+    onChange?.call();
   }
 
   /// Marks the last change as saved to disk.
@@ -154,6 +161,7 @@ class EditorHistoryItem {
     this.quillChange,
     this.colorChange,
     this.backgroundPatternChange,
+    this.patternFollowers,
     this.link,
     this.replacedLink,
   }) : assert(
@@ -200,6 +208,10 @@ class EditorHistoryItem {
   final Map<Stroke, Change<Color>>? colorChange;
   final Change<CanvasBackgroundPattern>? backgroundPatternChange;
 
+  /// The pages a [EditorHistoryItemType.backgroundPattern] change made follow
+  /// the note: they had its new pattern as their own.
+  final PatternFollowers? patternFollowers;
+
   /// The link [EditorHistoryItemType.addLink] added or
   /// [EditorHistoryItemType.removeLink] removed, on [page].
   final PageLink? link;
@@ -218,6 +230,7 @@ class EditorHistoryItem {
     DocChange? quillChange,
     Map<Stroke, Change<Color>>? colorChange,
     Change<CanvasBackgroundPattern>? backgroundPatternChange,
+    PatternFollowers? patternFollowers,
     PageLink? link,
     PageLink? replacedLink,
   }) {
@@ -232,6 +245,7 @@ class EditorHistoryItem {
       colorChange: colorChange ?? this.colorChange,
       backgroundPatternChange:
           backgroundPatternChange ?? this.backgroundPatternChange,
+      patternFollowers: patternFollowers ?? this.patternFollowers,
       link: link ?? this.link,
       replacedLink: replacedLink ?? this.replacedLink,
     );

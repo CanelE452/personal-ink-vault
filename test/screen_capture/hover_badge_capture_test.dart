@@ -25,7 +25,7 @@ import '../utils/test_mock_channel_handlers.dart';
 /// the pen tip badge (Task 16) over the preview's paper, cropped 120 x 90
 /// around the tip as the references are (ref-t16-*.png,
 /// build/screen-review/t16/ref/make_refs.py): the pen, the eraser and the
-/// badge turned left at the right edge (app-t16-*.png); and 문서 개요 under
+/// badge turned left at the right edge (app-t16-*.png); and 쪽 관리 under
 /// 「읽기 전용」, its buttons dimmed (app-t14-pagemanager-locked.png). Runs only
 /// with PIV_CAPTURE=1.
 final _capture = Platform.environment['PIV_CAPTURE'] == '1';
@@ -197,7 +197,7 @@ void main() {
       );
     });
 
-    // Task 14: 문서 개요 under 「읽기 전용」, a real editor with two pages
+    // Task 14: 쪽 관리 under 「읽기 전용」, a real editor with two pages
     testWidgets('page manager locked', (tester) async {
       TestWidgetsFlutterBinding.ensureInitialized();
       setupMockPathProvider();
@@ -252,9 +252,12 @@ void main() {
       actions.run(AppActionIds.readOnly, context);
       await tester.pumpAndSettle(const Duration(seconds: 3));
       expect(editor.inkLocked.value, isTrue);
+      // 쪽 목록 opens the left panel, a long press on a page the window
       actions.run(AppActionIds.pageList, context);
       await tester.pumpAndSettle();
-      expect(find.text('문서 개요'), findsWidgets);
+      await tester.longPress(find.byKey(const ValueKey('kit-side-page-0')));
+      await tester.pumpAndSettle();
+      expect(find.text('쪽 관리'), findsWidgets);
       await _write(tester, boundary, 'app-t14-pagemanager-locked.png');
       editor.cancelAutosaveAndMarkSaved();
     });

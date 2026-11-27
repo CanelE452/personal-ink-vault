@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:saber/components/ink_ui/audio/record_pill.dart';
 import 'package:saber/components/ink_ui/doc_menu/kit_doc_menu.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/toolbar_tools_layout.dart';
 import 'package:saber/components/ink_ui/ink_engine_support.dart';
@@ -54,16 +56,21 @@ abstract final class _Bar {
 /// and its icon the lasso kind, and pressed again it opens 「올가미 선택」
 /// under it (10th draft). The note window button opens and closes
 /// [noteSheetOpen]. Gesture mode is `stows.editorGestureMode`. ⋯ opens the
-/// document menu ([buildDocMenu]).
+/// document menu ([buildDocMenu]). Where the document publishes 녹음, its
+/// button ends the middle past a thin line (12th draft `tbHtml`), with a red
+/// mark while [recording] says it records (grey paused); when it starts, a
+/// middle that slides moves to show it. 노트 추가 runs the document's window
+/// action (lit while it is open), which hangs from [insertPageAnchor].
 ///
 /// A host with its own few tools (the infinite note, Task 18) gives them in
 /// [tools]: they stay on the bar in that order, with no ⌄. Without
 /// [noteSheetOpen] there is no note window button, and with [docMenu] off
 /// no ⋯. The end shows the infinite note's 「원점으로」 and 「저장」 when the
 /// document publishes them. Such a bar keeps the editor's places (Task 18
-/// fix 2): its start as wide as the editor's 쪽 목록 · 노트 창, its end as
-/// 노트 추가 · 전체 화면 · ⋯, and its middle as the editor's with the user's
-/// tools and ⌄, so the tools both have stand at the same x.
+/// fix 2): its start as wide as the editor's 쪽 목록 and, where [noteSlot],
+/// 노트 창, its end as 노트 추가 · 전체 화면 · ⋯, and its middle as the
+/// editor's with the user's tools and ⌄, so the tools both have stand at the
+/// same x.
 class KitEditorToolbar extends StatefulWidget {
   const new({
     super.key,
@@ -77,6 +84,10 @@ class KitEditorToolbar extends StatefulWidget {
     this.tools,
     this.docMenu = true,
     this.engine = InkEngineSupport.editor,
+    this.recording,
+    this.recordSlot = false,
+    this.noteSlot = true,
+    this.insertPageAnchor,
   });
 
   final AppActionRegistry actions;
@@ -108,6 +119,21 @@ class KitEditorToolbar extends StatefulWidget {
   /// What the document's ink engine has: 「올가미 선택」 shows its targets.
   final InkEngineSupport engine;
 
+  /// Whether a recording runs: the record button's mark.
+  final ValueListenable<KitRecording>? recording;
+
+  /// On a bar with its own [tools]: whether the editor's bar there would
+  /// end its middle with the record button, so the tools stand where the
+  /// editor's do.
+  final bool recordSlot;
+
+  /// On a bar with its own [tools]: whether the editor's bar there would
+  /// show 노트 창 (its vault keeps the quick note, format 2).
+  final bool noteSlot;
+
+  /// Under 노트 추가, as wide as it: where its window hangs from.
+  final GlobalKey? insertPageAnchor;
+
   @override
   State<KitEditorToolbar> createState() => _KitEditorToolbarState();
 }
@@ -122,6 +148,14 @@ class _KitEditorToolbarState extends State<KitEditorToolbar> {
 
   /// The pen and the eraser buttons, which show the floating bar.
   final _barButtons = {'pen': GlobalKey(), 'eraser': GlobalKey()};
+
+  final _recordButton = GlobalKey();
+
+  /// The [KitEditorToolbar.recording] the bar was last built with.
+  var _built = KitRecording.off;
+
+  /// The width the middle was last laid out in.
+  double? _middleWidth;
 
   /// The ⌄, ⋯ or lasso window open now ('more', 'doc', 'lasso'), drawn on
   /// its button.
@@ -295,6 +329,7 @@ class _KitEditorToolbarState extends State<KitEditorToolbar> {
             stows.editorGestureMode,
             stows.selectRectangle,
             ?widget.noteSheetOpen,
+            ?widget.recording,
           ]),
           builder: (context, _) => _bar(),
         ),
@@ -329,6 +364,8 @@ class _KitEditorToolbarState extends State<KitEditorToolbar> {
     String label, {
     String? onLabel,
     bool busyNotDimmed = false,
+    bool openWhenChecked = false,
+    GlobalKey? centreAnchor,
   }) {
     final action = _actions.lookup(id);
     if (action == null) return const SizedBox.shrink();
@@ -339,17 +376,57 @@ class _KitEditorToolbarState extends State<KitEditorToolbar> {
       tooltip: on ? onLabel ?? label : label,
       onPressed: action.enabled ? () => _actions.run(id, context) : null,
       dimmed: busyNotDimmed && on ? false : null,
+      open: openWhenChecked && on,
+      centreAnchor: centreAnchor,
     );
+  }
+
+  /// The thin line after the writing/gesture button and before 녹음.
+  Widget _line(Key key) => SizedBox(
+    width: 2 * _Bar.sepMargin + KitTokens.toolbarDividerWidth,
+    child: Center(
+      child: SizedBox(
+        key: key,
+        width: KitTokens.toolbarDividerWidth,
+        height: KitTokens.toolbarDividerHeight,
+        child: const ColoredBox(color: KitTokens.toolbarDividerColor),
+      ),
+    ),
+  );
+
+  /// A recording started: the middle slides to the record button, centred
+  /// or as near as it goes (`scrollTo(mid, rec)`).
+  void _showRecordButton() {
+    final button = _recordButton.currentContext;
+    if (!mounted || button == null) return;
+    unawaited(Scrollable.ensureVisible(button, alignment: 0.5));
   }
 
   Widget _bar() {
     final gesture = stows.editorGestureMode.value;
+    final recording = widget.recording?.value ?? KitRecording.off;
+    bool runs(KitRecording r) =>
+        r == KitRecording.on || r == KitRecording.paused;
+    if (recording != _built) {
+      if (runs(recording) && !runs(_built)) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _showRecordButton(),
+        );
+      }
+      _built = recording;
+    }
     final noteSheet = widget.noteSheetOpen;
     final tools =
         widget.tools ??
         [for (final id in _layout().shownIds) toolbarToolOf(id)];
     final start = [
-      _actionButton(AppActionIds.pageList, 'editor-page-list', '쪽 목록'),
+      // lit while the left panel is open (12th draft `.b.open`)
+      _actionButton(
+        AppActionIds.pageList,
+        'editor-page-list',
+        '쪽 목록',
+        openWhenChecked: true,
+      ),
       if (noteSheet != null)
         _BarButton(
           key: const ValueKey('editor-note-sheet'),
@@ -369,17 +446,7 @@ class _KitEditorToolbarState extends State<KitEditorToolbar> {
           stows.editorGestureMode.value = !gesture;
         },
       ),
-      const SizedBox(
-        width: 2 * _Bar.sepMargin + KitTokens.toolbarDividerWidth,
-        child: Center(
-          child: SizedBox(
-            key: ValueKey('editor-mode-line'),
-            width: KitTokens.toolbarDividerWidth,
-            height: KitTokens.toolbarDividerHeight,
-            child: ColoredBox(color: KitTokens.toolbarDividerColor),
-          ),
-        ),
-      ),
+      _line(const ValueKey('editor-mode-line')),
       for (final tool in tools)
         if (_actions.lookup(tool.action) case final action?)
           KeyedSubtree(
@@ -396,9 +463,36 @@ class _KitEditorToolbarState extends State<KitEditorToolbar> {
           centreAnchor: _moreLassoAnchor,
           onPressed: () => _openWindow('more', _moreAnchor, _moreMenu),
         ),
+      // not on a bar with its own tools (the infinite note)
+      if (widget.tools == null)
+        if (_actions.lookup(AppActionIds.record) case final record?) ...[
+          _line(const ValueKey('editor-record-line')),
+          KeyedSubtree(
+            key: _recordButton,
+            child: _BarButton(
+              key: const ValueKey('editor-record'),
+              icon: KitIconName.mic,
+              tooltip: record.label,
+              mark: switch (recording) {
+                KitRecording.on => KitTokens.recMarkOn,
+                KitRecording.paused => KitTokens.recMarkPaused,
+                KitRecording.off || KitRecording.saving => null,
+              },
+              onPressed: record.enabled
+                  ? () => _actions.run(AppActionIds.record, context)
+                  : null,
+            ),
+          ),
+        ],
     ];
     final end = [
-      _actionButton(AppActionIds.insertPage, 'editor-insert-page', '노트 추가'),
+      _actionButton(
+        AppActionIds.insertPageMenu,
+        'editor-insert-page',
+        '노트 추가',
+        openWhenChecked: true,
+        centreAnchor: widget.insertPageAnchor,
+      ),
       _actionButton(
         AppActionIds.fullscreen,
         'editor-fullscreen',
@@ -431,12 +525,16 @@ class _KitEditorToolbarState extends State<KitEditorToolbar> {
         ),
     ];
     final fixed = widget.tools != null;
-    // the editor's middle: 필기/제스처, the line, the user's tools and ⌄
+    // the editor's middle: 필기/제스처, the line, the user's tools and ⌄,
+    // and where it records the line and 녹음
     final editorMiddle =
         _Bar.hitWidth +
         2 * _Bar.sepMargin +
         KitTokens.toolbarDividerWidth +
-        (_layout().shownIds.length + 1) * _Bar.hitWidth;
+        (_layout().shownIds.length + 1) * _Bar.hitWidth +
+        (widget.recordSlot
+            ? 2 * _Bar.sepMargin + KitTokens.toolbarDividerWidth + _Bar.hitWidth
+            : 0);
     final toolRow = Row(mainAxisSize: MainAxisSize.min, children: middle);
     return Material(
       color: KitTokens.toolbarBg,
@@ -449,36 +547,54 @@ class _KitEditorToolbarState extends State<KitEditorToolbar> {
           child: Row(
             children: [
               if (fixed)
-                SizedBox(width: 2 * _Bar.hitWidth, child: Row(children: start))
+                SizedBox(
+                  width: (widget.noteSlot ? 2 : 1) * _Bar.hitWidth,
+                  child: Row(children: start),
+                )
               else
                 Row(mainAxisSize: MainAxisSize.min, children: start),
               Expanded(
                 child: LayoutBuilder(
-                  builder: (context, constraints) => SingleChildScrollView(
-                    key: const ValueKey('editor-tools-scroll'),
-                    scrollDirection: Axis.horizontal,
-                    clipBehavior: Clip.hardEdge,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minWidth: constraints.maxWidth,
-                      ),
-                      // the editor's middle centred, or from the start when
-                      // it slides; a fixed bar's tools from its start
-                      child: !fixed
-                          ? Center(child: toolRow)
-                          : editorMiddle <= constraints.maxWidth
-                          ? Center(
-                              child: SizedBox(
-                                width: editorMiddle,
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: toolRow,
+                  builder: (context, constraints) {
+                    // narrowed or widened while it records (the device
+                    // turned): the record button is shown again
+                    if (constraints.maxWidth != _middleWidth) {
+                      if (_middleWidth != null && runs(recording)) {
+                        WidgetsBinding.instance.addPostFrameCallback(
+                          (_) => _showRecordButton(),
+                        );
+                      }
+                      _middleWidth = constraints.maxWidth;
+                    }
+                    return SingleChildScrollView(
+                      key: const ValueKey('editor-tools-scroll'),
+                      scrollDirection: Axis.horizontal,
+                      clipBehavior: Clip.hardEdge,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minWidth: constraints.maxWidth,
+                        ),
+                        // the editor's middle centred, or from the start when
+                        // it slides; a fixed bar's tools from its start
+                        child: !fixed
+                            ? Center(child: toolRow)
+                            : editorMiddle <= constraints.maxWidth
+                            ? Center(
+                                child: SizedBox(
+                                  width: editorMiddle,
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: toolRow,
+                                  ),
                                 ),
+                              )
+                            : Align(
+                                alignment: Alignment.centerLeft,
+                                child: toolRow,
                               ),
-                            )
-                          : Align(alignment: Alignment.centerLeft, child: toolRow),
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 ),
               ),
               if (fixed)
@@ -507,7 +623,7 @@ class _KitEditorToolbarState extends State<KitEditorToolbar> {
 /// on the button's when [anchorRightAligned] gives the window's width;
 /// [centreAnchor] is as wide as the button, 6 under it, for a window
 /// centred under it. Without [onPressed] it is dimmed, unless [dimmed] says
-/// otherwise.
+/// otherwise. [mark] draws the recording mark in its top right.
 class _BarButton extends StatelessWidget {
   const new({
     super.key,
@@ -522,6 +638,7 @@ class _BarButton extends StatelessWidget {
     this.anchor,
     this.anchorRightAligned,
     this.centreAnchor,
+    this.mark,
   });
 
   final KitIconName icon;
@@ -535,6 +652,7 @@ class _BarButton extends StatelessWidget {
   final GlobalKey? anchor;
   final double? anchorRightAligned;
   final GlobalKey? centreAnchor;
+  final Color? mark;
 
   @override
   Widget build(BuildContext context) {
@@ -584,6 +702,27 @@ class _BarButton extends StatelessWidget {
                     KitDropdownMark.arm * KitDropdownMark.half / 2 -
                     KitDropdownMark.height / 2,
                 child: KitDropdownMark(color: ink),
+              ),
+            // `.b.rec::after`: its ring the bar's colour, outside it
+            if (mark case final mark?)
+              Positioned(
+                top: KitTokens.recMarkInset,
+                right: KitTokens.recMarkInset,
+                child: SizedBox.square(
+                  dimension: KitTokens.recMarkSize,
+                  child: DecoratedBox(
+                    key: const ValueKey('editor-record-mark'),
+                    decoration: BoxDecoration(
+                      color: mark,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: KitTokens.toolbarBg,
+                        width: KitTokens.recMarkRing,
+                        strokeAlign: BorderSide.strokeAlignOutside,
+                      ),
+                    ),
+                  ),
+                ),
               ),
           ],
         ),

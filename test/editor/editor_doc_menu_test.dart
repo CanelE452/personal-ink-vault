@@ -586,7 +586,7 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 3));
   });
 
-  testWidgets('read-only: 문서 개요 still goes to a page but changes none', (
+  testWidgets('read-only: 쪽 관리 still goes to a page but changes none', (
     tester,
   ) async {
     final editor = await mountEditor(tester);
@@ -597,10 +597,8 @@ void main() {
     await tester.pumpAndSettle();
     final pages = editor.coreInfo.pages.length;
     await menuRow(tester, '읽기 전용');
-    final context = tester.element(find.byType(Editor));
-    editor.actions.run(AppActionIds.pageList, context);
-    await tester.pumpAndSettle();
-    expect(find.text('문서 개요'), findsWidgets);
+    await openPageManager(tester);
+    expect(find.text('쪽 관리'), findsWidgets);
     for (final tooltip in [
       t.editor.menu.insertPage,
       t.editor.menu.duplicatePage,
@@ -623,7 +621,7 @@ void main() {
     editor.cancelAutosaveAndMarkSaved();
   });
 
-  testWidgets('read-only: 문서 개요 keeps the order; a tap goes to the page', (
+  testWidgets('read-only: 쪽 관리 keeps the order; a tap goes to the page', (
     tester,
   ) async {
     final editor = await mountEditor(tester);
@@ -636,9 +634,7 @@ void main() {
     final order = List.of(editor.coreInfo.pages);
     expect(order, hasLength(3));
     await menuRow(tester, '읽기 전용');
-    final context = tester.element(find.byType(Editor));
-    editor.actions.run(AppActionIds.pageList, context);
-    await tester.pumpAndSettle();
+    await openPageManager(tester);
 
     // the first page's handle dragged down past the second
     final handles = find.byType(ReorderableDragStartListener);
@@ -661,7 +657,7 @@ void main() {
     editor.cancelAutosaveAndMarkSaved();
   });
 
-  testWidgets('read-only: 문서 개요 handles do not drag; off buttons dim', (
+  testWidgets('read-only: 쪽 관리 handles do not drag; off buttons dim', (
     tester,
   ) async {
     final editor = await mountEditor(tester);
@@ -672,8 +668,7 @@ void main() {
     await tester.pumpAndSettle();
     await menuRow(tester, '읽기 전용');
     final context = tester.element(find.byType(Editor));
-    editor.actions.run(AppActionIds.pageList, context);
-    await tester.pumpAndSettle();
+    await openPageManager(tester);
 
     // a drag from the first handle lifts nothing: the first row does not
     // leave its place among the rows (the list itself may scroll)
@@ -712,4 +707,13 @@ void main() {
     );
     editor.cancelAutosaveAndMarkSaved();
   });
+}
+
+/// The page manager window, as a person opens it: the toolbar's 쪽 목록
+/// opens the left panel, a long press on the first page opens the window.
+Future<void> openPageManager(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('editor-page-list')));
+  await tester.pumpAndSettle();
+  await tester.longPress(find.byKey(const ValueKey('kit-side-page-0')));
+  await tester.pumpAndSettle();
 }

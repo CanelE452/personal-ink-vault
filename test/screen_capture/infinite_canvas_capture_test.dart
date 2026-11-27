@@ -116,7 +116,7 @@ void _publish(AppActionRegistry actions, Tool tool) {
     a(AppActionIds.toolText, KitIconName.text, checked: false),
     a(AppActionIds.toolShapes, KitIconName.shapes, checked: false),
     a(AppActionIds.pickPhoto, KitIconName.image),
-    a(AppActionIds.insertPage, KitIconName.pageAdd),
+    a(AppActionIds.insertPageMenu, KitIconName.pageAdd),
     a(AppActionIds.fullscreen, KitIconName.expand, checked: false),
   ]);
 }

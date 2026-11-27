@@ -49,7 +49,7 @@ void _publish(AppActionRegistry actions, {bool locked = false}) {
     run: (_) {},
   );
   actions.publish(Object(), [
-    a(AppActionIds.pageList, '문서 개요', KitIconName.sidebar),
+    a(AppActionIds.pageList, '쪽 목록', KitIconName.sidebar),
     a(AppActionIds.toolLasso, '올가미', KitIconName.lassoFree, checked: false),
     a(AppActionIds.toolPen, '펜', KitIconName.pen, checked: true),
     a(AppActionIds.toolEraser, '지우개', KitIconName.eraser, checked: false),
@@ -57,6 +57,7 @@ void _publish(AppActionRegistry actions, {bool locked = false}) {
     a(AppActionIds.toolShapes, '도형', KitIconName.shapes, checked: false),
     a(AppActionIds.pickPhoto, '사진', KitIconName.image),
     a(AppActionIds.insertPage, '페이지 추가', KitIconName.pageAdd),
+    a(AppActionIds.insertPageMenu, '노트 추가', KitIconName.pageAdd),
     a(AppActionIds.fullscreen, '전체 화면', KitIconName.expand, checked: false),
     a(AppActionIds.pageMode, '한 쪽씩 보기', KitIconName.scrollDir, checked: false),
     a(AppActionIds.docInfo, '문서 정보', KitIconName.info),

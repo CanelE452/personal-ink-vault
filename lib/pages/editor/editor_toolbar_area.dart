@@ -2,7 +2,8 @@ part of 'editor.dart';
 
 /// The editor's toolbar (Task 13B-1, preview 9th draft c) and what lies over
 /// its page area: the text box and lasso bars (Task 15), the floating bar,
-/// the note window and 「도구 막대 사용자화」.
+/// the left panel (supplement Task 9), the quick note (Task 13) and 「도구
+/// 막대 사용자화」.
 extension _EditorToolbarArea on EditorState {
   /// The toolbar, folded away on a read-only note and in full screen unless
   /// it is kept there.
@@ -16,17 +17,24 @@ extension _EditorToolbarArea on EditorState {
       maintainState: true,
       child: SafeArea(
         bottom: false,
-        child: KitEditorToolbar(
-          actions: _actions,
-          title: widget.customTitle ?? coreInfo.fileName,
-          floatingBarOpen: _floatingBarOpen,
-          noteSheetOpen: _noteSheetOpen,
-          floatingBarFrom: _floatingBarFrom,
-          pages: () => (index: currentPageIndex, count: coreInfo.pages.length),
-          zoom: DocZoom(
-            scale: () => _transformationController.value.approxScale,
-            zoomTo: (scale) =>
-                _canvasGestureDetectorKey.currentState?.zoomTo(scale),
+        // 노트 창 where the vault keeps the quick note
+        child: ValueListenableBuilder(
+          valueListenable: _side.quickNote.available,
+          builder: (context, quickNote, _) => KitEditorToolbar(
+            actions: _actions,
+            title: widget.customTitle ?? coreInfo.fileName,
+            floatingBarOpen: _floatingBarOpen,
+            noteSheetOpen: quickNote ? _noteSheetOpen : null,
+            floatingBarFrom: _floatingBarFrom,
+            pages: () =>
+                (index: currentPageIndex, count: coreInfo.pages.length),
+            recording: _side.audio.recording,
+            insertPageAnchor: _side.addPage.anchor,
+            zoom: DocZoom(
+              scale: () => _transformationController.value.approxScale,
+              zoomTo: (scale) =>
+                  _canvasGestureDetectorKey.currentState?.zoomTo(scale),
+            ),
           ),
         ),
       ),
@@ -35,10 +43,11 @@ extension _EditorToolbarArea on EditorState {
 
   /// The page area: the canvas, and over it the text box or lasso bar, the
   /// floating bar (for the pens and the eraser while the toolbar shows it,
-  /// not in gesture mode), the save chip, the pen tip badge, the mode pill,
-  /// the note window and 「도구 막대 사용자화」.
-  /// They follow their own notifiers, so opening one does not build the
-  /// editor again. The bar and the chip fade out of a stroke's way.
+  /// not in gesture mode), the save chip, the pen tip badge, the left panel,
+  /// the mode pill, the quick note, 「도구 막대 사용자화」, the listening
+  /// bar, the recording pill and the undo notice. They follow their own
+  /// notifiers, so opening one does not build the editor again. The bar and
+  /// the chip fade out of a stroke's way.
   Widget _pageArea(Widget canvas) => Stack(
     children: [
       Positioned.fill(
@@ -100,12 +109,32 @@ extension _EditorToolbarArea on EditorState {
         ),
       ),
       Positioned.fill(
+        child: EditorSidePanelLayer(
+          host: _side,
+          coreInfo: coreInfo,
+          goTo: _scrollToPage,
+          managePage: _managePage,
+        ),
+      ),
+      Positioned.fill(
         child: KitModePill(
           gestureMode: stows.editorGestureMode,
           inkLocked: inkLocked,
         ),
       ),
-      Positioned.fill(child: KitNoteSheet(open: _noteSheetOpen)),
+      // the quick note (z 6) over the left panel (z 4); it writes with the
+      // pen in hand, or the last pen kind where the lasso, the text box,
+      // the laser or the shape pen is; under the record pill while it records
+      Positioned.fill(
+        child: EditorQuickNoteLayer(
+          host: _side.quickNote,
+          pen: () =>
+              (isInkTool(currentTool) ? currentTool : _lastInkTool) as Pen,
+          erasing: () => currentTool is Eraser,
+          recording: _side.audio.recording,
+          recordPill: _side.audio.recordPill,
+        ),
+      ),
       Positioned.fill(
         child: ValueListenableBuilder(
           valueListenable: _customizing,
@@ -114,7 +143,62 @@ extension _EditorToolbarArea on EditorState {
               : const SizedBox.shrink(),
         ),
       ),
+      // the listening bar (z 7), under the notice
+      Positioned.fill(child: EditorListenBarLayer(audio: _side.audio)),
+      // the recording pill (z 7), its top right
+      Positioned.fill(child: EditorRecordPillLayer(audio: _side.audio)),
+      // over all of them, as the preview's toast (z 9); over the page flip
+      // bar while that stands over the listening bar
+      Positioned.fill(
+        child: ValueListenableBuilder(
+          valueListenable: _side.audio.footRoom,
+          builder: (context, room, _) => KitUndoNotice(
+            controller: _side.notice,
+            bottom: _singlePageMode && room > 0
+                ? KitTokens.undoNoticeOverPageFlip
+                : KitTokens.undoNoticeBottom,
+          ),
+        ),
+      ),
     ],
+  );
+
+  /// A long press on a page in the left panel: the page manager window
+  /// (move, insert, duplicate, clear and delete pages) on that page.
+  void _managePage(int index) => unawaited(
+    showDialog<void>(
+      context: context,
+      builder: (context) => AdaptiveAlertDialog(
+        title: const Text('쪽 관리'),
+        content: pageManager(context, page: index),
+        actions: const [],
+      ),
+    ),
+  );
+
+  /// The left panel and the favourites, kept in the vault the host names. A
+  /// favourite first saves the note (forced the first time, so the page ids
+  /// it names are saved).
+  EditorSideHost _sideHost() => EditorSideHost(
+    binding: () => widget.chrome?.noteSide?.call(),
+    saveNote: (force) async {
+      if (force && savingState.value == SavingState.saved) {
+        savingState.value = SavingState.waitingToSave;
+      }
+      await saveToFile();
+    },
+    pages: () => coreInfo.pages,
+    pageOnScreen: () => currentPageIndex,
+    pageMoves: _transformationController,
+    onChanged: _savingChanged,
+    onError: (error) {
+      if (mounted) showUserErrorSnackBar(context, error);
+    },
+    quickNoteOpen: _noteSheetOpen,
+    noteWritable: () async {
+      await _initializing;
+      return !coreInfo.readOnly;
+    },
   );
 
   /// 「문서 정보」: the name, the kind, the pages, the last edit (time ago),

@@ -507,7 +507,7 @@ void main() {
       final core = EditorCoreInfo(filePath: '/newer')..pages.add(EditorPage());
       final (json, _) = core.toJson();
       core.dispose();
-      json['v'] = EditorCoreInfo.sbnVersion + 1;
+      json['v'] = EditorCoreInfo.newestSbnVersion + 1;
       await controller.activeSession!.saveInk({
         'main.sbn2': BsonCodec.serialize(json).byteList,
       });
@@ -790,6 +790,8 @@ void main() {
     await drain(tester);
     // 기기에 저장 in 더 보기
     await tester.tap(key('editor-insert-page'));
+    await drain(tester);
+    await tester.tap(key('add-page-card-lined'));
     await drain(tester);
     expect(controller.dirty, isTrue);
     await openDocMenu(tester);

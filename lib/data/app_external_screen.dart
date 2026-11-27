@@ -10,6 +10,10 @@ abstract final class AppExternalScreen {
   static ValueListenable<int> get open => _open;
   static bool get active => _open.value > 0;
 
+  /// How long to wait, once such a screen has closed, before taking the app as still in the background: Android
+  /// can deliver the screen's result just before it resumes the app.
+  static const closeGrace = Duration(seconds: 2);
+
   static Future<T> run<T>(Future<T> Function() task) async {
     _open.value++;
     try {

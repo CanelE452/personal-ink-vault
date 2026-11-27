@@ -84,6 +84,8 @@ abstract final class AppActionIds {
   static const toolMove = 'toolMove';
 
   // Later stages: nobody publishes these in stage 1, so their menu rows hide.
+  // The editor publishes pageBookmark (supplement Task 9) and outlineAdd
+  // (Task 10) where the note's vault holds page marks.
   static const pageBookmark = 'pageBookmark';
   static const pageCopy = 'pageCopy';
   static const pageRotate = 'pageRotate';
@@ -95,6 +97,20 @@ abstract final class AppActionIds {
   // Decided to be made (user, 2026-11-19). Published by the editor (document
   // registry).
   static const eyedropper = 'eyedropper';
+
+  // Supplement Task 12: the toolbar's record button, published by the editor
+  // on Android where the note's vault holds recordings (format 2).
+  static const record = 'record';
+
+  // Supplement Task 13: the quick note window (the toolbar's 노트 창),
+  // published by the editor where the note's vault holds attachments
+  // (format 2).
+  static const quickNote = 'quickNote';
+
+  // Supplement Task 14: the toolbar's 노트 추가 window (where to put a page and
+  // in which pattern), published by the editor. `insertPage` puts one in at
+  // once, where and as the window last did.
+  static const insertPageMenu = 'insertPageMenu';
 
   /// The tool actions in toolbar order.
   static const List<String> tools = [
@@ -189,5 +205,8 @@ abstract final class AppActionIds {
     alignObjects,
     showDoneMemos,
     eyedropper,
+    record,
+    quickNote,
+    insertPageMenu,
   ];
 }

@@ -46,7 +46,7 @@ void main() {
         for (final id in AppActionIds.tools)
           action(id, KitIconName.pen, on: id == checked),
         action(AppActionIds.pickPhoto, KitIconName.image),
-        action(AppActionIds.insertPage, KitIconName.pageAdd),
+        action(AppActionIds.insertPageMenu, KitIconName.pageAdd),
         action(AppActionIds.fullscreen, KitIconName.expand, on: false),
         action(AppActionIds.toolbarCustomize, KitIconName.tune),
         action(AppActionIds.docInfo, KitIconName.info),
@@ -168,7 +168,7 @@ void main() {
       AppActionIds.toolPen,
       AppActionIds.pickPhoto,
       AppActionIds.pageList,
-      AppActionIds.insertPage,
+      AppActionIds.insertPageMenu,
       AppActionIds.fullscreen,
     ]);
   });

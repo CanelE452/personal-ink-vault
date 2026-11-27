@@ -269,6 +269,41 @@ class Stows {
     'top',
     volatile: !_isOnMainIsolate,
   );
+
+  /// Where the quick note window was left over the page area, on this
+  /// device: its left, top, width and height. Empty: where it starts (16
+  /// from the top right, 360 x 460).
+  final quickNoteWindow = PlainStow(
+    'quickNoteWindow',
+    <String>[],
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// The share of the page area's height the quick note's phone sheet was
+  /// left at, on this device (0.4, 0.6 or 0.9).
+  final quickNoteSheet = PlainStow(
+    'quickNoteSheet',
+    0.6,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Where the 노트 추가 window puts a page, on this device: `'before'` or
+  /// `'after'` the page on screen, or at the `'end'`. Any other value is
+  /// taken as after.
+  final addPagePlace = PlainStow(
+    'addPagePlace',
+    'after',
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// The patterns the 노트 추가 window last put pages in, on this device:
+  /// their names ([CanvasBackgroundPattern.name], `''` for 빈 종이), newest
+  /// first, at most 3.
+  final addPageRecent = PlainStow(
+    'addPageRecent',
+    <String>[],
+    volatile: !_isOnMainIsolate,
+  );
   final selectRectangle = PlainStow(
     'selectRectangle',
     false,

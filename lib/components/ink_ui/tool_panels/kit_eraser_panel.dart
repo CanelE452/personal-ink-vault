@@ -287,7 +287,7 @@ Future<bool> confirmClearPage(BuildContext context) async {
                     // 1 px between the two rows, in the window's line colour
                     const SizedBox(
                       key: ValueKey('eraser-clear-page-divider'),
-                      height: 1,
+                      height: KitTokens.toolLineWidth,
                       child: ColoredBox(color: KitTokens.toolLineColor),
                     ),
                     ToolWindowRedButton(

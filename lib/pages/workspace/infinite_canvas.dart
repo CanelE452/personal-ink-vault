@@ -27,6 +27,7 @@ import 'package:saber/data/tools/eraser_targets.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/vault/infinite_document.dart';
+import 'package:saber/pages/editor/editor_audio_host.dart';
 import 'package:sbn/tool_id.dart';
 
 part 'infinite_ink_adapter.dart';
@@ -41,6 +42,11 @@ class InfiniteCanvas extends StatefulWidget {
   final ValueChanged<bool>? onDirtyChanged;
   final ValueChanged<bool>? onBusyChanged;
   final Duration autosaveDelay;
+
+  /// Whether the vault keeps attachments such as recordings and the quick
+  /// note (format 2): the editor's toolbar there has a record button on
+  /// Android and the 「노트 창」 button, which the bar makes room for.
+  final bool vaultKeepsAttachments;
   const new({
     super.key,
     required this.initialDocument,
@@ -50,6 +56,7 @@ class InfiniteCanvas extends StatefulWidget {
     this.onDirtyChanged,
     this.onBusyChanged,
     this.autosaveDelay = const Duration(milliseconds: 700),
+    this.vaultKeepsAttachments = false,
   });
   @override
   State<InfiniteCanvas> createState() => InfiniteCanvasState();
@@ -714,6 +721,9 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
           tools: _infiniteTools,
           docMenu: false,
           engine: _ink.engine,
+          recordSlot:
+              widget.vaultKeepsAttachments && EditorAudioHost.recordsHere,
+          noteSlot: widget.vaultKeepsAttachments,
         ),
       ),
       if (_saveFailed)

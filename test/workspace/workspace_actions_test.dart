@@ -11,6 +11,8 @@ import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/prefs.dart';
+import 'package:saber/data/vault/note_page_marks.dart';
+import 'package:saber/data/vault/note_side_store.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
@@ -170,6 +172,45 @@ void main() {
     }
   });
 
+  androidTest('쪽 즐겨찾기 keeps the page in the open note attachment', (
+    tester,
+  ) async {
+    final note = await createNote(tester, '필기');
+    await mount(tester);
+    final actions = documentActions(tester);
+    final editor = tester.state<EditorState>(find.byType(Editor));
+    final pageId = editor.coreInfo.pages[editor.currentPageIndex].pageId;
+    expect(actions.has(AppActionIds.pageBookmark), isTrue);
+    actions.run(AppActionIds.pageBookmark, tester.element(find.byType(Editor)));
+
+    // supplement Task 9: the workspace names its vault and the note
+    final store = NoteSideStore(controller.repository);
+    List<String>? stored;
+    for (var i = 0; i < 20 && (stored?.isEmpty ?? true); i++) {
+      await drain(tester);
+      stored = null;
+      await tester.runAsync(() async {
+        unawaited(() async {
+          final marks = [
+            for (final record in await store.list(note, NoteSideKind.pageMarks))
+              for (final head in record.heads)
+                NotePageMarks.decode(
+                  (await controller.repository.readFiles(
+                    head,
+                  ))[NoteSideKind.pageMarks.markerFile]!,
+                ),
+          ];
+          stored = NotePageMarks.merge(marks).favorites;
+        }());
+      });
+      for (var j = 0; j < 10 && stored == null; j++) {
+        await drain(tester);
+      }
+    }
+    expect(stored, [pageId]);
+    expect(actions.lookup(AppActionIds.pageBookmark)!.checked, isTrue);
+  });
+
   androidTest('workspace shortcuts are registered for the open ink document', (
     tester,
   ) async {
@@ -309,6 +350,8 @@ void main() {
     final editor = tester.state<EditorState>(find.byType(Editor));
     final pages = editor.coreInfo.pages.length;
     await tester.tap(find.byKey(const ValueKey('editor-insert-page')));
+    await drain(tester);
+    await tester.tap(find.byKey(const ValueKey('add-page-card-lined')));
     await drain(tester);
     expect(editor.coreInfo.pages, hasLength(pages + 1));
     await openWindow(tester, 'editor-doc-menu');

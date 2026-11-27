@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:math';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:saber/components/canvas/hud/canvas_hud.dart';
@@ -35,6 +36,7 @@ class CanvasGestureDetector extends StatefulWidget {
     required this.pageBuilder,
     required this.placeholderPageBuilder,
     required this.isTextEditing,
+    this.footRoom,
     TransformationController? transformationController,
   }) : _transformationController =
            transformationController ?? TransformationController();
@@ -66,6 +68,10 @@ class CanvasGestureDetector extends StatefulWidget {
   placeholderPageBuilder;
 
   final bool Function() isTextEditing;
+
+  /// The room taken at the foot by what stands over the canvas (the
+  /// listening bar): one page at a time, the page flip bar stands over it.
+  final ValueListenable<double>? footRoom;
 
   late final TransformationController _transformationController;
 
@@ -806,10 +812,15 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
           ),
         ),
         if (selected != null)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 8,
+          ValueListenableBuilder<double>(
+            valueListenable:
+                widget.footRoom ?? const AlwaysStoppedAnimation(0.0),
+            builder: (context, room, child) => Positioned(
+              left: 0,
+              right: 0,
+              bottom: max(8, room),
+              child: child!,
+            ),
             child: SafeArea(
               top: false,
               child: Center(

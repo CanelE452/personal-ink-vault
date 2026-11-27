@@ -103,7 +103,10 @@ void main() {
           expect(coreInfo.pages, isNotEmpty);
           expect(page.size.width, greaterThan(0));
           expect(page.size.height, greaterThan(0));
-          expect(page.toJson(OrderedAssetCache()), contains('pageId'));
+          expect(
+            page.toJson(OrderedAssetCache(), notePattern: .none),
+            contains('pageId'),
+          );
         });
 
         upstreamGolden('(Light)', (tester) async {

@@ -57,6 +57,7 @@ Future<GlobalKey<InfiniteCanvasState>> mount(
   InfiniteViewport initialViewport = const InfiniteViewport(),
   Future<void> Function(InfiniteViewport)? onSaveViewport,
   Size size = const Size(800, 600),
+  bool vaultKeepsAttachments = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -77,6 +78,7 @@ Future<GlobalKey<InfiniteCanvasState>> mount(
             onDirtyChanged: onDirty,
             onBusyChanged: onBusy,
             autosaveDelay: const Duration(hours: 1),
+            vaultKeepsAttachments: vaultKeepsAttachments,
           ),
         ),
       ),

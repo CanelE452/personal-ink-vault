@@ -324,6 +324,15 @@ extension _WorkspaceAppActions on _StudyWorkspaceState {
     ]);
   }
 
+  /// The open note's attachments (favourites, supplement Task 9), in the
+  /// vault it lives in; none for a PDF shown beside another note.
+  NoteSideBinding? _noteSide() {
+    final c = controller;
+    final session = c?.activeSession;
+    if (c == null || session == null || c.pdfPeerPreview) return null;
+    return (store: NoteSideStore(session.repository), noteId: session.note.id);
+  }
+
   /// What ⋯ 「문서 정보」 shows of the open note that this screen knows: when
   /// the vault last changed it (null before the library has read it) and
   /// the Drive state in a word or two, as the preview's 「동기화됨」.

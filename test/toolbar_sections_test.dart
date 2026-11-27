@@ -71,7 +71,7 @@ void main() {
       await mountEditor(tester);
       double x(Finder f) => tester.getCenter(f).dx;
       // start · middle · end (9th draft c)
-      expect(x(key('editor-note-sheet')), lessThan(x(key('editor-mode'))));
+      expect(x(key('editor-page-list')), lessThan(x(key('editor-mode'))));
       expect(
         x(key('editor-tools-more')),
         lessThan(x(key('editor-insert-page'))),

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:saber/components/canvas/canvas_preview.dart';
@@ -22,6 +24,10 @@ class EditorPageManager extends StatefulWidget {
   });
 
   final EditorCoreInfo coreInfo;
+
+  /// The page the window opens on: its row is scrolled into view and its
+  /// number is set in the accent, as the left panel marks it, while that
+  /// page is in the note.
   final int? currentPageIndex;
 
   /// The pages may be looked at and gone to, not changed (the editor's
@@ -42,6 +48,53 @@ class EditorPageManager extends StatefulWidget {
 }
 
 class _EditorPageManagerState extends State<EditorPageManager> {
+  final _scroll = ScrollController();
+  final _currentRow = GlobalKey();
+
+  /// The page the window opened on, followed by its id: pages deleted, put
+  /// in or moved in the window leave the mark on it (gone with it).
+  late final _currentId = switch (widget.currentPageIndex) {
+    final int i => widget.coreInfo.pages.elementAtOrNull(i)?.pageId,
+    null => null,
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    final index = widget.currentPageIndex;
+    if (index != null && index > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reveal());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Puts the current page's row in view. The list builds a row only as it
+  /// comes near the view, so it moves a view at a time until that row is
+  /// built.
+  Future<void> _reveal() async {
+    for (var step = 0; step < 1000; step++) {
+      if (!mounted || !_scroll.hasClients) return;
+      final row = _currentRow.currentContext;
+      if (row != null && row.mounted) {
+        return Scrollable.ensureVisible(row, alignment: 0.5);
+      }
+      final position = _scroll.position;
+      if (position.pixels >= position.maxScrollExtent) return;
+      _scroll.jumpTo(
+        min(
+          position.pixels + position.viewportDimension,
+          position.maxScrollExtent,
+        ),
+      );
+      await WidgetsBinding.instance.endOfFrame;
+    }
+  }
+
   /// A page's button, dimmed as the kit dims while off: its own colour at
   /// [KitTokens.disabledOpacity], not Material's own fade.
   Widget _pageButton({
@@ -66,16 +119,21 @@ class _EditorPageManagerState extends State<EditorPageManager> {
       width: cupertino ? null : 300,
       height: cupertino ? 600 : null,
       child: ReorderableListView.builder(
+        scrollController: _scroll,
         buildDefaultDragHandles: false,
         itemCount: widget.coreInfo.pages.length,
         itemBuilder: (context, pageIndex) {
           final isEmptyLastPage =
               pageIndex == widget.coreInfo.pages.length - 1 &&
               widget.coreInfo.pages[pageIndex].isEmpty;
+          final current =
+              _currentId != null &&
+              widget.coreInfo.pages[pageIndex].pageId == _currentId;
           return InkWell(
             key: ValueKey(pageIndex),
             onTap: () => widget.onPageSelected(pageIndex),
             child: Padding(
+              key: current ? _currentRow : null,
               padding: const .all(8),
               child: Column(
                 children: [
@@ -84,6 +142,12 @@ class _EditorPageManagerState extends State<EditorPageManager> {
                     children: [
                       Text(
                         '${pageIndex + 1} / ${widget.coreInfo.pages.length}',
+                        style: current
+                            ? const TextStyle(
+                                color: KitTokens.sideThumbOnInk,
+                                fontWeight: FontWeight.w600,
+                              )
+                            : null,
                       ),
                       Flexible(
                         child: ConstrainedBox(

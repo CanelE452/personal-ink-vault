@@ -150,7 +150,8 @@ class _InnerCanvasState extends State<InnerCanvas> {
             if (page.backgroundImage != null) {
               return CanvasBackgroundPattern.none;
             } else {
-              return widget.coreInfo.backgroundPattern;
+              return page.backgroundPattern ??
+                  widget.coreInfo.backgroundPattern;
             }
           }(),
           lineHeight: widget.coreInfo.lineHeight,

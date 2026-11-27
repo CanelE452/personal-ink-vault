@@ -87,4 +87,21 @@ abstract final class KitMotion {
   static const modePillShow = Duration(milliseconds: 2000);
   static const modePillOpen = Duration(milliseconds: 150);
   static const modePillClose = Duration(milliseconds: 105);
+
+  // The left panel slides in over 160 on [samsungDecel] (`.r1side.show`);
+  // the recording dot blinks in 1200 (`r1blink`, two steps).
+  static const sidePanelSlide = Duration(milliseconds: 160);
+  static const recBlink = Duration(milliseconds: 1200);
+
+  // The quick note rises into place over 160 on [samsungDecel] as it opens
+  // (the 9th draft c note window's rise; the 12th draft shows no motion).
+  static const quickNoteRise = Duration(milliseconds: 160);
+
+  // The undo notice (`makeToast`, `.r1toast`): it stays 4000 with an action,
+  // 2000 without; it comes in 150 and goes in 105 (its fade linear, its
+  // rise on [samsungDecel]).
+  static const undoNoticeShow = Duration(milliseconds: 4000);
+  static const undoNoticeShowSolo = Duration(milliseconds: 2000);
+  static const undoNoticeIn = Duration(milliseconds: 150);
+  static const undoNoticeOut = Duration(milliseconds: 105);
 }

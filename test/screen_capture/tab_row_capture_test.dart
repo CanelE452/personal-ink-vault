@@ -225,7 +225,7 @@ void main() {
           fixed: [
             a(
               AppActionIds.pageList,
-              '문서 개요',
+              '쪽 목록',
               KitIconName.sidebar,
               enabled: false,
             ),
@@ -290,9 +290,10 @@ void main() {
       AppAction a(String id, String label, KitIconName icon, {bool? on}) =>
           AppAction(id: id, label: label, icon: icon, checked: on, run: (_) {});
       actions.publish(Object(), [
-        a(AppActionIds.pageList, '문서 개요', KitIconName.sidebar),
+        a(AppActionIds.pageList, '쪽 목록', KitIconName.sidebar),
         a(AppActionIds.toolPen, '펜', KitIconName.pen, on: true),
         a(AppActionIds.insertPage, '페이지 추가', KitIconName.pageAdd),
+        a(AppActionIds.insertPageMenu, '노트 추가', KitIconName.pageAdd),
         a(AppActionIds.fullscreen, '전체 화면', KitIconName.expand, on: false),
         a(AppActionIds.pageMode, '한 쪽씩 보기', KitIconName.scrollDir, on: false),
         a(AppActionIds.docInfo, '문서 정보', KitIconName.info),

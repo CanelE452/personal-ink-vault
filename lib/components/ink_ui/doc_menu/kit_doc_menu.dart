@@ -100,11 +100,11 @@ KitMenuRow zoomSubmenu({
 );
 
 /// The rows that change the note: dimmed while 「읽기 전용」 is on, also
-/// when their owner (the workspace's 휴지통으로) does not know the lock.
+/// when their owner (the workspace's 휴지통으로) does not know the lock. The outline
+/// and the favourites are the note's attachment, not the note: not here.
 const _changesNote = {
   AppActionIds.pageDuplicate,
   AppActionIds.pageRotate,
-  AppActionIds.outlineAdd,
   AppActionIds.templateChange,
   AppActionIds.selectiveErase,
   AppActionIds.clearPage,

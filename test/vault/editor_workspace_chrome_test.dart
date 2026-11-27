@@ -110,7 +110,7 @@ void main() {
 
       expect(find.text('Workspace note'), findsOneWidget);
       expect(find.byType(SaveIndicator), findsNothing);
-      // 문서 개요 and 페이지 추가 are the toolbar's (Task 17)
+      // 쪽 목록 and 노트 추가 are the toolbar's (Task 17)
       expect(
         find.byKey(const ValueKey('editor-page-list')).hitTestable(),
         findsOneWidget,
@@ -118,6 +118,9 @@ void main() {
       final editor = tester.state<EditorState>(find.byType(Editor));
       final count = editor.coreInfo.pages.length;
       await tester.tap(find.byKey(const ValueKey('editor-insert-page')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('add-page-card-lined')));
+      await tester.pump();
       expect(editor.coreInfo.pages.length, count + 1);
       await tester.pumpAndSettle();
       await tester.tap(find.byType(BackButton));

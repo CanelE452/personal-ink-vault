@@ -165,6 +165,8 @@ dependencies:
   dynamic_yaru: ^0.2.0
   image: 4.10.2  # 4.11.0 has a broken version constraint for `archive`
   pool: ^1.5.2
+  record: 7.2.0
+  just_audio: 0.10.6
 
 dev_dependencies:
   html: 0.15.7

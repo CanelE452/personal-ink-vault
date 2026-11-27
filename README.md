@@ -4,15 +4,29 @@
 
 ## Android 휴대폰·태블릿에 설치
 
-**[Android 232 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.232/personal-ink-vault-android-0.2.0-build232-136232-arm64-release.apk)**
+**[Android 233 APK 바로 다운로드](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.233/personal-ink-vault-android-0.2.0-build233-136233-arm64-release.apk)**
 
 1. Android 휴대폰 또는 태블릿에서 위 링크를 누릅니다.
 2. 다운로드한 APK를 열고 기존 Personal Ink Vault 앱을 업데이트합니다.
 3. 앱에서 새 노트, PDF 필기 또는 Office·한글 원본을 엽니다. Drive를 연결하려면 앱의 **Drive → Google 로그인 / 재연결**을 사용합니다.
 
-Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 405MB입니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.232) · [Android 232 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.232)
+Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 405MB입니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.233) · [Android 233 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.233)
 
-### 231 이후 바뀐 점
+### 232 이후 바뀐 점
+
+232의 새 필기 화면에 쪽 탭, 빠른 노트, 노트 추가 창, 녹음을 더했습니다.
+
+- 왼쪽 창: 쪽·즐겨찾기·개요·오디오 네 탭이 있습니다. 쪽 ⋯ 메뉴의 「쪽 즐겨찾기」와 「개요에 추가」로 쪽을 즐겨찾기와 개요 탭에 모으고, 오디오 탭에는 이 노트의 녹음이 모입니다.
+- 빠른 노트: 필기 화면 위에 떠 있는 작은 필기 창입니다. 태블릿에서는 머리 부분을 끌어 옮기고 오른쪽 아래 손잡이로 크기를 바꾸며, 접거나 닫을 수 있습니다. 휴대폰에서는 화면 아래쪽에 펼쳐지는 창으로 뜹니다.
+- 노트 추가 창: 새 쪽을 넣을 자리(이 쪽 앞·이 쪽 뒤·맨 끝)와 양식(빈 종이·줄·모눈·점, 최근 양식)을 고르고, 문서나 이미지도 여기서 가져옵니다.
+- 녹음과 재생: 도구 막대의 녹음 단추로 녹음을 시작하고, 녹음 중 표시에서 일시 정지·이어서 녹음·멈춤을 고릅니다. 녹음은 노트의 오디오 탭에 저장되고, 누르면 아래에 듣기 막대가 떠서 재생합니다. 녹음하는 동안에는 화면이 꺼지지 않게 합니다.
+- 권한: 마이크 권한(RECORD_AUDIO)을 새로 씁니다. 녹음을 시작할 때만 요청하며, 녹음을 쓰지 않으면 묻지 않습니다.
+
+쪽마다 다른 양식을 쓴 노트는 저장 형식 판 20으로 저장되며, 232 이하 앱에서는 열리지 않습니다. 그 밖의 노트는 예전 판(19) 그대로 저장되어 232에서도 열립니다.
+
+233은 PC에서 위젯 시험과 빌드 검사를 거쳤고 실기기 확인 전입니다. 녹음·재생과 빠른 노트를 태블릿에서 확인할 예정입니다.
+
+### 231 이후 바뀐 점(232)
 
 필기 화면을 새로 지었습니다. 보관함·리마인더·달력은 231 그대로입니다.
 
@@ -83,10 +97,10 @@ Drive 자동 동기화와 독립 백업/복원을 함께 구현합니다. portab
 1. Flutter `3.47.7`의 [고정 소스](https://github.com/flutter/flutter/tree/abaf9c523780a608bd46686fd5e53740a07077f8), Dart `3.13.5`, JDK `25.0.4.1+1`, Android SDK 및 Python 3.11 이상을 준비합니다. Flutter SDK가 래퍼를 준비하고 `android/gradle/wrapper/gradle-wrapper.properties`에서 Gradle `9.5.0`을 선택합니다. Gradle 데몬에는 저장소의 JVM 설정에 따라 JetBrains JDK 21을 자동으로 준비하거나 기존 설치를 사용합니다.
 2. Android SDK의 `platforms;android-37.0`, `ndk;28.2.13676358`, `ndk;29.0.14206865`, `cmake;3.22.1`을 준비합니다. Rust `1.99.1`에 `aarch64-linux-android` 타깃을 추가합니다. Android SDK 경로를 `ANDROID_SDK_ROOT`로 지정하세요.
 3. 한글 PDF 엔진은 아직 출시되지 않은 rhwp 커밋을 씁니다. 먼저 [한글 엔진·편집 화면 빌드](docs/hwp-rhwp-build.md)에 따라 rhwp 원본을 받아 `packages/ink_hwp_native/Cargo.toml`의 임시 경로를 맞춥니다. 같은 문서에 따라 한글 편집 화면(rhwp-studio)을 빌드해 `android/app/src/main/assets/hwp-studio/`에 넣으면 APK의 `assets/hwp-studio/`로 들어갑니다.
-4. 소스 루트에서 `bash scripts/build-android-232.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
+4. 소스 루트에서 `bash scripts/build-android-233.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
 5. 사용자 본인의 서명 키로 설치용 APK를 만들려면 `android/key.properties`에 `storeFile`, `storePassword`, `keyAlias`, `keyPassword`를 로컬로 지정합니다. 서명 전 빌드만 하려면 이 파일 없이 빌드할 수 있습니다. 본인의 OAuth 공개 클라이언트 ID로 테스트하려면 `DRIVE_ANDROID_SERVER_CLIENT_ID`를 설정합니다.
 
-스크립트는 ARM64의 빌드 번호를 `136232`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
+스크립트는 ARM64의 빌드 번호를 `136233`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
 
 ## 고정된 업스트림 소스
 

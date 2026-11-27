@@ -1,6 +1,7 @@
 package io.github.canele452.personalinkvault
 
 import android.os.Bundle
+import android.view.WindowManager
 import android.content.Intent
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -37,6 +38,15 @@ class MainActivity: FlutterActivity() {
                     "setFullscreen" -> {
                         fullscreen = call.arguments == true
                         applySystemBars()
+                        result.success(null)
+                    }
+                    // A recording keeps the screen on so the app does not leave the foreground and stop it.
+                    "setKeepScreenOn" -> {
+                        if (call.arguments == true) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
                         result.success(null)
                     }
                     else -> result.notImplemented()

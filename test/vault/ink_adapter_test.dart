@@ -59,7 +59,10 @@ void main() {
       final pages = [page, other]
         ..removeAt(0)
         ..add(page);
-      final json = pages.last.toJson(OrderedAssetCache());
+      final json = pages.last.toJson(
+        OrderedAssetCache(),
+        notePattern: .none,
+      );
       final restored = EditorPage.fromJson(
         json,
         inlineAssets: null,

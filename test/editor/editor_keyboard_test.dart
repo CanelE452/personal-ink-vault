@@ -20,6 +20,7 @@ import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
+import 'package:saber/pages/editor/editor_side_host.dart';
 import 'package:saber/pages/workspace/study_workspace.dart';
 import 'package:sbn/tool_id.dart';
 
@@ -385,6 +386,8 @@ void main() {
     final pages = editor.coreInfo.pages.length;
     await tester.tap(find.byKey(const ValueKey('editor-insert-page')));
     await drain(tester);
+    await tester.tap(find.byKey(const ValueKey('add-page-card-lined')));
+    await drain(tester);
     expect(editor.coreInfo.pages, hasLength(pages + 1));
     await pressCtrlZ(tester);
     expect(editor.coreInfo.pages, hasLength(pages));
@@ -644,16 +647,22 @@ void main() {
 
   // Final review B-2: Android's back closes the note window and 「도구 막대
   // 사용자화」 first.
-  testWidgets('back closes the note window first, in an editor alone', (
+  // An editor alone has no quick note (no vault): 「도구 막대 사용자화」
+  // stands for the windows here.
+  testWidgets('back closes a window over the page first, in an editor alone', (
     tester,
   ) async {
     final editor = await mountAlone(tester);
-    await tester.tap(find.byKey(const ValueKey('editor-note-sheet')));
+    expect(find.byKey(const ValueKey('editor-note-sheet')), findsNothing);
+    editor.actions.run(
+      AppActionIds.toolbarCustomize,
+      tester.element(find.byType(Editor)),
+    );
     await tester.pumpAndSettle();
-    expect(find.text('빠른 노트'), findsOneWidget);
+    expect(find.text('도구 막대 사용자화'), findsOneWidget);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('빠른 노트'), findsNothing);
+    expect(find.text('도구 막대 사용자화'), findsNothing);
     expect(find.byType(Editor), findsOneWidget);
     expect(editor.mounted, isTrue);
     editor.cancelAutosaveAndMarkSaved();
@@ -688,5 +697,39 @@ void main() {
     // nothing open: back closes the note
     await tester.binding.handlePopRoute();
     await drainUntil(tester, () => controller.activeSession == null);
+  });
+
+  // Task 13 fix 1 M6: going to the background saves the quick note with the
+  // note.
+  workspaceTest('leaving the app saves the quick note too', (tester) async {
+    // only a save asked for saves the quick note here
+    EditorQuickNoteHost.debugSaveDelay = const Duration(hours: 1);
+    addTearDown(() => EditorQuickNoteHost.debugSaveDelay = null);
+    await createNotes(tester, ['필기']);
+    await mount(tester);
+    final editor = await loadedEditor(tester);
+    await tester.tap(find.byKey(const ValueKey('editor-note-sheet')));
+    await drainUntil(tester, () => editor.side.quickNote.note.value != null);
+    final quick = editor.side.quickNote.note.value!;
+    // the window shows after one more frame in the fake time (the drain
+    // ends on the read, before it)
+    await tester.pump();
+    final page = tester.getRect(find.byKey(const ValueKey('quick-note-page')));
+    final pen = await tester.startGesture(
+      page.topLeft + const Offset(40, 30),
+      kind: PointerDeviceKind.stylus,
+    );
+    for (var i = 0; i < 4; i++) {
+      await pen.moveBy(const Offset(30, 0));
+      await tester.pump();
+    }
+    await pen.up();
+    await tester.pump();
+    expect(quick.hasUnsavedChanges, isTrue);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await drainUntil(tester, () => !quick.hasUnsavedChanges);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await drain(tester);
   });
 }

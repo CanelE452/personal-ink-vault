@@ -37,13 +37,7 @@ extension _EditorActions on EditorState {
     );
 
     return [
-      AppAction(
-        id: AppActionIds.insertPage,
-        label: '페이지 추가',
-        icon: KitIconName.pageAdd,
-        enabled: pageWritable,
-        run: (_) => _insertPageAfterCurrent(),
-      ),
+      ..._addPageActions(pageWritable),
       AppAction(
         id: AppActionIds.pageMode,
         label: _singlePageMode ? '연속 스크롤' : '한 쪽씩 보기',
@@ -143,13 +137,15 @@ extension _EditorActions on EditorState {
         enabled: selected,
         run: (_) => unawaited(_linkSelection()),
       ),
+      // the left panel (supplement Task 9), lit while it is open
       AppAction(
         id: AppActionIds.pageList,
-        label: '문서 개요',
+        label: '쪽 목록',
         icon: KitIconName.sidebar,
         enabled: _showPageActions,
-        widgetKey: const ValueKey('note-overview'),
-        run: (_) => _openOverview(),
+        checked: _side.panelOpen.value,
+        widgetKey: const ValueKey('note-page-list'),
+        run: (_) => _side.togglePanel(),
       ),
       toolAction(
         AppActionIds.toolLasso,
@@ -257,7 +253,53 @@ extension _EditorActions on EditorState {
           _setState();
         },
       ),
-      // ⋯ 「쪽 N」: the page on screen
+      // ⋯ 「쪽 N」: the page on screen. 「쪽 즐겨찾기」 only where the vault
+      // holds favourites, not on a note that may not change.
+      if (_side.favoritesAvailable && editable)
+        AppAction(
+          id: AppActionIds.pageBookmark,
+          label: '쪽 즐겨찾기',
+          icon: KitIconName.bookmark,
+          enabled: _noteReady,
+          checked: _side.isFavorite(
+            coreInfo.pages.elementAtOrNull(currentPageIndex)?.pageId,
+          ),
+          run: (_) {
+            final page = coreInfo.pages.elementAtOrNull(currentPageIndex);
+            if (page != null) unawaited(_side.toggleFavorite(page.pageId));
+          },
+        ),
+      // 「개요에 추가」: the page on screen, as 「쪽 N」, its name open to
+      // change in the outline tab (the user's outline is a page mark too)
+      if (_side.favoritesAvailable && editable)
+        AppAction(
+          id: AppActionIds.outlineAdd,
+          label: '개요에 추가',
+          icon: KitIconName.outlineAdd,
+          enabled: _noteReady,
+          run: (_) => unawaited(_side.addOutline(currentPageIndex)),
+        ),
+      // 녹음 (supplement Task 12): ⋯ 「읽기 전용」 leaves it on, a recording
+      // being an attachment as a favourite is
+      if (_side.canRecord && editable)
+        AppAction(
+          id: AppActionIds.record,
+          label: _side.audio.recordingOn ? '녹음 멈춤' : '녹음 시작',
+          icon: KitIconName.mic,
+          checked: _side.audio.recordingOn,
+          enabled: !_side.audio.savingRecording,
+          run: (_) => unawaited(_side.audio.toggleRecording()),
+        ),
+      // 노트 창 (supplement Task 13): the quick note is an attachment too
+      if (_side.quickNote.available.value && editable)
+        AppAction(
+          id: AppActionIds.quickNote,
+          label: '노트 창',
+          icon: KitIconName.noteUp,
+          enabled: _noteReady,
+          checked: _noteSheetOpen.value,
+          run: (_) => _noteSheetOpen.value = !_noteSheetOpen.value,
+        ),
       AppAction(
         id: AppActionIds.pageDuplicate,
         label: '쪽 복제',

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:saber/components/ink_ui/editor_toolbar/kit_note_sheet.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/toolbar_customize_sheet.dart';
-import 'package:saber/components/kit/kit_icon.dart';
 import 'package:saber/components/kit/kit_text.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/data/flavor_config.dart';
@@ -214,83 +212,5 @@ void main() {
     await tester.drag(find.text('지우개'), const Offset(0, -300));
     await tester.pumpAndSettle();
     expect(find.text('레이저 펜').hitTestable(), findsOneWidget);
-  });
-
-  testWidgets('the note window: an empty sheet that only closes', (
-    tester,
-  ) async {
-    final open = ValueNotifier(false);
-    addTearDown(open.dispose);
-    tester.view.physicalSize = const Size(600, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Stack(
-            children: [Positioned.fill(child: KitNoteSheet(open: open))],
-          ),
-        ),
-      ),
-    );
-    expect(find.text('빠른 노트'), findsNothing);
-    open.value = true;
-    await tester.pumpAndSettle();
-    final sheet = tester.getRect(find.byKey(const ValueKey('kit-note-sheet')));
-    expect(sheet.size, const Size(300, 372));
-    // the lined paper fills the sheet under its head
-    final paper = find.descendant(
-      of: find.byKey(const ValueKey('kit-note-sheet')),
-      matching: find.byKey(const ValueKey('kit-note-sheet-paper')),
-    );
-    expect(tester.getSize(paper), const Size(300, 372 - 44));
-    expect(sheet.bottomRight, const Offset(600 - 12, 800 - 12));
-    expect(find.text('빠른 노트'), findsOneWidget);
-    // final review B-8: the head's own tools do nothing yet, so they are
-    // drawn dimmed and take no press; only × works
-    Finder drawn(KitIconName name) => find.descendant(
-      of: find.byKey(const ValueKey('kit-note-sheet')),
-      matching: find.byWidgetPredicate((w) => w is KitIcon && w.name == name),
-    );
-    for (final (name, label) in [
-      (KitIconName.expand, KitIconName.expand.label),
-      (KitIconName.chev, '빠른 노트'),
-      (KitIconName.undo, KitIconName.undo.label),
-    ]) {
-      expect(drawn(name), findsOneWidget, reason: '$name');
-      final dim = find.ancestor(of: drawn(name), matching: find.byType(Opacity));
-      expect(
-        tester.widget<Opacity>(dim.first).opacity,
-        KitTokens.disabledOpacity,
-        reason: '$name dimmed',
-      );
-      expect(
-        find.ancestor(of: drawn(name), matching: find.byType(InkWell)),
-        findsNothing,
-        reason: '$name takes no press',
-      );
-      final button = tester.getSemantics(find.bySemanticsLabel(label));
-      expect(button.flagsCollection.isButton, isTrue, reason: label);
-      expect(
-        button.flagsCollection.isEnabled.toBoolOrNull(),
-        isFalse,
-        reason: '$label is off',
-      );
-    }
-    expect(
-      find.ancestor(of: find.text('빠른 노트'), matching: find.byType(Opacity)),
-      findsOneWidget,
-      reason: 'the title dims with its ⌄',
-    );
-    expect(
-      find.ancestor(of: drawn(KitIconName.close), matching: find.byType(Opacity)),
-      findsNothing,
-      reason: '× is not dimmed',
-    );
-    await tester.tap(find.byKey(const ValueKey('kit-note-sheet-close')));
-    await tester.pumpAndSettle();
-    expect(open.value, isFalse);
-    expect(find.text('빠른 노트'), findsNothing);
   });
 }

@@ -266,13 +266,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(shows, findsNothing, reason: button);
     }
-    // the note window opens and closes over the page
-    await tester.tap(find.byKey(const ValueKey('editor-note-sheet')));
-    await tester.pumpAndSettle();
-    expect(find.text('빠른 노트'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('kit-note-sheet-close')));
-    await tester.pumpAndSettle();
-    expect(find.text('빠른 노트'), findsNothing);
+    // an editor without a vault has no quick note (its window is
+    // quick_note_window_test's)
+    expect(find.byKey(const ValueKey('editor-note-sheet')), findsNothing);
     expectNotPainted(page, before);
     expect(strokes(editor), 0);
   });

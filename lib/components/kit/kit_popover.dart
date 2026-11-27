@@ -106,6 +106,8 @@ class _KitPopoverRoute<T> extends PopupRoute<T> {
     Animation<double> secondaryAnimation,
   ) {
     return _AnchoredPage(
+      scale: _grown(animation),
+      origin: _origin,
       anchor: anchor,
       navigatorContext: navigatorContext,
       firstRect: firstRect,
@@ -117,6 +119,23 @@ class _KitPopoverRoute<T> extends PopupRoute<T> {
       within: within,
       nub: nub,
     );
+  }
+
+  CurvedAnimation? _scale;
+
+  /// The route's animation on the open and close curves, made once: the
+  /// transition may be built before the page.
+  CurvedAnimation _grown(Animation<double> animation) =>
+      _scale ??= CurvedAnimation(
+        parent: animation,
+        curve: KitMotion.openCurve,
+        reverseCurve: KitMotion.closeCurve,
+      );
+
+  @override
+  void dispose() {
+    _scale?.dispose();
+    super.dispose();
   }
 
   Alignment get _origin => switch (grow) {
@@ -133,15 +152,9 @@ class _KitPopoverRoute<T> extends PopupRoute<T> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    final curved = CurvedAnimation(
-      parent: animation,
-      curve: KitMotion.openCurve,
-      reverseCurve: KitMotion.closeCurve,
-    );
-    return FadeTransition(
-      opacity: curved,
-      child: ScaleTransition(scale: curved, alignment: _origin, child: child),
-    );
+    // only the fade is on the whole page, which is as big as the screen: the
+    // window is scaled by the page, about its own corner
+    return FadeTransition(opacity: _grown(animation), child: child);
   }
 }
 
@@ -151,6 +164,8 @@ class _KitPopoverRoute<T> extends PopupRoute<T> {
 /// the anchor's size may not be read while another subtree is laid out.
 class _AnchoredPage extends StatefulWidget {
   const new({
+    required this.scale,
+    required this.origin,
     required this.anchor,
     required this.navigatorContext,
     required this.firstRect,
@@ -163,6 +178,9 @@ class _AnchoredPage extends StatefulWidget {
     required this.nub,
   });
 
+  /// How far the window has grown, and the corner it grows from.
+  final Animation<double> scale;
+  final Alignment origin;
   final GlobalKey anchor;
   final BuildContext navigatorContext;
   final Rect firstRect;
@@ -216,24 +234,28 @@ class _AnchoredPageState extends State<_AnchoredPage> {
       _within,
       centre: widget.nub,
     );
-    final window = DecoratedBox(
-      decoration: BoxDecoration(
-        color: KitTokens.menuBg,
-        border: widget.border
-            ? Border.all(color: KitTokens.penPanelBorder)
-            : null,
-        borderRadius: radius,
-        boxShadow: widget.shadows ?? KitTokens.panelShadow,
-      ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: Material(
-          type: MaterialType.transparency,
-          // kept in a room smaller than it, it slides up and down inside,
-          // its foot fading while there is more below
-          child: widget.within == null
-              ? widget.builder(context)
-              : _FadingScroll(child: widget.builder(context)),
+    final window = ScaleTransition(
+      scale: widget.scale,
+      alignment: widget.origin,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: KitTokens.menuBg,
+          border: widget.border
+              ? Border.all(color: KitTokens.penPanelBorder)
+              : null,
+          borderRadius: radius,
+          boxShadow: widget.shadows ?? KitTokens.panelShadow,
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: Material(
+            type: MaterialType.transparency,
+            // kept in a room smaller than it, it slides up and down inside,
+            // its foot fading while there is more below
+            child: widget.within == null
+                ? widget.builder(context)
+                : _FadingScroll(child: widget.builder(context)),
+          ),
         ),
       ),
     );
@@ -241,10 +263,13 @@ class _AnchoredPageState extends State<_AnchoredPage> {
       return CustomSingleChildLayout(delegate: layout, child: window);
     }
     return CustomMultiChildLayout(
-      delegate: _NubLayout(layout),
+      delegate: _NubLayout(layout, widget.scale, widget.origin),
       children: [
         LayoutId(id: _NubPart.window, child: window),
-        LayoutId(id: _NubPart.nub, child: const _Nub()),
+        LayoutId(
+          id: _NubPart.nub,
+          child: ScaleTransition(scale: widget.scale, child: const _Nub()),
+        ),
       ],
     );
   }
@@ -310,10 +335,14 @@ enum _NubPart { window, nub }
 
 /// Lays the window out as [layout] does, then the nub over its top edge at
 /// the anchor's middle, kept [KitTokens.toolWindowNubInset] from its sides.
+/// The nub goes in step with the window growing about its corner: its place
+/// is scaled about that corner, so the layout follows [scale].
 class _NubLayout extends MultiChildLayoutDelegate {
-  new(this.layout);
+  new(this.layout, this.scale, this.origin) : super(relayout: scale);
 
   final _PopoverLayout layout;
+  final Animation<double> scale;
+  final Alignment origin;
 
   @override
   void performLayout(Size size) {
@@ -329,14 +358,24 @@ class _NubLayout extends MultiChildLayoutDelegate {
     final x = window.width < 2 * inset
         ? window.width / 2
         : (layout.anchor.center.dx - at.dx).clamp(inset, window.width - inset);
-    positionChild(
-      _NubPart.nub,
-      Offset(at.dx + x - side / 2, at.dy - KitTokens.toolWindowNubOver),
+    final corner =
+        at +
+        Offset(
+          window.width * (origin.x + 1) / 2,
+          window.height * (origin.y + 1) / 2,
+        );
+    final place = Offset(
+      at.dx + x - side / 2,
+      at.dy - KitTokens.toolWindowNubOver,
     );
+    positionChild(_NubPart.nub, corner + (place - corner) * scale.value);
   }
 
   @override
-  bool shouldRelayout(_NubLayout old) => layout.shouldRelayout(old.layout);
+  bool shouldRelayout(_NubLayout old) =>
+      layout.shouldRelayout(old.layout) ||
+      scale != old.scale ||
+      origin != old.origin;
 }
 
 /// The nub (`.e10o::before`): a square of the window's colour turned 45

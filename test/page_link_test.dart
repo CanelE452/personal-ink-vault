@@ -32,7 +32,10 @@ void main() {
     expect(page.pageId, pageId);
     expect(page.links, isEmpty);
     // An unlinked page is written exactly as before links existed.
-    expect(page.toJson(OrderedAssetCache()).containsKey('lk'), isFalse);
+    expect(
+      page.toJson(OrderedAssetCache(), notePattern: .none).containsKey('lk'),
+      isFalse,
+    );
     page.dispose();
   });
 

@@ -77,6 +77,55 @@ void main() {
     expect(KitIconName.pen.label, isNotEmpty);
   });
 
+  test('the 12th draft adds nine icons, each with a name and ink', () {
+    const ids = [
+      'side_pages',
+      'outline_list',
+      'audio_clip',
+      'play',
+      'pause',
+      'rec_dot',
+      'stop_sq',
+      'grip_corner',
+      'save_to',
+    ];
+    final byId = {for (final n in KitIconName.values) n.id: n};
+    expect(KitIconName.values.length, 198); // 187 + the nine + autoHl, quiz
+    for (final id in ids) {
+      final n = byId[id];
+      expect(n, isNotNull, reason: id);
+      expect(n!.label, isNot(id), reason: id);
+      expect(RegExp('<(path|rect|circle)').hasMatch(n.svg), isTrue, reason: id);
+    }
+    expect(byId['play']!.label, '재생');
+    expect(byId['rec_dot']!.label, '이어서 녹음');
+    expect(
+      kitIconGroups.any((g) => ids.every((id) => g.$2.contains(byId[id]))),
+      isTrue,
+    );
+  });
+
+  testWidgets('the nine new icons paint pixels', (tester) async {
+    for (final id in [
+      'side_pages',
+      'outline_list',
+      'audio_clip',
+      'play',
+      'pause',
+      'rec_dot',
+      'stop_sq',
+      'grip_corner',
+      'save_to',
+    ]) {
+      final n = KitIconName.values.firstWhere((n) => n.id == id);
+      final px = await _pixels(
+        tester,
+        KitIcon(n, size: 48, color: Colors.black),
+      );
+      expect(_inked(px), greaterThan(40), reason: id);
+    }
+  });
+
   test('groups only name generated icons', () {
     expect(kitIconGroups, isNotEmpty);
     expect(kitIconGroups.every((g) => g.$2.isNotEmpty), isTrue);

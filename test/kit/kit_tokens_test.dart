@@ -464,4 +464,20 @@ void main() {
     expect(KitTokens.darkPillFontSize, 13);
     expect(KitTokens.modePillBottom, 64);
   });
+
+  test('the supplement values: side panel, quick note, sheet, speeds', () {
+    expect(KitTokens.sidePanelWidth, 272);
+    expect(KitTokens.quickNoteWidth, 360);
+    expect(KitTokens.quickNoteHeight, 460);
+    expect(KitTokens.quickNoteMinWidth, 260);
+    expect(KitTokens.quickNoteMinHeight, 220);
+    expect(KitTokens.quickNotePageMargin, 24);
+    expect(KitTokens.noteSheetFractions, [0.4, 0.6, 0.9]);
+    expect(KitTokens.addPagePanelWidth, 300);
+    expect(KitTokens.audioSpeeds, [1, 1.25, 1.5, 2, 0.75]);
+    expect(KitTokens.recRed, const Color(0xffc43a3a));
+    expect(KitTokens.recPillHeight, 44);
+    expect(KitTokens.playerBarHeight, 54);
+    expect(KitTokens.playerBarBg, const Color(0xfff2f2f4));
+  });
 }

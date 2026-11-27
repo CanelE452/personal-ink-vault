@@ -83,7 +83,7 @@ void _publish(AppActionRegistry actions, Tool tool) {
     a(AppActionIds.toolShapes, KitIconName.shapes, checked: false),
     a(AppActionIds.toolLaser, KitIconName.laser, checked: false),
     a(AppActionIds.pickPhoto, KitIconName.image),
-    a(AppActionIds.insertPage, KitIconName.pageAdd),
+    a(AppActionIds.insertPageMenu, KitIconName.pageAdd),
     a(AppActionIds.fullscreen, KitIconName.expand, checked: false),
     a(AppActionIds.toolbarCustomize, KitIconName.tune),
     a(AppActionIds.docInfo, KitIconName.info),

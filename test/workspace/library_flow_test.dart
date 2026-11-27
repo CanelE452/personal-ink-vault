@@ -2393,8 +2393,13 @@ void main() {
     expect(note.folderId, folder.id);
     expect(note.documentKind, VaultDocumentKind.handwriting);
     // The view switch (the editor's ⋯ 「보기」 since Task 17) shows the note itself, not its Markdown: it offers
-    // Markdown as the other view.
-    await tester.tap(find.byKey(const ValueKey('editor-doc-menu')));
+    // Markdown as the other view. The editor shows a spinner, no toolbar,
+    // until the note is read: wait for ⋯ too, not only the editor.
+    final docMenu = find.byKey(const ValueKey('editor-doc-menu'));
+    for (var i = 0; i < 20 && docMenu.evaluate().isEmpty; i++) {
+      await drain(tester);
+    }
+    await tester.tap(docMenu);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(

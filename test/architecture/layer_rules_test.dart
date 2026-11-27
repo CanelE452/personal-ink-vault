@@ -222,6 +222,24 @@ void main() {
     expect(violations, isEmpty, reason: violations.join('\n'));
   });
 
+  // The kit's screens (final fix wave 2, widened in wave 2 of the final fix):
+  // a line as high as its font takes KitTokens.lineHeightOne and a 1 px line
+  // a KitTokens width, as the other values come from the tokens.
+  test('the kit and ink_ui screens give no height 1 as a number', () {
+    final violations = <String>[];
+    for (final dir in ['lib/components/kit', 'lib/components/ink_ui']) {
+      for (final f in _dartFiles(dir)) {
+        for (final (i, line) in f.readAsLinesSync().indexed) {
+          if (line.trimLeft().startsWith('//')) continue;
+          if (RegExp(r'\bheight:\s*1(?:\.0)?\s*[,)]').hasMatch(line)) {
+            violations.add('${_rel(f)}:${i + 1}');
+          }
+        }
+      }
+    }
+    expect(violations, isEmpty, reason: violations.join('\n'));
+  });
+
   test('colour literal check catches split lines and the from* forms', () {
     expect(_colorLiterals('const a = Color(\n    0xff112233,\n);'), 1);
     expect(_colorLiterals('final b = Color.fromARGB(255, 1, 2, 3);'), 1);

@@ -74,6 +74,26 @@ The library brings Google's data transport components, which can send ML Kit usa
 logs to Google. Its Maven dependencies include OkHttp 3.12.1 and Okio 2.0.0
 (Apache-2.0).
 
+Android build 233 adds voice recording and playback in notes: `record` 7.2.0
+(with record_android 2.3.0 and its platform packages), `just_audio` 0.10.6 (with
+just_audio_platform_interface 4.6.0 and just_audio_web 0.4.16) and `audio_session`
+0.2.4. Their rows in the inventory below were added on 2026-11-27 from the LICENSE
+files of the downloaded pub archives: just_audio and audio_session are MIT
+(copyright Ryan Heise and the project contributors); every record package ships a
+BSD-3-Clause text whose copyright line reads "Copyright 2022 openapi4j authors",
+reproduced as shipped. On Android, just_audio brings AndroidX Media3 1.4.1
+(`androidx.media3:media3-exoplayer` with its DASH, HLS and SmoothStreaming modules,
+plus media3-common, -container, -database, -datasource, -decoder and -extractor)
+and audio_session brings `androidx.media:media` 1.7.0, all from Google's Maven
+repository under the Apache License 2.0 (per their POM files). The streaming
+modules are linked because just_audio declares them; the app plays only its own
+local recordings. Recording asks for the microphone permission (RECORD_AUDIO)
+only when a recording starts.
+
+The in-app license screen of build 233 does not list these packages: Android
+builds reuse the Flutter asset bundle, including its collected license notices,
+from build 209. This file is the notice for them until that bundle is rebuilt.
+
 Onyx SDK dependencies and its insecure Maven repository, Sentry runtime/build
 upload dependencies, and permission_handler were removed following the pinned
 upstream FOSS/Windows patches. Their unused upstream source folders may remain as
@@ -134,6 +154,7 @@ Package | Version | License text identification | Native sources
 [asn1lib](https://pub.dev/packages/asn1lib/versions/1.6.5/license) | 1.6.5 | BSD-style (see full text) |
 [assorted_layout_widgets](https://pub.dev/packages/assorted_layout_widgets/versions/11.0.0/license) | 11.0.0 | BSD-style (see full text) |
 [async](https://pub.dev/packages/async/versions/2.13.1/license) | 2.13.1 | BSD-style (see full text) |
+[audio_session](https://pub.dev/packages/audio_session/versions/0.2.4/license) | 0.2.4 | MIT | android
 [background_downloader](https://pub.dev/packages/background_downloader/versions/9.6.4/license) | 9.6.4 | MIT | android
 [barcode](https://pub.dev/packages/barcode/versions/2.2.9/license) | 2.2.9 | Apache-2.0 |
 [bidi](https://pub.dev/packages/bidi/versions/2.0.13/license) | 2.0.13 | MIT |
@@ -237,6 +258,9 @@ Package | Version | License text identification | Native sources
 [is_ios_simulator](https://pub.dev/packages/is_ios_simulator/versions/1.0.1/license) | 1.0.1 | MIT |
 [js](https://pub.dev/packages/js/versions/0.7.2/license) | 0.7.2 | BSD-style (see full text) |
 [json_annotation](https://pub.dev/packages/json_annotation/versions/4.12.0/license) | 4.12.0 | BSD-style (see full text) |
+[just_audio](https://pub.dev/packages/just_audio/versions/0.10.6/license) | 0.10.6 | MIT | android
+[just_audio_platform_interface](https://pub.dev/packages/just_audio_platform_interface/versions/4.6.0/license) | 4.6.0 | MIT |
+[just_audio_web](https://pub.dev/packages/just_audio_web/versions/0.4.16/license) | 0.4.16 | MIT |
 [leak_tracker](https://pub.dev/packages/leak_tracker/versions/11.0.2/license) | 11.0.2 | BSD-style (see full text) |
 [leak_tracker_flutter_testing](https://pub.dev/packages/leak_tracker_flutter_testing/versions/3.0.10/license) | 3.0.10 | BSD-style (see full text) |
 [leak_tracker_testing](https://pub.dev/packages/leak_tracker_testing/versions/3.0.2/license) | 3.0.2 | BSD-style (see full text) |
@@ -306,7 +330,14 @@ Package | Version | License text identification | Native sources
 [quill_native_bridge_windows](https://pub.dev/packages/quill_native_bridge_windows/versions/0.1.1/license) | 0.1.1 | MIT |
 [quiver](https://pub.dev/packages/quiver/versions/3.2.2/license) | 3.2.2 | Apache-2.0 |
 [rational](https://pub.dev/packages/rational/versions/2.2.3/license) | 2.2.3 | Apache-2.0 |
+[record](https://pub.dev/packages/record/versions/7.2.0/license) | 7.2.0 | BSD-style (see full text) |
+[record_android](https://pub.dev/packages/record_android/versions/2.3.0/license) | 2.3.0 | BSD-style (see full text) | android
+[record_darwin](https://pub.dev/packages/record_darwin/versions/2.0.0/license) | 2.0.0 | BSD-style (see full text) |
+[record_linux](https://pub.dev/packages/record_linux/versions/2.2.0/license) | 2.2.0 | BSD-style (see full text) |
+[record_platform_interface](https://pub.dev/packages/record_platform_interface/versions/2.2.0/license) | 2.2.0 | BSD-style (see full text) |
 [record_use](https://pub.dev/packages/record_use/versions/1.1.1/license) | 1.1.1 | BSD-style (see full text) |
+[record_web](https://pub.dev/packages/record_web/versions/2.2.0/license) | 2.2.0 | BSD-style (see full text) |
+[record_windows](https://pub.dev/packages/record_windows/versions/2.4.0/license) | 2.4.0 | BSD-style (see full text) | windows
 [regexed_validator](https://pub.dev/packages/regexed_validator/versions/2.0.0+1/license) | 2.0.0+1 | MIT |
 [rxdart](https://pub.dev/packages/rxdart/versions/0.28.0/license) | 0.28.0 | Apache-2.0 |
 [saver_gallery](https://pub.dev/packages/saver_gallery/versions/5.1.0/license) | 5.1.0 | MIT | android

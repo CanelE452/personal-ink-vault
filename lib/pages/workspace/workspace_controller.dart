@@ -33,6 +33,7 @@ import 'package:saber/data/vault/knowledge_index.dart';
 import 'package:saber/data/vault/library_store.dart';
 import 'package:saber/data/vault/linked_database_session.dart';
 import 'package:saber/data/vault/note_link.dart';
+import 'package:saber/data/vault/note_side_store.dart';
 import 'package:saber/data/vault/pdf_import_state.dart';
 import 'package:saber/data/vault/saber_ink_adapter.dart';
 import 'package:saber/data/vault/workspace_database.dart';
@@ -1239,7 +1240,10 @@ class WorkspaceController extends ChangeNotifier {
                 ..remove(session.note.inkEntityId)
                 ..remove(session.note.markdownEntityId);
           for (final id in owned) {
-            if ((await repo.heads(id)).length > 1) conflict = true;
+            final heads = await repo.heads(id);
+            if (heads.length > 1 && !NoteSideStore.joinsItself(heads)) {
+              conflict = true;
+            }
           }
         }
         String? incoming;
@@ -2746,6 +2750,29 @@ class WorkspaceController extends ChangeNotifier {
     if (pendingPdf && (core.pages.isEmpty || core.pages.last.isNotEmpty))
       core.pages.add(EditorPage());
     return core;
+  }
+
+  /// The heads the conflict window offers: of the open note's metadata, ink,
+  /// Markdown and the entities it owns, those split into two or more,
+  /// without the attachments that join their own splits
+  /// ([NoteSideStore.joinsItself]).
+  Future<List<RevisionRecord>> conflictHeads() async {
+    final note = activeSession!.note;
+    final heads = <RevisionRecord>[];
+    for (final id in {
+      note.id,
+      note.inkEntityId,
+      note.markdownEntityId,
+      ...(await repository.revisions())
+          .where((r) => r.ownerNoteId == note.id)
+          .map((r) => r.entityId),
+    }) {
+      final values = await repository.heads(id);
+      if (values.length > 1 && !NoteSideStore.joinsItself(values)) {
+        heads.addAll(values);
+      }
+    }
+    return heads;
   }
 
   Future<void> chooseRevision(RevisionRecord chosen) async {

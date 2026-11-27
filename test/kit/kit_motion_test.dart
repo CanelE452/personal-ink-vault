@@ -133,4 +133,9 @@ void main() {
     expect(KitMotion.modePillOpen, const Duration(milliseconds: 150));
     expect(KitMotion.modePillClose, const Duration(milliseconds: 105));
   });
+
+  test('the supplement motion: side panel slide and the recording blink', () {
+    expect(KitMotion.sidePanelSlide, const Duration(milliseconds: 160));
+    expect(KitMotion.recBlink, const Duration(milliseconds: 1200));
+  });
 }

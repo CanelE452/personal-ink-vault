@@ -3,6 +3,9 @@ import 'package:flutter/painting.dart';
 /// Screen rule values (design doc "화면 규칙" table). Logical pixels.
 /// Every kit widget reads only these; nothing else hard-codes a color or size.
 abstract final class KitTokens {
+  // A line as high as its font (`line-height: 1`).
+  static const lineHeightOne = 1.0;
+
   // Toolbar
   static const toolbarHeight = 46.0;
   static const toolbarBg = Color(0xff2b4b8c);
@@ -707,15 +710,6 @@ abstract final class KitTokens {
   static const noteSheetHeadInk = Color(0xff5b6270);
   static const noteSheetPaper = Color(0xfffffdf4);
   static const noteSheetPaperLine = Color(0xffe3dfc9);
-  static const noteSheetShadow = [
-    BoxShadow(
-      color: Color(0x73142032), // rgba(20,32,50,.45)
-      offset: Offset(0, 18),
-      blurRadius: 40,
-      spreadRadius: -18,
-    ),
-    BoxShadow(color: Color(0x14142032), spreadRadius: 1), // .08
-  ];
   // its 「도구 막대 사용자화」 (`.plscrim`, `.t13r`, §12-3 D)
   static const customizeScrim = Color(0x38142032); // rgba(20,32,50,.22)
   static const customizeHandleInk = Color(0xff9aa0aa);
@@ -989,6 +983,7 @@ abstract final class KitTokens {
   static const toolRowTextSize = 14.0;
   // `.e10line` a 1 #e1e3e8 line, 6 over and 2 under
   static const toolLineColor = Color(0xffe1e3e8);
+  static const toolLineWidth = 1.0;
   static const toolLineTop = 6.0;
   static const toolLineBottom = 2.0;
   // `.e10msg` 12 on 1.4 in `--k-red`, padding 2 16 8; `.e10note` 12 in
@@ -1075,4 +1070,586 @@ abstract final class KitTokens {
   static const tabEndIconStroke = tabEndIconLine * 24 / tabEndIconSize;
   static const tabEndPaddingH = 6.0;
   static const tabEndOpacity = 0.9;
+
+  // 1단계 보충 (design 12th draft `#extras12`, plan Global Constraints)
+  // Left panel over the page: 272 wide. Quick note: 360 x 460 to start, at
+  // least 260 x 220, at most the page area minus 24 on each side.
+  static const sidePanelWidth = 272.0;
+  static const quickNoteWidth = 360.0;
+  static const quickNoteHeight = 460.0;
+  static const quickNoteMinWidth = 260.0;
+  static const quickNoteMinHeight = 220.0;
+  static const quickNotePageMargin = 24.0;
+  // Phone sheet: the shares of the height it rests at.
+  static const noteSheetFractions = [0.4, 0.6, 0.9];
+  // The add-note window's width.
+  static const addPagePanelWidth = 300.0;
+  // Playback speed, in the order each tap goes.
+  static const audioSpeeds = [1.0, 1.25, 1.5, 2.0, 0.75];
+  // The recording dot (`--k-red`, same as [danger]).
+  static const recRed = danger;
+  // `.r1rec` height 44; `.r1play` height 54 on `#f2f2f4`.
+  static const recPillHeight = 44.0;
+  static const playerBarHeight = 54.0;
+  static const playerBarBg = Color(0xfff2f2f4);
+
+  // The recording pill (`.r1rec`, preview lines 4744-4757, read computed):
+  // over the page area's top right, 10 in, [recPillHeight] high, corner 22,
+  // padding 0 4 0 14, 4 between; white with
+  // `0 8px 20px -10px rgba(20,32,50,.45), 0 0 0 1px rgba(20,32,50,.07)`.
+  // The dot (10, [recRed], 4 after it) blinks in two steps to .25 over
+  // [KitMotion.recBlink]; paused it is #9aa0aa and still. 「녹음 중」 or
+  // 「일시 정지」 400 13/1 #646c79, 2 after it; the time 600 13/1, tabular,
+  // at least 42. The buttons 36 round on #eef0f3 with a 22 icon in the ink,
+  // the resume one's red; each is pressed 4 past its sides (`::before`).
+  static const recPillInset = 10.0;
+  static const recPillRadius = 22.0;
+  static const recPillPadding = EdgeInsets.fromLTRB(14, 0, 4, 0);
+  static const recPillGap = 4.0;
+  static const recPillBg = Color(0xffffffff);
+  static const recPillShadow = [
+    BoxShadow(color: Color.fromRGBO(20, 32, 50, 0.07), spreadRadius: 1),
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, 0.45),
+      offset: Offset(0, 8),
+      blurRadius: (20 / 2 - 0.5) / 0.57735,
+      spreadRadius: -10,
+    ),
+  ];
+  static const recDotSize = 10.0;
+  static const recDotGap = 4.0;
+  static const recDotPaused = Color(0xff9aa0aa);
+  static const recDotDim = 0.25;
+  static const recFontSize = 13.0;
+  static const recInk = menuInk;
+  static const recLabelInk = menuSub;
+  static const recLabelGap = 2.0;
+  static const recTimeMinWidth = 42.0;
+  static const recButtonSize = 36.0;
+  static const recButtonBg = Color(0xffeef0f3);
+  static const recButtonReach = 4.0;
+  static const recIconSize = 22.0;
+  static const recIconStroke = 1.62273 * 24 / recIconSize;
+  // The toolbar's record button while recording (`.tb .b.rec::after`): a 9
+  // mark 3 in from the button's top right, #ff5a52 (#b9c0cc paused), with a
+  // 2 ring of the bar's colour round it.
+  static const recMarkSize = 9.0;
+  static const recMarkInset = 3.0;
+  static const recMarkRing = 2.0;
+  static const recMarkOn = Color(0xffff5a52);
+  static const recMarkPaused = Color(0xffb9c0cc);
+
+  // The quick note window (`.r1note`, preview lines 4720-4743, read computed
+  // in Edge): white, corner 16, [quickNoteInset] from the page area's top
+  // and right to start. Its head is 44 with a 1 line under it, padding
+  // 0 4 0 2, 2 between: the grip 30 wide (a 22 icon at 1.4875, #9aa0aa),
+  // 「빠른 노트」 (600 13/1) and three buttons 40 round 10 (a 22 icon at
+  // 1.4875, #5b6270; off at [disabledOpacity]). Under it the lined paper,
+  // a line every 26 at the default width (the page grows with the window).
+  // The resize handle is 44 at the bottom right; its icon fills it
+  // (`.paper svg` takes the handle's 44) at 1.62273 in #8a909b. While it is
+  // dragged, the size shows in the paper's middle: 30 high, padding 0 12,
+  // corner 15, rgba(32,34,38,.86), 600 13 white, tabular figures.
+  static const quickNoteRadius = 16.0;
+  static const quickNoteInset = 16.0;
+  static const quickNoteBg = Color(0xffffffff);
+  // `0 18px 40px -18px rgba(20,32,50,.45), 0 0 0 1px rgba(20,32,50,.08)`,
+  // in Flutter's order
+  static const quickNoteShadow = [
+    BoxShadow(color: Color.fromRGBO(20, 32, 50, 0.08), spreadRadius: 1),
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, 0.45),
+      offset: Offset(0, 18),
+      blurRadius: (40 / 2 - 0.5) / 0.57735,
+      spreadRadius: -18,
+    ),
+  ];
+  static const quickNoteHeadHeight = 44.0;
+  static const quickNoteHeadPadding = EdgeInsets.fromLTRB(2, 0, 4, 0);
+  static const quickNoteHeadGap = 2.0;
+  static const quickNoteHeadLine = menuLine;
+  static const quickNoteTitleSize = 13.0;
+  static const quickNoteTitleInk = menuInk;
+  static const quickNoteGripWidth = 30.0;
+  static const quickNoteGripInk = Color(0xff9aa0aa);
+  static const quickNoteButton = 40.0;
+  static const quickNoteButtonRadius = 10.0;
+  static const quickNoteButtonInk = noteSheetHeadInk;
+  static const quickNoteIconSize = 22.0;
+  static const quickNoteIconStroke = 1.4875 * 24 / quickNoteIconSize;
+  static const quickNotePaper = noteSheetPaper;
+  static const quickNotePaperLine = noteSheetPaperLine;
+  static const quickNoteLineGap = 26.0;
+  static const quickNoteHandle = 44.0;
+  static const quickNoteHandleInk = Color(0xff8a909b);
+  static const quickNoteHandleStroke = 1.62273;
+  static const quickNoteSizeHeight = 30.0;
+  static const quickNoteSizePadH = 12.0;
+  static const quickNoteSizeRadius = 15.0;
+  static const quickNoteSizeBg = Color.fromRGBO(32, 34, 38, 0.86);
+  static const quickNoteSizeInk = Color(0xffffffff);
+  // [내 판단] Not in the 12th draft (task 5 carried): a read-only quick note
+  // shows the 「읽기 전용」 icon after its title in the grip's colour, and
+  // ink not saved yet a dot 6 wide there.
+  static const quickNoteMarkGap = 6.0;
+  static const quickNoteUnsavedDot = 6.0;
+  // Opening, it rises this far into place ([KitMotion.quickNoteRise]); the
+  // phone sheet rises its own height.
+  static const quickNoteRiseFrom = 24.0;
+  // On a phone (`.r1dev.ph .r1note`): a sheet across the page area's foot,
+  // corner 18 18 0 0, `0 -14px 30px -18px rgba(20,32,50,.45), 0 0 0 1px
+  // rgba(20,32,50,.08)`; a grab strip 22 high with a 36 x 4 bar 9 down
+  // (corner 2, #cfd3da), and a head 40 high from 16 in, without the grip
+  // and the resize handle. Dragged, it follows between
+  // [quickNoteSheetDragMin] and [quickNoteSheetDragMax] of the height and
+  // rests at the nearest of [noteSheetFractions].
+  static const quickNoteSheetRadius = 18.0;
+  static const quickNoteSheetShadow = [
+    BoxShadow(color: Color.fromRGBO(20, 32, 50, 0.08), spreadRadius: 1),
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, 0.45),
+      offset: Offset(0, -14),
+      blurRadius: (30 / 2 - 0.5) / 0.57735,
+      spreadRadius: -18,
+    ),
+  ];
+  static const quickNoteSheetGrab = 22.0;
+  static const quickNoteSheetBarWidth = 36.0;
+  static const quickNoteSheetBarHeight = 4.0;
+  static const quickNoteSheetBarTop = 9.0;
+  static const quickNoteSheetBarRadius = 2.0;
+  static const quickNoteSheetBar = Color(0xffcfd3da);
+  static const quickNoteSheetHeadHeight = 40.0;
+  static const quickNoteSheetHeadPadding = EdgeInsets.fromLTRB(16, 0, 4, 0);
+  static const quickNoteSheetDragMin = 0.3;
+  static const quickNoteSheetDragMax = 0.94;
+  static const quickNoteSheetDefault = 0.6;
+  // Folded (`.r1npill`): a pill 40 high, corner 20, padding 0 14 0 10, 6
+  // between a 20 icon at 1.4167 (#5b6270) and 「빠른 노트」 (600 13/1), with
+  // `0 10px 24px -12px rgba(20,32,50,.5), 0 0 0 1px rgba(20,32,50,.08)`. It
+  // stays where the head's right end was; on a phone, 16 over the foot in
+  // the middle.
+  static const quickNotePillHeight = 40.0;
+  static const quickNotePillRadius = 20.0;
+  static const quickNotePillPadding = EdgeInsets.fromLTRB(10, 0, 14, 0);
+  static const quickNotePillGap = 6.0;
+  static const quickNotePillIconSize = 20.0;
+  static const quickNotePillIconStroke = 1.4167 * 24 / quickNotePillIconSize;
+  static const quickNotePillShadow = [
+    BoxShadow(color: Color.fromRGBO(20, 32, 50, 0.08), spreadRadius: 1),
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, 0.5),
+      offset: Offset(0, 10),
+      blurRadius: (24 / 2 - 0.5) / 0.57735,
+      spreadRadius: -12,
+    ),
+  ];
+  static const quickNotePillPhoneBottom = 16.0;
+  // While it records (tablet), the window and its pill keep at least
+  // [recPillInset] + [recPillHeight] + this from the top where their span
+  // across meets the record pill's (controller's ruling, task 13 fix 1).
+  static const quickNoteUnderRecPill = 8.0;
+
+  // Left panel (`.r1side`, `.r1tabs`, `.r1grid`, `.r1th`, `.r1empty`, preview
+  // lines 4669-4713). A page area narrower than [sidePanelPhoneBelow] is a
+  // phone's (preview 360; its tablet page is 586): the panel covers it all,
+  // without a shadow, and the page grid has 3 columns. [내 판단] 480.
+  static const sidePanelPhoneBelow = 480.0;
+  static const sidePanelBg = Color(0xffffffff);
+  // `1px 0 0 #e1e3e8, 14px 0 28px -22px rgba(20,32,50,.5)`, in Flutter's order
+  static const sidePanelShadow = [
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, 0.5),
+      offset: Offset(14, 0),
+      blurRadius: (28 / 2 - 0.5) / 0.57735,
+      spreadRadius: -22,
+    ),
+    BoxShadow(color: Color(0xffe1e3e8), offset: Offset(1, 0)),
+  ];
+  // hidden, it stands 104% of its width to the left (`translateX(-104%)`)
+  static const sidePanelHiddenShift = -1.04;
+  // the tab row: margin 8 8 4, padding 3, a gap of 2, on #eef0f3 corner 12
+  static const sideTabsMargin = EdgeInsets.fromLTRB(8, 8, 8, 4);
+  static const sideTabsPadding = 3.0;
+  static const sideTabsGap = 2.0;
+  static const sideTabsBg = Color(0xffeef0f3);
+  static const sideTabsRadius = 12.0;
+  // a tab: 48 high, corner 10, its 20 icon (line 1.4167) 4 above its name
+  // (600 11.5/1); chosen, white with `0 1px 2px rgba(12,22,44,.14)`
+  static const sideTabHeight = 48.0;
+  static const sideTabRadius = 10.0;
+  static const sideTabIconSize = 20.0;
+  static const sideTabIconStroke = 1.4167 * 24 / sideTabIconSize;
+  static const sideTabGap = 4.0;
+  static const sideTabFontSize = 11.5;
+  static const sideTabLineHeight = 1.0;
+  static const sideTabInk = menuSub;
+  static const sideTabOnInk = menuInk;
+  static const sideTabOnBg = Color(0xffffffff);
+  static const sideTabOnShadow = [
+    BoxShadow(
+      color: Color.fromRGBO(12, 22, 44, 0.14),
+      offset: Offset(0, 1),
+      blurRadius: (2 / 2 - 0.5) / 0.57735,
+    ),
+  ];
+  // the page grid: padding 10 16 18, 14 between pages both ways
+  static const sideGridPadding = EdgeInsets.fromLTRB(16, 10, 16, 18);
+  static const sideGridGap = 14.0;
+  static const sideGridColumns = 2;
+  static const sideGridPhoneColumns = 3;
+  // a page: its picture (corner 6 on #fffdf8, a 1 #dfe2e7 ring and `0 2px
+  // 6px -4px rgba(20,32,50,.3)`; the page on screen, a 2.5 accent ring), 6
+  // above its number (12 on the panel's 1.35 line; on screen, accent 600)
+  static const sideThumbRadius = 6.0;
+  static const sideThumbBg = Color(0xfffffdf8);
+  static const sideThumbShadow = [
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, 0.3),
+      offset: Offset(0, 2),
+      blurRadius: (6 / 2 - 0.5) / 0.57735,
+      spreadRadius: -4,
+    ),
+    BoxShadow(color: Color(0xffdfe2e7), spreadRadius: 1),
+  ];
+  static const sideThumbOnShadow = [
+    BoxShadow(color: accent, spreadRadius: 2.5),
+  ];
+  static const sideThumbGap = 6.0;
+  static const sideThumbFontSize = 12.0;
+  static const sideLineHeight = 1.35;
+  static const sideThumbInk = menuSub;
+  static const sideThumbOnInk = accent;
+  // a favourite's ribbon: 11 x 15, 8 from the right, 1 over the top, its foot
+  // cut up to 70% in the middle
+  static const sideRibbonWidth = 11.0;
+  static const sideRibbonHeight = 15.0;
+  static const sideRibbonRight = 8.0;
+  static const sideRibbonTop = -1.0;
+  static const sideRibbonNotch = 0.7;
+  // an empty tab: padding 36 22, 13 on a 1.5 line; its 30 icon (line 1.6)
+  // #9aa0aa, 10 above
+  static const sideEmptyPadding = EdgeInsets.symmetric(
+    vertical: 36,
+    horizontal: 22,
+  );
+  static const sideEmptyFontSize = 13.0;
+  static const sideEmptyLineHeight = 1.5;
+  static const sideEmptyInk = menuSub;
+  static const sideEmptyIconSize = 30.0;
+  static const sideEmptyIconStroke = 1.6 * 24 / sideEmptyIconSize;
+  static const sideEmptyIconInk = Color(0xff9aa0aa);
+  static const sideEmptyIconGap = 10.0;
+
+  // The outline tab (`.r1gt`, `.r1tag`, `.r1row`, `.mb`, `.r1ren`, `.r1ok`,
+  // `.r1hint`, `.r1menu`, preview lines 4687-4718). A group's title: 600 12
+  // grey, padding 12 16 4, its tag 6 beside it (600 10.5 on #eceef2, corner
+  // 8, padding 3 6).
+  static const sideGroupPadding = EdgeInsets.fromLTRB(16, 12, 16, 4);
+  static const sideGroupFontSize = 12.0;
+  static const sideGroupInk = menuSub;
+  static const sideGroupGap = 6.0;
+  static const sideTagFontSize = 10.5;
+  static const sideTagBg = menuLine;
+  static const sideTagPadding = EdgeInsets.symmetric(
+    horizontal: 6,
+    vertical: 3,
+  );
+  static const sideTagRadius = 8.0;
+  // A row: at least 44, padding 0 4 0 16, a line under another 16 further
+  // in (`.l2` 32; deeper PDF lines go 16 further a level, up to
+  // [sideRowIndentMax] levels, [내 판단]), 8 between its title (13.5), its
+  // page (12 #8a909b) and its ⋯. The page on screen's row is on #eef3fd with
+  // its title 600 and a 3 accent bar at its left edge, 8 from its top and
+  // foot, its right corners 3. While its menu is open the row is #f1f3f6.
+  static const sideRowHeight = 44.0;
+  static const sideRowPadLeft = 16.0;
+  static const sideRowPadRight = 4.0;
+  static const sideRowIndent = 16.0;
+  static const sideRowIndentMax = 3;
+  static const sideRowGap = 8.0;
+  static const sideRowFontSize = 13.5;
+  static const sideRowInk = menuInk;
+  static const sidePageFontSize = 12.0;
+  static const sidePageInk = menuValue;
+  static const sideRowCurrentBg = Color(0xffeef3fd);
+  static const sideRowCurrentBar = 3.0;
+  static const sideRowCurrentBarInset = 8.0;
+  static const sideRowMenuOpenBg = menuOpenRow;
+  // its ⋯: 36, #8a909b, an 18 icon on a 1.275 line, pressed anywhere in 44
+  // around it
+  static const sideRowMenuButton = 36.0;
+  static const sideRowMenuHit = 44.0;
+  static const sideRowMenuInk = menuValue;
+  static const sideRowMenuIconSize = 18.0;
+  static const sideRowMenuIconStroke = 1.275 * 24 / sideRowMenuIconSize;
+  // its name being changed: a 34 field (a 1.5 accent line inside, corner 8,
+  // padding 0 8, 13.5) and 「완료」 (600 13 accent, 36 high, padding 0 10)
+  static const sideRenameHeight = 34.0;
+  static const sideRenameLine = 1.5;
+  static const sideRenameRadius = 8.0;
+  static const sideRenamePadH = 8.0;
+  static const sideDoneHeight = 36.0;
+  static const sideDonePadH = 10.0;
+  static const sideDoneFontSize = 13.0;
+  // the hint under the rows: 12 #8a909b on a 1.45 line, padding 10 16 16
+  static const sideHintPadding = EdgeInsets.fromLTRB(16, 10, 16, 16);
+  static const sideHintFontSize = 12.0;
+  static const sideHintLineHeight = 1.45;
+  static const sideHintInk = menuValue;
+  // A row's menu: 184 wide, corner 14, 8 from the panel's right edge, 2
+  // over the row's foot (over its top instead when it would come within 8
+  // of the panel's foot); rows 44 of 14 text 12 beside a 22 icon, padding
+  // 0 16, a 1 line between them. `0 14px 32px -14px rgba(20,32,50,.45),
+  // 0 0 0 1px rgba(20,32,50,.06)`, in Flutter's order.
+  static const sideMenuWidth = 184.0;
+  static const sideMenuRadius = 14.0;
+  static const sideMenuRight = 8.0;
+  static const sideMenuOverlap = 2.0;
+  static const sideMenuFoot = 8.0;
+  static const sideMenuRow = 44.0;
+  static const sideMenuFontSize = 14.0;
+  static const sideMenuShadow = [
+    BoxShadow(color: Color.fromRGBO(20, 32, 50, 0.06), spreadRadius: 1),
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, 0.45),
+      offset: Offset(0, 14),
+      blurRadius: (32 / 2 - 0.5) / 0.57735,
+      spreadRadius: -14,
+    ),
+  ];
+
+  // The audio tab (`.r1au`, `.r1gt .cnt`, preview lines 4697-4711, read
+  // computed): a row at least 60, padding 0 4 0 12, 10 between its play
+  // circle (36, #eef0f3, an 18 icon on a 1.6 line in the ink), its name
+  // (600 13.5) over its length and date (12 #8a909b, 3 under it) and its ⋯.
+  // The row in the listening bar is on #eef3fd (it wins over the open
+  // menu's grey, `.r1au.on` comes after `.r1au.mopen`), its circle the
+  // accent with a white icon. 「새 녹음」 6 after the name: 600 10.5 #1d7a5a
+  // on #dff4ea, corner 8, padding 2 6. The group title's count at its end:
+  // 400 12 #8a909b. Where the device cannot play the circles are at
+  // [disabledOpacity].
+  static const audioRowHeight = 60.0;
+  static const audioRowPadLeft = 12.0;
+  static const audioRowPadRight = 4.0;
+  static const audioRowGap = 10.0;
+  static const audioRowOnBg = sideRowCurrentBg;
+  static const audioPlaySize = 36.0;
+  static const audioPlayBg = sideTabsBg;
+  static const audioPlayInk = menuInk;
+  static const audioPlayOnBg = accent;
+  static const audioPlayOnInk = Color(0xffffffff);
+  static const audioPlayIconSize = 18.0;
+  static const audioPlayIconStroke = 1.6 * 24 / audioPlayIconSize;
+  static const audioNameFontSize = 13.5;
+  static const audioMetaFontSize = 12.0;
+  static const audioMetaGap = 3.0;
+  static const audioMetaInk = menuValue;
+  static const audioNewGap = 6.0;
+  static const audioNewFontSize = 10.5;
+  static const audioNewInk = Color(0xff1d7a5a);
+  static const audioNewBg = Color(0xffdff4ea);
+  static const audioNewRadius = 8.0;
+  static const audioNewPadding = EdgeInsets.symmetric(
+    horizontal: 6,
+    vertical: 2,
+  );
+  static const sideCountFontSize = 12.0;
+  static const sideCountInk = menuValue;
+
+  // The listening bar (`.r1play`, preview lines 4744-4771, read computed):
+  // in the middle of the page area, 12 over its foot, min(470, the area
+  // less 16) wide and [playerBarHeight] high with its 1 #e4e4e8 line inside,
+  // corner 27, padding 0 6, 8 between: the play button (42, accent, a white
+  // 22 icon on a 1.4875 line), the name (600 13, at most 96, cut short; not
+  // on a phone), the position, the track, the length (12 #646c79), the
+  // speed (32 high, at least 48, padding 0 6, corner 9, white with a 1
+  // #e4e4e8 line inside, 600 12.5) and the close button (36, corner 10, a
+  // #5b6270 22 icon). `0 10px 24px -14px rgba(20,32,50,.5)`. The track: 44
+  // high, at least 40, a 4 line 20 down (#d6d8de, the played part the
+  // accent, corner 2) and a 16 white thumb 14 down, centred on the
+  // position, `0 1px 3px rgba(20,32,50,.35), 0 0 0 1px rgba(20,32,50,.08)`.
+  // The speed and the close button are pressed 2 past each side and 6 over
+  // and under (`::before{inset:-6px -2px}`).
+  static const listenBarBottom = 12.0;
+  static const listenBarMaxWidth = 470.0;
+  static const listenBarMargin = 16.0;
+  static const listenBarRadius = 27.0;
+  static const listenBarLine = Color(0xffe4e4e8);
+  static const listenBarLineWidth = 1.0;
+  static const listenBarPadH = 6.0;
+  static const listenBarGap = 8.0;
+  static const listenBarShadow = [
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, 0.5),
+      offset: Offset(0, 10),
+      blurRadius: (24 / 2 - 0.5) / 0.57735,
+      spreadRadius: -14,
+    ),
+  ];
+  static const listenPlaySize = 42.0;
+  static const listenPlayBg = accent;
+  static const listenPlayInk = Color(0xffffffff);
+  static const listenIconSize = 22.0;
+  static const listenIconStroke = 1.4875 * 24 / listenIconSize;
+  static const listenNameFontSize = 13.0;
+  static const listenNameMaxWidth = 96.0;
+  static const listenNameInk = menuInk;
+  static const listenTimeFontSize = 12.0;
+  static const listenTimeInk = menuSub;
+  static const listenTrackHeight = 44.0;
+  static const listenTrackMinWidth = 40.0;
+  static const listenTrackLineTop = 20.0;
+  static const listenTrackLine = 4.0;
+  static const listenTrackRadius = 2.0;
+  static const listenTrackBg = Color(0xffd6d8de);
+  static const listenTrackFill = accent;
+  static const listenThumbSize = 16.0;
+  static const listenThumbTop = 14.0;
+  static const listenThumbBg = Color(0xffffffff);
+  static const listenThumbShadow = [
+    BoxShadow(color: Color.fromRGBO(20, 32, 50, 0.08), spreadRadius: 1),
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, 0.35),
+      offset: Offset(0, 1),
+      blurRadius: (3 / 2 - 0.5) / 0.57735,
+    ),
+  ];
+  static const listenSpeedHeight = 32.0;
+  static const listenSpeedMinWidth = 48.0;
+  static const listenSpeedPadH = 6.0;
+  static const listenSpeedRadius = 9.0;
+  static const listenSpeedBg = Color(0xffffffff);
+  static const listenSpeedFontSize = 12.5;
+  static const listenCloseSize = 36.0;
+  static const listenCloseRadius = 10.0;
+  static const listenCloseInk = noteSheetHeadInk;
+  static const listenReachH = 2.0;
+  static const listenReachV = 6.0;
+  // The speed's figures on a line as high as they are (`line-height: 1`).
+  static const listenSpeedLineHeight = 1.0;
+  // Between the speed and the close button: the gap less the reach of both
+  // past their sides.
+  static const listenCloseGap = listenBarGap - 2 * listenReachH;
+  // What stands over the listening bar keeps this far over it: the page
+  // flip bar (one page at a time) and the end of the audio tab's list.
+  static const listenOverGap = 8.0;
+  // The room the listening bar takes at the foot of the page area, with
+  // the gap over it.
+  static const listenFootRoom =
+      listenBarBottom + playerBarHeight + listenOverGap;
+  // An arrow key on the track moves this far (`keydown`, ArrowLeft/Right).
+  static const listenKeyStep = Duration(seconds: 5);
+
+  // The undo notice (`.r1toast`, preview lines 4772-4776), shared by the
+  // outline, the recordings and the page insert: in the middle of the page
+  // area, its foot 78 over the area's foot, at most the area less 24 wide;
+  // 40 high, corner 20, padding 0 6 0 16 (0 16 without an action), 6
+  // between its line (600 13/1 white, cut short) and the action (600 13
+  // #9cc0ff, 32 high, padding 0 10), on rgba(32,34,38,.9). Coming,
+  // it rises 4 ([KitMotion.undoNoticeIn]).
+  static const undoNoticeAction = '실행 취소';
+  static const undoNoticeBottom = 78.0;
+  // One page at a time while listening, the page flip bar (48 high, its
+  // buttons) stands over the listening bar, and the notice over both.
+  static const pageFlipBarHeight = 48.0;
+  static const undoNoticeOverPageFlip =
+      listenFootRoom + pageFlipBarHeight + listenOverGap;
+  static const undoNoticeMargin = 24.0;
+  static const undoNoticeHeight = 40.0;
+  static const undoNoticeRadius = 20.0;
+  static const undoNoticePadding = EdgeInsets.fromLTRB(16, 0, 6, 0);
+  static const undoNoticeSoloPadding = EdgeInsets.symmetric(horizontal: 16);
+  static const undoNoticeGap = 6.0;
+  static const undoNoticeBg = Color.fromRGBO(32, 34, 38, 0.9);
+  static const undoNoticeInk = Color(0xffffffff);
+  static const undoNoticeFontSize = 13.0;
+  static const undoNoticeActionInk = Color(0xff9cc0ff);
+  static const undoNoticeActionHeight = 32.0;
+  static const undoNoticeActionPadH = 10.0;
+  static const undoNoticeRise = 4.0;
+
+  /// The undo notice's line after a row is removed (`delItem`).
+  static String removedNotice(String name) => '지웠습니다 · $name';
+
+  /// The undo notice's line after a page is put in (`insertPage`): its
+  /// number counted from 1 and the name of its pattern.
+  static String insertedNotice(int page, String name) =>
+      '$page쪽에 $name 쪽을 넣었습니다';
+
+  // The 노트 추가 window (12th draft `addHtml`, `.r1o`, preview lines
+  // 4778-4799): [addPagePanelWidth] wide, with the 10th draft windows'
+  // corner, colour, shadow and nub ([penPanelRadius], [menuBg],
+  // [menuShadow]), 8 under its last row (`.r1in`). Its title `.ttl` 600 15
+  // on 1.3, padding 16 16 4; a group's title `.gt` 600 12 in `--k-sub` on
+  // `.kz`'s 1.35, padding 12 16 6.
+  static const addPageTitlePad = EdgeInsets.fromLTRB(16, 16, 16, 4);
+  static const addPageGroupPad = EdgeInsets.fromLTRB(16, 12, 16, 6);
+  static const addPageGroupLine = 1.35;
+  static const addPagePadBottom = 8.0;
+  // `.r1seg` 12 in from the sides on #e9eaee, corner 10, 2 inside; its
+  // buttons 36 high, corner 8, 600 13 on 1 in `--k-sub`; the chosen one
+  // white, in `--k-ink`, with `0 1px 2px rgba(12,22,44,.14)`
+  static const addPageSegmentMargin = 12.0;
+  static const addPageSegmentBg = Color(0xffe9eaee);
+  static const addPageSegmentRadius = 10.0;
+  static const addPageSegmentPad = 2.0;
+  static const addPageSegmentHeight = 36.0;
+  static const addPageSegmentButtonRadius = 8.0;
+  static const addPageSegmentSize = 13.0;
+  static const addPageSegmentOnBg = Color(0xffffffff);
+  static const addPageSegmentShadow = [
+    BoxShadow(
+      color: Color.fromRGBO(12, 22, 44, .14),
+      offset: Offset(0, 1),
+      blurRadius: (2 / 2 - 0.5) / 0.57735,
+    ),
+  ];
+  // `.r1cards` four columns 4 apart, 10 in; `.r1card` padding 8 2 6, corner
+  // 12, white while pressed (`:hover`), its sample 6 over its name (12 on
+  // 1.2 in `--k-ink`)
+  static const addPageCardsColumns = 4;
+  static const addPageCardsPadH = 10.0;
+  static const addPageCardsGap = 4.0;
+  static const addPageCardPad = EdgeInsets.fromLTRB(2, 8, 2, 6);
+  static const addPageCardRadius = 12.0;
+  static const addPageCardOnBg = Color(0xffffffff);
+  static const addPageCardGap = 6.0;
+  static const addPageCardTextSize = 12.0;
+  static const addPageCardTextHeight = 1.2;
+  // `.r1card .pp` 46 x 60, corner 5, white, `0 0 0 1px #d9dde4, 0 2px 5px
+  // -3px rgba(20,32,50,.3)` (drawn in the other order). `.lined`: 1 lines of
+  // #c9d1dd every 8 from 6 down; `.grid`: 1 lines of #dbe1ea every 6 from 2
+  // across and down; `.dot`: #aeb7c5 dots every 6 from 3, solid to .9 (the
+  // preview's dot, its edge soft to 1.3)
+  static const addPageSampleSize = Size(46, 60);
+  static const addPageSampleRadius = 5.0;
+  static const addPageSampleBg = Color(0xffffffff);
+  static const addPageSampleShadow = [
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, .3),
+      offset: Offset(0, 2),
+      blurRadius: (5 / 2 - 0.5) / 0.57735,
+      spreadRadius: -3,
+    ),
+    BoxShadow(color: Color(0xffd9dde4), spreadRadius: 1),
+  ];
+  static const addPageSampleLine = 1.0;
+  static const addPageLineColor = Color(0xffc9d1dd);
+  static const addPageLineFirst = 6.0;
+  static const addPageLineStep = 8.0;
+  static const addPageGridColor = Color(0xffdbe1ea);
+  static const addPageGridFirst = 2.0;
+  static const addPageGridStep = 6.0;
+  static const addPageDotColor = Color(0xffaeb7c5);
+  static const addPageDotFirst = 3.0;
+  static const addPageDotStep = 6.0;
+  static const addPageDotRadius = 0.9;
+  // 가져오기 (`.grp`, `.it`): rows 44 high on white, 16 in, 12 between the
+  // icon (22) and the name (14 on 1.35), a 1 `--k-line` over each; the
+  // kind (`.v`) 12 in #8a909b at the row's end. The line between two rows
+  // (`.it+.it`) is inside the second one's 44: 43 under it
+  static const addPageRowHeight = 44.0;
+  static const addPageRowUnderLine = addPageRowHeight - menuLineWidth;
+  static const addPageRowTextSize = 14.0;
 }

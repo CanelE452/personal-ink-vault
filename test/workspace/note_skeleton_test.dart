@@ -181,6 +181,8 @@ void main() {
     await mount(tester);
     await tester.tap(find.byKey(const ValueKey('editor-insert-page')));
     await drain(tester);
+    await tester.tap(find.byKey(const ValueKey('add-page-card-lined')));
+    await drain(tester);
     expect(controller.dirty, isTrue);
     await tester.tap(find.byKey(const ValueKey('workspace-tab-switcher')));
     await tester.pump();
@@ -250,6 +252,8 @@ void main() {
     final editor = tester.state<EditorState>(find.byType(Editor));
     final pages = editor.coreInfo.pages.length;
     await tester.tap(find.byKey(const ValueKey('editor-insert-page')));
+    await drain(tester);
+    await tester.tap(find.byKey(const ValueKey('add-page-card-lined')));
     await drain(tester);
     expect(editor.coreInfo.pages, hasLength(pages + 1));
     expect(controller.dirty, isTrue);

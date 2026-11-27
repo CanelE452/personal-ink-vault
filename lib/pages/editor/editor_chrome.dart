@@ -2,7 +2,11 @@ import 'package:flutter/widgets.dart';
 import 'package:saber/components/ink_ui/doc_menu/kit_doc_menu.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
+import 'package:saber/data/vault/note_side_store.dart';
 import 'package:saber/pages/editor/editor.dart';
+
+/// The vault store of the note's attachments and the note's id.
+typedef NoteSideBinding = ({NoteSideStore store, String noteId});
 
 /// Hands the open note's actions to its host (the workspace): the editor
 /// attaches itself and says when its shortcuts change. The editor's own
@@ -39,6 +43,11 @@ class EditorChromeController extends ChangeNotifier {
 
   /// The vault's notes for the link dialog's 「노트」 tab; set by the host.
   Future<List<({String id, String title})>> Function()? listNotes;
+
+  /// Where the open note keeps what lies beside it (favourites, and later
+  /// the outline, the quick note and recordings); set by the host. Null, or
+  /// returning null: no vault holds the note, and those stay hidden.
+  NoteSideBinding? Function()? noteSide;
 
   var _scheduled = false;
   var _disposed = false;

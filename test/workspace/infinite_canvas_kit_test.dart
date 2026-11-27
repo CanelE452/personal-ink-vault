@@ -684,15 +684,24 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  for (final width in [800.0, 360.0]) {
-    testWidgets('the tools sit where the editor\'s do at $width', (
-      tester,
-    ) async {
+  // the editor shows 노트 창 where its vault keeps the quick note (format 2)
+  for (final (width, format2) in [
+    (800.0, false),
+    (360.0, false),
+    (800.0, true),
+    (360.0, true),
+  ]) {
+    testWidgets('the tools sit where the editor\'s do at $width'
+        '${format2 ? ' in a format 2 vault' : ''}', (tester) async {
       List<double> xs() => [
         for (final id in ['lasso', 'pen', 'eraser'])
           tester.getCenter(byKey('editor-tool-$id')).dx,
       ];
-      await mount(tester, size: Size(width, 600));
+      await mount(
+        tester,
+        size: Size(width, 600),
+        vaultKeepsAttachments: format2,
+      );
       final infinite = xs();
       await tester.pumpWidget(const SizedBox());
       // the editor's bar with its default tools
@@ -707,7 +716,7 @@ void main() {
         for (final id in AppActionIds.tools)
           a(id, KitIconName.pen, on: id == AppActionIds.toolPen),
         a(AppActionIds.pickPhoto, KitIconName.image),
-        a(AppActionIds.insertPage, KitIconName.pageAdd),
+        a(AppActionIds.insertPageMenu, KitIconName.pageAdd),
         a(AppActionIds.fullscreen, KitIconName.expand, on: false),
       ]);
       await tester.pumpWidget(
@@ -721,7 +730,7 @@ void main() {
                   actions: actions,
                   title: '',
                   floatingBarOpen: ValueNotifier(true),
-                  noteSheetOpen: ValueNotifier(false),
+                  noteSheetOpen: format2 ? ValueNotifier(false) : null,
                 ),
               ),
             ),

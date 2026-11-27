@@ -401,7 +401,7 @@ class ToolWindowLine extends StatelessWidget {
       bottom: KitTokens.toolLineBottom,
     ),
     child: SizedBox(
-      height: 1,
+      height: KitTokens.toolLineWidth,
       child: ColoredBox(color: KitTokens.toolLineColor),
     ),
   );
@@ -443,7 +443,7 @@ class ToolWindowRedButton extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: KitTokens.toolRowTextSize,
-                height: 1,
+                height: KitTokens.lineHeightOne,
                 color: danger ? KitTokens.danger : KitTokens.menuInk,
                 fontWeight: danger ? FontWeight.w400 : FontWeight.w600,
                 letterSpacing: 0,

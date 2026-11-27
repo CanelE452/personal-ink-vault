@@ -412,7 +412,7 @@ class _ToolbarCustomizeSheetState extends State<ToolbarCustomizeSheet> {
             label,
             style: TextStyle(
               fontSize: 13,
-              height: 1,
+              height: KitTokens.lineHeightOne,
               fontWeight: FontWeight.w600,
               color: filled ? KitTokens.onAccent : KitTokens.accent,
             ),

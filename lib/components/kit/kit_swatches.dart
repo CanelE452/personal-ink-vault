@@ -236,7 +236,7 @@ class _KitSwatchesState extends State<KitSwatches> {
     final hint = at(widget.pageHints);
     const lineStyle = TextStyle(
       fontSize: KitTokens.pageNameSize,
-      height: 1,
+      height: KitTokens.lineHeightOne,
       color: KitTokens.menuSub,
       decoration: TextDecoration.none,
       fontWeight: FontWeight.w400,

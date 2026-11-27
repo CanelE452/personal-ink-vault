@@ -377,7 +377,7 @@ class _KindChip extends StatelessWidget {
                         kind.short,
                         style: const TextStyle(
                           fontSize: KitTokens.eraserChipTextSize,
-                          height: 1,
+                          height: KitTokens.lineHeightOne,
                           fontWeight: FontWeight.w600,
                           color: KitTokens.pillInk,
                           letterSpacing: 0,

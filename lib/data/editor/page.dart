@@ -14,6 +14,7 @@ import 'package:saber/components/canvas/pencil_shader.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/page_link.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
+import 'package:sbn/canvas_background_pattern.dart';
 import 'package:sbn/has_size.dart';
 
 typedef CanvasKey = GlobalKey<State<InnerCanvas>>;
@@ -58,11 +59,26 @@ class EditorPage extends ChangeNotifier implements HasSize {
 
   EditorImage? backgroundImage;
 
+  /// This page's own pattern, or null to follow the note's
+  /// [EditorCoreInfo.backgroundPattern]. Saved as `bp` only when it differs
+  /// from the note's, which makes the note version 20
+  /// ([EditorCoreInfo.versionToWrite]).
+  CanvasBackgroundPattern? backgroundPattern;
+
+  /// Whether this page draws a pattern other than [notePattern], the note's.
+  /// A page with a [backgroundImage] draws no pattern, so it has none of its
+  /// own whatever [backgroundPattern] says.
+  bool hasOwnPattern(CanvasBackgroundPattern notePattern) =>
+      backgroundImage == null &&
+      backgroundPattern != null &&
+      backgroundPattern != notePattern;
+
   bool get isEmpty =>
       strokes.isEmpty &&
       images.isEmpty &&
       quill.controller.document.isEmpty() &&
-      backgroundImage == null;
+      backgroundImage == null &&
+      backgroundPattern == null;
   bool get isNotEmpty => !isEmpty;
 
   /// The height of the canvas cropped to the content.
@@ -117,6 +133,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
     QuillStruct? quill,
     List<PageLink>? links,
     this.backgroundImage,
+    this.backgroundPattern,
   }) : assert(
          (size == null) || (width == null && height == null),
          "size and width/height shouldn't both be specified",
@@ -183,10 +200,18 @@ class EditorPage extends ChangeNotifier implements HasSize {
               assetCache: assetCache,
             )
           : null,
+      backgroundPattern: json['bp'] != null
+          ? CanvasBackgroundPattern.fromName(json['bp'] as String)
+          : null,
     );
   }
 
-  Map<String, dynamic> toJson(OrderedAssetCache assets) => {
+  /// [notePattern] is the note's pattern: the page writes its own (`bp`) only
+  /// when [hasOwnPattern].
+  Map<String, dynamic> toJson(
+    OrderedAssetCache assets, {
+    required CanvasBackgroundPattern notePattern,
+  }) => {
     'pageId': pageId,
     'w': size.width,
     'h': size.height,
@@ -198,6 +223,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
       'q': quill.controller.document.toDelta().toJson(),
     if (backgroundImage != null) 'b': backgroundImage?.toJson(assets),
     if (links.isNotEmpty) 'lk': links.map((link) => link.toJson()).toList(),
+    if (hasOwnPattern(notePattern)) 'bp': backgroundPattern!.name,
   };
 
   /// Inserts a stroke, while keeping the strokes sorted by
@@ -331,6 +357,8 @@ class EditorPage extends ChangeNotifier implements HasSize {
     super.dispose();
   }
 
+  /// [backgroundPattern] given as null makes the copy follow the note's
+  /// pattern; left out, the copy keeps this page's.
   EditorPage copyWith({
     String? pageId,
     bool newIdentity = false,
@@ -339,6 +367,7 @@ class EditorPage extends ChangeNotifier implements HasSize {
     List<EditorImage>? images,
     QuillStruct? quill,
     EditorImage? backgroundImage,
+    Object? backgroundPattern = _samePattern,
     List<PageLink>? links,
   }) => EditorPage(
     pageId: newIdentity ? newId() : pageId ?? this.pageId,
@@ -355,7 +384,13 @@ class EditorPage extends ChangeNotifier implements HasSize {
             PageLink(id: newId(), rect: link.rect, target: link.target),
         ],
     backgroundImage: backgroundImage ?? this.backgroundImage,
+    backgroundPattern: identical(backgroundPattern, _samePattern)
+        ? this.backgroundPattern
+        : backgroundPattern as CanvasBackgroundPattern?,
   );
+
+  /// [copyWith] left without a pattern.
+  static const _samePattern = Object();
 
   /// Clones this page for use in a screenshot.
   ///
@@ -395,3 +430,10 @@ class QuillStruct {
     focusNode: FocusNode(debugLabel: 'Screenshot Quill Focus Node'),
   );
 }
+
+/// The [pages] that had [own] as their pattern until the note took it
+/// ([EditorCoreInfo.setNotePattern]): they follow the note from then on.
+typedef PatternFollowers = ({
+  CanvasBackgroundPattern own,
+  List<EditorPage> pages,
+});

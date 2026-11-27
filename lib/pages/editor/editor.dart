@@ -25,9 +25,9 @@ import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/page_link_layer.dart';
 import 'package:saber/components/canvas/save_indicator.dart';
 import 'package:saber/components/editor/read_only_banner.dart';
+import 'package:saber/components/ink_ui/add_page/kit_add_page_window.dart';
 import 'package:saber/components/ink_ui/doc_menu/kit_doc_menu.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
-import 'package:saber/components/ink_ui/editor_toolbar/kit_note_sheet.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/kit_save_chip.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/toolbar_customize_sheet.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/toolbar_tools_layout.dart'
@@ -53,9 +53,11 @@ import 'package:saber/components/theming/saber_theme.dart';
 import 'package:saber/components/toolbar/editor_bottom_sheet.dart';
 import 'package:saber/components/toolbar/editor_page_manager.dart';
 import 'package:saber/components/toolbar/export_dialog.dart';
+import 'package:saber/components/user_error_text.dart';
 import 'package:saber/data/actions/app_action.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
+import 'package:saber/data/app_external_screen.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
@@ -76,8 +78,11 @@ import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 import 'package:saber/data/user_error.dart';
+import 'package:saber/i18n/extensions/canvas_background_pattern_localized.dart';
 import 'package:saber/i18n/strings.g.dart';
+import 'package:saber/pages/editor/editor_add_page_host.dart';
 import 'package:saber/pages/editor/editor_chrome.dart';
+import 'package:saber/pages/editor/editor_side_host.dart';
 import 'package:saber/pages/editor/link_dialog.dart';
 import 'package:saber/pages/home/whiteboard.dart';
 import 'package:saber/pages/settings/app_settings_page.dart';
@@ -86,6 +91,7 @@ import 'package:sbn/change.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 part 'editor_actions.dart';
+part 'editor_add_page.dart';
 part 'editor_toolbar_area.dart';
 
 typedef _PhotoInfo = ({Uint8List bytes, String extension});
@@ -283,9 +289,19 @@ class EditorState extends State<Editor> {
   /// 「도구 막대 사용자화」 is open over the page.
   final _customizing = ValueNotifier(false);
 
-  /// Closes 「도구 막대 사용자화」 or the note window if one is open over
-  /// the page, and says whether one was: Android's back closes them before
-  /// the note (the host's back asks this first).
+  /// The left panel and the favourites (supplement Task 9).
+  late final _side = _sideHost();
+
+  @visibleForTesting
+  EditorSideHost get side => _side;
+
+  /// Saves what the quick note has not saved yet (the app goes to the
+  /// background).
+  Future<void> saveQuickNote() => _side.quickNote.flush();
+
+  /// Closes 「도구 막대 사용자화」, the note window or the left panel if one
+  /// is open over the page, and says whether one was: Android's back closes
+  /// them before the note (the host's back asks this first).
   bool closeOpenWindow() {
     if (_customizing.value) {
       _customizing.value = false;
@@ -293,6 +309,10 @@ class EditorState extends State<Editor> {
     }
     if (_noteSheetOpen.value) {
       _noteSheetOpen.value = false;
+      return true;
+    }
+    if (_side.panelOpen.value) {
+      _side.panelOpen.value = false;
       return true;
     }
     return false;
@@ -373,6 +393,7 @@ class EditorState extends State<Editor> {
 
     super.initState();
     widget.chrome?.attach(this);
+    unawaited(_side.load());
     _lastInkTool = _firstInkTool();
     // A new note's name field keeps the focus it asks for.
     if (!needsNaming) {
@@ -665,7 +686,10 @@ class EditorState extends State<Editor> {
           }
 
         case .backgroundPattern:
-          coreInfo.backgroundPattern = item.backgroundPatternChange!.previous;
+          coreInfo.setNotePattern(
+            item.backgroundPatternChange!.previous,
+            item.patternFollowers,
+          );
 
         case .addLink:
           _replaceLink(
@@ -1205,6 +1229,7 @@ class EditorState extends State<Editor> {
   void autosaveAfterDelay() {
     if (coreInfo.readOnly) return;
     _editGeneration++;
+    _side.pictureEdits++;
     _lastEditedAt = DateTime.now();
     widget.onDirtyChanged?.call(
       _drawing || _initialImportPending || !history.isCurrentStateSaved,
@@ -1470,10 +1495,10 @@ class EditorState extends State<Editor> {
   /// Returns the number of photos picked.
   ///
   /// If [photoInfos] is provided, it will be used instead of the file picker.
-  Future<int> _pickPhotos([List<_PhotoInfo>? photoInfos]) async {
+  Future<int> _pickPhotos([List<_PhotoInfo>? photoInfos, int? at]) async {
     if (coreInfo.readOnly) return 0;
 
-    final currentPageIndex = this.currentPageIndex;
+    final currentPageIndex = at ?? this.currentPageIndex;
 
     photoInfos ??= await _pickPhotosWithFilePicker();
     if (photoInfos.isEmpty) return 0;
@@ -1531,26 +1556,29 @@ class EditorState extends State<Editor> {
   }
 
   Future<List<_PhotoInfo>> _pickPhotosWithFilePicker() async {
-    final List<PlatformFile> files = await FilePicker.pickFiles(
-      type: FileType.custom,
-      // Taken from
-      // https://github.com/brendan-duncan/image/blob/main/doc/formats.md
-      // (plus .svg)
-      allowedExtensions: [
-        'jpg',
-        'jpeg',
-        'png',
-        'gif',
-        'tiff',
-        'bmp',
-        'tga',
-        'ico',
-        'pvrtc',
-        'svg',
-        'webp',
-        'psd',
-        'exr',
-      ],
+    // the app's own screen: a recording goes on while it is open
+    final List<PlatformFile> files = await AppExternalScreen.run(
+      () => FilePicker.pickFiles(
+        type: FileType.custom,
+        // Taken from
+        // https://github.com/brendan-duncan/image/blob/main/doc/formats.md
+        // (plus .svg)
+        allowedExtensions: [
+          'jpg',
+          'jpeg',
+          'png',
+          'gif',
+          'tiff',
+          'bmp',
+          'tga',
+          'ico',
+          'pvrtc',
+          'svg',
+          'webp',
+          'psd',
+          'exr',
+        ],
+      ),
     );
     if (files.isEmpty) return const [];
 
@@ -1567,22 +1595,25 @@ class EditorState extends State<Editor> {
 
   /// Prompts the user to pick a PDF to import.
   /// Returns whether a PDF was picked.
-  Future<bool> importPdf() async {
+  Future<bool> importPdf([int? at]) async {
     if (coreInfo.readOnly) return false;
     if (!Editor.canRasterPdf) return false;
 
-    final file = await FilePicker.pickFile(
-      type: FileType.custom,
-      allowedExtensions: ['pdf'],
+    final file = await AppExternalScreen.run(
+      () => FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+      ),
     );
     if (file == null) return false;
 
-    return importPdfFromFilePath(file.path!);
+    return importPdfFromFilePath(file.path!, at: at);
   }
 
   Future<bool> importPdfFromFilePath(
     String path, {
     String Function(int)? baselinePageId,
+    int? at,
   }) async {
     final note = coreInfo;
     bool isCurrent() =>
@@ -1616,8 +1647,8 @@ class EditorState extends State<Editor> {
       pages.add((pdfPage, Size(EditorPage.defaultWidth, height)));
     }
 
-    final emptyPage = note.pages.removeLast();
-    assert(emptyPage.isEmpty);
+    // pages may have gone while the file was picked and read
+    var index = min(at ?? _addPageIndex(.end), note.pages.length);
     for (final (pdfPage, pageSize) in pages) {
       final page = EditorPage(
         pageId: baselinePageId?.call(pdfPage.pageNumber - 1),
@@ -1627,7 +1658,7 @@ class EditorState extends State<Editor> {
           pdfBytes: null,
           pdfFile: File(path),
           pdfPage: pdfPage.pageNumber - 1,
-          pageIndex: note.pages.length,
+          pageIndex: index,
           pageSize: pageSize,
           naturalSize: pdfPage.size,
           onMoveImage: onMoveImage,
@@ -1639,24 +1670,11 @@ class EditorState extends State<Editor> {
           assetCache: note.assetCache,
         ),
       );
-      note.pages.add(page);
-      if (baselinePageId == null) {
-        // TODO(adil192): Group multiple pages into one atomic change
-        history.recordChange(
-          EditorHistoryItem(
-            type: .insertPage,
-            pageIndex: note.pages.length - 1,
-            strokes: const [],
-            images: const [],
-            page: page,
-          ),
-        );
-      } else {
-        listenToQuillChanges(page.quill);
-      }
+      // TODO(adil192): Group multiple pages into one atomic change
+      _putPage(index++, page, record: baselinePageId == null);
     }
 
-    note.pages.add(emptyPage);
+    if (note.pages.last.isNotEmpty) createPage(note.pages.length - 1);
     if (mounted) setState(() {});
 
     if (baselinePageId == null) autosaveAfterDelay();
@@ -1677,10 +1695,11 @@ class EditorState extends State<Editor> {
   }
 
   /// The note as the export dialog draws it: without the paper's lines, grid
-  /// or dots when [background] is off. PDF pages and pictures stay.
-  EditorCoreInfo _exportInfo(bool background) => background
-      ? coreInfo
-      : coreInfo.copyWith(backgroundPattern: CanvasBackgroundPattern.none);
+  /// or dots when [background] is off, the pages' own too. PDF pages and
+  /// pictures stay.
+  @visibleForTesting
+  EditorCoreInfo exportInfo(bool background) =>
+      background ? coreInfo : coreInfo.withoutPatterns();
 
   Future<void> exportAsPdf(
     BuildContext context, {
@@ -1688,7 +1707,7 @@ class EditorState extends State<Editor> {
     bool background = true,
   }) async {
     final pdf = await EditorExporter.generatePdf(
-      _exportInfo(background),
+      exportInfo(background),
       context,
     );
     final bytes = await pdf.save();
@@ -1734,7 +1753,7 @@ class EditorState extends State<Editor> {
 
     try {
       final image = await EditorExporter.screenshotPage(
-        coreInfo: _exportInfo(background),
+        coreInfo: exportInfo(background),
         pageIndex: currentPageIndex,
         rasterizeAllStrokes: true,
         pixelRatio: targetPixelRatio,
@@ -1779,6 +1798,7 @@ class EditorState extends State<Editor> {
       initialSinglePageMode: _singlePageMode,
       pageBuilder: pageBuilder,
       isTextEditing: () => currentTool == Tool.textEditing,
+      footRoom: _side.audio.footRoom,
       placeholderPageBuilder: (BuildContext context, int pageIndex) {
         return Canvas(
           path: coreInfo.filePath,
@@ -1832,7 +1852,12 @@ class EditorState extends State<Editor> {
     );
 
     final Widget screen = ListenableBuilder(
-      listenable: Listenable.merge([savingState, _noteSheetOpen, _customizing]),
+      listenable: Listenable.merge([
+        savingState,
+        _noteSheetOpen,
+        _customizing,
+        _side.panelOpen,
+      ]),
       builder: (context, child) {
         final saving = savingState.value;
         // Back closes a window over the page first (a host asks
@@ -1840,7 +1865,9 @@ class EditorState extends State<Editor> {
         // is done
         final windowOpen =
             widget.onBack == null &&
-            (_noteSheetOpen.value || _customizing.value);
+            (_noteSheetOpen.value ||
+                _customizing.value ||
+                _side.panelOpen.value);
         return PopScope(
           canPop: !windowOpen && (widget.onBack != null || saving == .saved),
           onPopInvokedWithResult: (didPop, _) {
@@ -2026,24 +2053,6 @@ class EditorState extends State<Editor> {
     );
   }
 
-  void _insertPageAfterCurrent() => setState(() {
-    final currentPageIndex = this.currentPageIndex;
-    insertPageAfter(currentPageIndex);
-    _scrollToPage(currentPageIndex + 1);
-  });
-
-  /// StarNote's "문서 개요": the page thumbnails (the former 쪽 관리).
-  void _openOverview() => unawaited(
-    showDialog<void>(
-      context: context,
-      builder: (context) => AdaptiveAlertDialog(
-        title: const Text('문서 개요'),
-        content: pageManager(context),
-        actions: const [],
-      ),
-    ),
-  );
-
   /// "템플릿 변경": the page sheet (paper, lines, background, imports and
   /// clearing pages), the former 쪽 메뉴.
   void _openPageMenu() => unawaited(
@@ -2089,7 +2098,7 @@ class EditorState extends State<Editor> {
       setBackgroundPattern: (pattern) => setState(() {
         if (_noteLocked) return;
         final previous = coreInfo.backgroundPattern;
-        coreInfo.backgroundPattern = pattern;
+        final followers = coreInfo.setNotePattern(pattern);
         stows.lastBackgroundPattern.value = pattern;
         history.recordChange(
           EditorHistoryItem(
@@ -2099,6 +2108,7 @@ class EditorState extends State<Editor> {
               previous: previous,
               current: pattern,
             ),
+            patternFollowers: (own: pattern, pages: followers),
             strokes: [],
             images: [],
           ),
@@ -2244,11 +2254,11 @@ class EditorState extends State<Editor> {
     return fit * _transformationController.value.approxScale;
   }
 
-  Widget pageManager(BuildContext context) {
+  Widget pageManager(BuildContext context, {int? page}) {
     return EditorPageManager(
       coreInfo: coreInfo,
       readOnly: _noteLocked,
-      currentPageIndex: currentPageIndex,
+      currentPageIndex: page ?? currentPageIndex,
       redrawAndSave: () => setState(() {
         if (_noteLocked) return;
         autosaveAfterDelay();
@@ -2298,34 +2308,13 @@ class EditorState extends State<Editor> {
       ),
       backgroundImage: page.backgroundImage?.copy()?..pageIndex += 1,
     );
-    coreInfo.pages.insert(pageIndex + 1, newPage);
-    listenToQuillChanges(newPage.quill);
-    history.recordChange(
-      EditorHistoryItem(
-        type: .insertPage,
-        pageIndex: pageIndex,
-        strokes: const [],
-        images: const [],
-        page: newPage,
-      ),
-    );
+    _putPage(pageIndex + 1, newPage);
     autosaveAfterDelay();
   });
 
   void insertPageAfter(int pageIndex) => setState(() {
     if (_noteLocked) return;
-    final page = EditorPage();
-    coreInfo.pages.insert(pageIndex + 1, page);
-    listenToQuillChanges(page.quill);
-    history.recordChange(
-      EditorHistoryItem(
-        type: .insertPage,
-        pageIndex: pageIndex + 1,
-        strokes: const [],
-        images: const [],
-        page: page,
-      ),
-    );
+    _putPage(pageIndex + 1, EditorPage());
     autosaveAfterDelay();
   });
 
@@ -2756,6 +2745,7 @@ class EditorState extends State<Editor> {
     _hoverBadge.dispose();
     _noteSheetOpen.dispose();
     _customizing.dispose();
+    _side.dispose();
     inkLocked.dispose();
     // Leaving the note leaves full screen (the old toolbar did this).
     DynamicMaterialApp.setFullscreen(false, updateSystem: true);

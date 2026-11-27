@@ -72,6 +72,7 @@ import 'package:saber/data/vault/knowledge_index.dart';
 import 'package:saber/data/vault/library_marks.dart';
 import 'package:saber/data/vault/library_store.dart';
 import 'package:saber/data/vault/note_link.dart';
+import 'package:saber/data/vault/note_side_store.dart';
 import 'package:saber/data/vault/obsidian_vault_export.dart';
 import 'package:saber/data/vault/obsidian_vault_import.dart';
 import 'package:saber/data/vault/obsidian_vault_source.dart';
@@ -272,6 +273,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
   late final _editorChrome = EditorChromeController(appActions: _appActions)
     ..openLink = _openEditorLink
     ..listNotes = _linkableNotes
+    ..noteSide = _noteSide
     ..docInfo = (() => _docInfo());
   _LibrarySelectionScope? _librarySelection;
   var _editor = GlobalKey<EditorState>();
@@ -4413,20 +4415,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
 
   Future<void> _conflicts() async {
     await _save();
-    final c = controller!, session = controller!.activeSession!;
-    final heads = <RevisionRecord>[];
-    for (final id in {
-      session.note.id,
-      session.note.inkEntityId,
-      session.note.markdownEntityId,
-      ...(await c.repository.revisions())
-          .where((r) => r.ownerNoteId == session.note.id)
-          .map((r) => r.entityId)
-          .toSet(),
-    }) {
-      final values = await c.repository.heads(id);
-      if (values.length > 1) heads.addAll(values);
-    }
+    final c = controller!;
+    final heads = await c.conflictHeads();
     final previews = <String, String>{};
     for (final head in heads) {
       if (head.kind == EntityKind.markdown) {
@@ -6476,6 +6466,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                       c.setInkDirty(value, session: session),
                   onBusyChanged: (value) =>
                       c.setInkBusy(value, session: session),
+                  vaultKeepsAttachments: c.repository.formatVersion >= 2,
                 );
               },
             )
@@ -6911,7 +6902,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     _externalScreenGrace?.cancel();
     if (AppExternalScreen.active || !mounted) return;
     // The screen's result can arrive just before Android resumes the app; give it a moment.
-    _externalScreenGrace = Timer(const Duration(seconds: 2), () {
+    _externalScreenGrace = Timer(AppExternalScreen.closeGrace, () {
       if (!mounted || AppExternalScreen.active) return;
       final state =
           WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
@@ -6932,6 +6923,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
       if (controller != null && !busy) unawaited(_run(_save));
+      // and the open note's quick note (supplement Task 13 fix 1)
+      unawaited(_editor.currentState?.saveQuickNote());
     }
     final drive = _driveConnection;
     if (drive != null && !_sharedDocumentClosing) {

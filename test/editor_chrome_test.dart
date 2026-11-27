@@ -77,13 +77,16 @@ void main() {
       findsNothing,
       reason: '기타 설정 is gone; its rows are in ⋯',
     );
-    // 문서 개요 is the toolbar's 쪽 목록
+    // the page list is the toolbar's 쪽 목록
     expect(
       find.byKey(const ValueKey('editor-page-list')).hitTestable(),
       findsOneWidget,
     );
     final pages = editor.coreInfo.pages.length;
+    // 노트 추가 opens its window; a pattern there puts the page in
     await tester.tap(find.byKey(const ValueKey('editor-insert-page')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-page-card-lined')));
     await tester.pumpAndSettle();
     expect(editor.coreInfo.pages, hasLength(pages + 1));
     editor.cancelAutosaveAndMarkSaved();
@@ -109,11 +112,10 @@ void main() {
     );
     // A hosted editor leaves 저장 to its host.
     expect(chrome.actions.has(AppActionIds.save), isFalse);
-    // 문서 개요, which an Office PDF's function row keeps at its end
-    expect(
-      chrome.actions.lookup(AppActionIds.pageList)?.widgetKey,
-      const ValueKey('note-overview'),
-    );
+    // 쪽 목록, which an Office PDF's function row keeps at its end
+    final pageList = chrome.actions.lookup(AppActionIds.pageList);
+    expect(pageList?.widgetKey, const ValueKey('note-page-list'));
+    expect(pageList?.label, '쪽 목록');
     await tester.pumpWidget(const SizedBox());
     expect(chrome.editor, isNull);
   });
@@ -211,7 +213,7 @@ void main() {
         () => saving,
         'The PDF import must reach its first save',
       );
-      // The page actions are the editor's actions, 문서 개요 too.
+      // The page actions are the editor's actions, 쪽 목록 too.
       bool on(String id) => chrome.actions.lookup(id)!.enabled;
       const pageActions = ['insertPage', 'export', 'pageList'];
       try {

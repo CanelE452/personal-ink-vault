@@ -688,7 +688,7 @@ class _KitSliderState extends State<KitSlider> with TickerProviderStateMixin {
                       fontSize: number.length > 3
                           ? KitTokens.sliderValueSizeLong
                           : KitTokens.sliderValueSize,
-                      height: 1,
+                      height: KitTokens.lineHeightOne,
                       color: KitTokens.sliderValueInk,
                       decoration: TextDecoration.none,
                       fontWeight: FontWeight.w400,

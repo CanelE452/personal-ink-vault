@@ -10,7 +10,6 @@ import 'package:saber/components/canvas/canvas_gesture_detector.dart';
 import 'package:saber/components/canvas/canvas_preview.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
 import 'package:saber/components/canvas/interactive_canvas.dart';
-import 'package:saber/components/toolbar/editor_page_manager.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/flavor_config.dart';
@@ -215,25 +214,30 @@ void main() {
 }
 
 Future<void> _tapThumbnail(WidgetTester tester, int target) async {
-  // 문서 개요 is the toolbar's 쪽 목록 (Task 17)
+  // 쪽 목록 opens the left panel on its pages tab (supplement Task 9; it
+  // opened 문서 개요 since Task 17)
   await tester.tap(find.byKey(const ValueKey('editor-page-list')));
   await tester.pumpAndSettle();
-  final manager = find.byType(EditorPageManager);
+  final panel = find.byKey(const ValueKey('kit-side-panel'));
+  final page = find.byKey(ValueKey('kit-side-page-$target'));
   final thumbnail = find.descendant(
-    of: manager,
+    of: page,
     matching: find.byWidgetPredicate(
       (widget) => widget is CanvasPreview && widget.pageIndex == target,
     ),
   );
-  expect(manager, findsOneWidget);
-  await tester.ensureVisible(thumbnail);
-  await tester.tap(thumbnail);
+  expect(panel, findsOneWidget);
+  await tester.ensureVisible(page);
   await tester.pumpAndSettle();
-  if (manager.evaluate().isNotEmpty) {
-    await tester.tapAt(const Offset(4, 4));
+  expect(thumbnail, findsOneWidget);
+  await tester.tap(page);
+  await tester.pumpAndSettle();
+  // on a tablet it stays open: closed with the button that opened it
+  if (panel.evaluate().isNotEmpty) {
+    await tester.tap(find.byKey(const ValueKey('editor-page-list')));
     await tester.pumpAndSettle();
   }
-  expect(manager, findsNothing);
+  expect(panel, findsNothing);
 }
 
 void _expectVisiblePage(

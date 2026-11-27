@@ -51,7 +51,7 @@ class _PenBox extends StatelessWidget {
 
   static const _line = TextStyle(
     fontSize: KitTokens.pageNameSize,
-    height: 1,
+    height: KitTokens.lineHeightOne,
     color: KitTokens.menuSub,
     decoration: TextDecoration.none,
     fontWeight: FontWeight.w400,
