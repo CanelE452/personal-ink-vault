@@ -6,7 +6,10 @@ import 'package:saber/components/kit/kit_icon.dart';
 import 'package:saber/components/kit/kit_motion.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 
-/// Opens a small window next to [anchor] and grows it from there.
+/// Opens a small window next to [anchor] (or, from a widget that has no key,
+/// next to the widget at [anchorContext]) and grows it from there. Give one
+/// of the two. With [anchorContext], the anchor is gone once that context is
+/// unmounted: the window stays where it was.
 ///
 /// It is a route on the nearest [Navigator], so a popover opened from inside
 /// another popover stacks on top of it, and a tap outside closes only the top
@@ -19,9 +22,14 @@ import 'package:saber/components/kit/kit_tokens.dart';
 /// With [nub] (a window growing down) the window's middle is put under the
 /// anchor's middle and a nub on its top edge points there (the 10th draft's
 /// eraser and lasso windows): give an anchor as wide as the button.
+///
+/// With [rightTo] (a window growing up or down) the window's right edge is
+/// [rightInset] inside that box's right edge rather than the window starting
+/// at the anchor's left: the left panel's menus end near the panel's edge.
 Future<T?> showKitPopover<T>({
   required BuildContext context,
-  required GlobalKey anchor,
+  GlobalKey? anchor,
+  BuildContext? anchorContext,
   required WidgetBuilder builder,
   AxisDirection grow = AxisDirection.down,
   BorderRadius? radius,
@@ -29,9 +37,22 @@ Future<T?> showKitPopover<T>({
   bool border = true,
   RenderBox? within,
   bool nub = false,
+  RenderBox? rightTo,
+  double rightInset = 0,
 }) {
+  assert(
+    (anchor == null) != (anchorContext == null),
+    'give an anchor key or an anchor context',
+  );
+  RenderBox? findAnchor() {
+    final at = anchorContext ?? anchor!.currentContext;
+    return at != null && at.mounted
+        ? at.findRenderObject() as RenderBox?
+        : null;
+  }
+
   final navigator = Navigator.of(context);
-  final anchorBox = anchor.currentContext?.findRenderObject() as RenderBox?;
+  final anchorBox = findAnchor();
   final navBox = navigator.context.findRenderObject() as RenderBox?;
   if (anchorBox == null || !anchorBox.attached || navBox == null) {
     return Future<T?>.value();
@@ -39,7 +60,7 @@ Future<T?> showKitPopover<T>({
   final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: navBox);
   return navigator.push(
     _KitPopoverRoute<T>(
-      anchor: anchor,
+      findAnchor: findAnchor,
       navigatorContext: navigator.context,
       firstRect: topLeft & anchorBox.size,
       grow: grow,
@@ -49,6 +70,8 @@ Future<T?> showKitPopover<T>({
       border: border,
       within: within,
       nub: nub,
+      rightTo: rightTo,
+      rightInset: rightInset,
       open: KitMotion.of(context, KitMotionStep.normal),
       close: KitMotion.of(context, KitMotionStep.normal, closing: true),
     ),
@@ -57,7 +80,7 @@ Future<T?> showKitPopover<T>({
 
 class _KitPopoverRoute<T> extends PopupRoute<T> {
   new({
-    required this.anchor,
+    required this.findAnchor,
     required this.navigatorContext,
     required this.firstRect,
     required this.grow,
@@ -67,11 +90,13 @@ class _KitPopoverRoute<T> extends PopupRoute<T> {
     required this.border,
     required this.within,
     required this.nub,
+    required this.rightTo,
+    required this.rightInset,
     required this._open,
     required this._close,
   });
 
-  final GlobalKey anchor;
+  final RenderBox? Function() findAnchor;
   final BuildContext navigatorContext;
   final Rect firstRect;
   final AxisDirection grow;
@@ -81,6 +106,8 @@ class _KitPopoverRoute<T> extends PopupRoute<T> {
   final bool border;
   final RenderBox? within;
   final bool nub;
+  final RenderBox? rightTo;
+  final double rightInset;
   final Duration _open;
   final Duration _close;
 
@@ -108,7 +135,7 @@ class _KitPopoverRoute<T> extends PopupRoute<T> {
     return _AnchoredPage(
       scale: _grown(animation),
       origin: _origin,
-      anchor: anchor,
+      findAnchor: findAnchor,
       navigatorContext: navigatorContext,
       firstRect: firstRect,
       grow: grow,
@@ -118,6 +145,8 @@ class _KitPopoverRoute<T> extends PopupRoute<T> {
       border: border,
       within: within,
       nub: nub,
+      rightTo: rightTo,
+      rightInset: rightInset,
     );
   }
 
@@ -166,7 +195,7 @@ class _AnchoredPage extends StatefulWidget {
   const new({
     required this.scale,
     required this.origin,
-    required this.anchor,
+    required this.findAnchor,
     required this.navigatorContext,
     required this.firstRect,
     required this.grow,
@@ -176,12 +205,14 @@ class _AnchoredPage extends StatefulWidget {
     required this.border,
     required this.within,
     required this.nub,
+    required this.rightTo,
+    required this.rightInset,
   });
 
   /// How far the window has grown, and the corner it grows from.
   final Animation<double> scale;
   final Alignment origin;
-  final GlobalKey anchor;
+  final RenderBox? Function() findAnchor;
   final BuildContext navigatorContext;
   final Rect firstRect;
   final AxisDirection grow;
@@ -191,6 +222,8 @@ class _AnchoredPage extends StatefulWidget {
   final bool border;
   final RenderBox? within;
   final bool nub;
+  final RenderBox? rightTo;
+  final double rightInset;
 
   @override
   State<_AnchoredPage> createState() => _AnchoredPageState();
@@ -199,6 +232,7 @@ class _AnchoredPage extends StatefulWidget {
 class _AnchoredPageState extends State<_AnchoredPage> {
   late Rect _rect = widget.firstRect;
   late Rect? _within = _area(widget.within);
+  late double? _right = _rightEdge();
 
   /// [box] on the navigator, null while it is not laid out.
   Rect? _area(RenderBox? box) {
@@ -209,8 +243,13 @@ class _AnchoredPageState extends State<_AnchoredPage> {
     return box.localToGlobal(Offset.zero, ancestor: nav) & box.size;
   }
 
-  Rect? _read() =>
-      _area(widget.anchor.currentContext?.findRenderObject() as RenderBox?);
+  Rect? _read() => _area(widget.findAnchor());
+
+  /// Where the window's right edge goes ([_AnchoredPage.rightTo]), if set.
+  double? _rightEdge() {
+    final box = _area(widget.rightTo);
+    return box == null ? null : box.right - widget.rightInset;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -219,10 +258,12 @@ class _AnchoredPageState extends State<_AnchoredPage> {
       if (!mounted) return;
       final now = _read();
       final within = _area(widget.within) ?? _within;
-      if (now != null && now != _rect || within != _within) {
+      final right = _rightEdge() ?? _right;
+      if (now != null && now != _rect || within != _within || right != _right) {
         setState(() {
           _rect = now ?? _rect;
           _within = within;
+          _right = right;
         });
       }
     });
@@ -233,6 +274,7 @@ class _AnchoredPageState extends State<_AnchoredPage> {
       widget.grow,
       _within,
       centre: widget.nub,
+      right: _right,
     );
     final window = ScaleTransition(
       scale: widget.scale,
@@ -402,13 +444,23 @@ class _Nub extends StatelessWidget {
 }
 
 class _PopoverLayout extends SingleChildLayoutDelegate {
-  const new(this.anchor, this.grow, this.within, {this.centre = false});
+  const new(
+    this.anchor,
+    this.grow,
+    this.within, {
+    this.centre = false,
+    this.right,
+  });
 
   final Rect anchor;
   final AxisDirection grow;
 
   /// Growing down, the window's middle under the anchor's middle.
   final bool centre;
+
+  /// Growing up or down, where the window's right edge goes, on the
+  /// navigator; null, it starts at the anchor's left.
+  final double? right;
 
   /// The area to stay in, on the navigator; null, the whole of it.
   final Rect? within;
@@ -489,10 +541,17 @@ class _PopoverLayout extends SingleChildLayoutDelegate {
     final a = anchor;
     final (double x, double y) = switch (grow) {
       AxisDirection.down => (
-        centre ? a.center.dx - child.width / 2 : a.left,
+        right != null
+            ? right! - child.width
+            : centre
+            ? a.center.dx - child.width / 2
+            : a.left,
         a.bottom,
       ),
-      AxisDirection.up => (a.left, a.top - child.height),
+      AxisDirection.up => (
+        right != null ? right! - child.width : a.left,
+        a.top - child.height,
+      ),
       AxisDirection.right => (a.right, a.top),
       AxisDirection.left => (a.left - child.width, a.top),
     };
@@ -529,5 +588,6 @@ class _PopoverLayout extends SingleChildLayoutDelegate {
       anchor != old.anchor ||
       grow != old.grow ||
       within != old.within ||
-      centre != old.centre;
+      centre != old.centre ||
+      right != old.right;
 }

@@ -87,36 +87,16 @@ extension _EditorAddPage on EditorState {
     final at = _addPageIndex(place);
     final own = pattern == coreInfo.backgroundPattern ? null : pattern;
     _putPage(at, EditorPage(backgroundPattern: own));
-    final inserted = history.peekUndo();
     _setState();
     autosaveAfterDelay();
     _scrollToPage(at);
-    final notice = _side.notice;
-    late final VoidCallback goes;
-    void stopListening() {
-      if (identical(history.onChange, goes)) history.onChange = null;
-    }
-
-    void undoIt() {
-      stopListening();
-      if (history.canUndo && identical(history.peekUndo(), inserted)) undo();
-      _scrollToPage(from);
-    }
-
-    // the next change (or undo) takes the notice away: its 「실행 취소」
-    // would have nothing of its own to undo
-    goes = () {
-      if (identical(notice.notice?.onAction, undoIt)) notice.hide();
-    };
-    notice.show(
+    _showUndoNotice(
       KitTokens.insertedNotice(
         at + 1,
         kitAddPagePaperOf(pattern)?.name ?? pattern.localizedName,
       ),
-      onAction: undoIt,
-      onEnd: stopListening,
+      after: () => _scrollToPage(from),
     );
-    history.onChange = goes;
     return true;
   }
 

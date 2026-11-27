@@ -51,7 +51,6 @@ import 'package:saber/components/theming/adaptive_alert_dialog.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/components/theming/saber_theme.dart';
 import 'package:saber/components/toolbar/editor_bottom_sheet.dart';
-import 'package:saber/components/toolbar/editor_page_manager.dart';
 import 'package:saber/components/toolbar/export_dialog.dart';
 import 'package:saber/components/user_error_text.dart';
 import 'package:saber/data/actions/app_action.dart';
@@ -62,7 +61,9 @@ import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/page_clipboard.dart';
 import 'package:saber/data/editor/page_link.dart';
+import 'package:saber/data/editor/pdf_page_extract.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
@@ -82,6 +83,7 @@ import 'package:saber/i18n/extensions/canvas_background_pattern_localized.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor_add_page_host.dart';
 import 'package:saber/pages/editor/editor_chrome.dart';
+import 'package:saber/pages/editor/editor_page_actions.dart';
 import 'package:saber/pages/editor/editor_side_host.dart';
 import 'package:saber/pages/editor/link_dialog.dart';
 import 'package:saber/pages/home/whiteboard.dart';
@@ -92,6 +94,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 part 'editor_actions.dart';
 part 'editor_add_page.dart';
+part 'editor_page_ops.dart';
 part 'editor_toolbar_area.dart';
 
 typedef _PhotoInfo = ({Uint8List bytes, String extension});
@@ -561,9 +564,18 @@ class EditorState extends State<Editor> {
     for (int i = coreInfo.pages.length - 1; i >= 1; --i) {
       final thisPage = coreInfo.pages[i];
       final prevPage = coreInfo.pages[i - 1];
-      // Links are not content (isEmpty), but a page carrying one is kept:
+      // A page a change to undo or redo holds (put in, moved) stays, and
+      // so do those before it: that change finds it as a page, the changes
+      // around it count pages by their places, and no undo step records
+      // this tidying.
+      if (history.holds(thisPage)) break;
+      // Links are not content (isEmpty), but a page carrying one is kept,
+      // and so is the empty page after it, as the note ends with one:
       // removing it here would lose the link without an undo step.
-      if (thisPage.isEmpty && thisPage.links.isEmpty && prevPage.isEmpty) {
+      if (thisPage.isEmpty &&
+          thisPage.links.isEmpty &&
+          prevPage.isEmpty &&
+          prevPage.links.isEmpty) {
         final page = coreInfo.pages.removeAt(i);
         page.dispose();
         removedAPage = true;
@@ -644,13 +656,13 @@ class EditorState extends State<Editor> {
           }
 
         case .insertPage:
-          // remove the page at the given index
-          coreInfo.pages.removeAt(item.pageIndex);
-
-          // fix the page indices of all pages after this one
-          for (int i = item.pageIndex; i < coreInfo.pages.length; ++i) {
-            final page = coreInfo.pages[i];
-            page.updatePageIndex(i);
+          // remove that page wherever moves have put it. The tidying of
+          // empty pages stops at a page the history holds, so it is there;
+          // were it not, nothing is taken out rather than another page
+          final index = coreInfo.pages.indexOf(item.page!);
+          if (index != -1) {
+            coreInfo.pages.removeAt(index);
+            _renumberPages(index);
           }
 
         case .move:
@@ -671,6 +683,9 @@ class EditorState extends State<Editor> {
               image.dstRect.bottom - item.offset!.bottom,
             );
           }
+
+        case .movePage:
+          _movePageNow(item.page!, item.pageIndex);
 
         case .quillChange:
           final quill = coreInfo.pages[item.pageIndex].quill;
@@ -739,6 +754,8 @@ class EditorState extends State<Editor> {
             ),
           ),
         );
+      case .movePage:
+        undo(item.copyWith(pageIndex: item.toIndex, toIndex: item.pageIndex));
       case .quillChange:
         undo(item.copyWith(type: .quillUndoneChange));
       case .quillUndoneChange: // this will never happen
@@ -2252,37 +2269,6 @@ class EditorState extends State<Editor> {
         ? min(1.0, width / page.size.width)
         : 1.0;
     return fit * _transformationController.value.approxScale;
-  }
-
-  Widget pageManager(BuildContext context, {int? page}) {
-    return EditorPageManager(
-      coreInfo: coreInfo,
-      readOnly: _noteLocked,
-      currentPageIndex: page ?? currentPageIndex,
-      redrawAndSave: () => setState(() {
-        if (_noteLocked) return;
-        autosaveAfterDelay();
-      }),
-      insertPageAfter: insertPageAfter,
-      duplicatePage: _duplicatePage,
-      clearPage: clearPage,
-      deletePage: (int pageIndex) => setState(() {
-        if (_noteLocked) return;
-        final page = coreInfo.pages.removeAt(pageIndex);
-        createPage(pageIndex - 1);
-        history.recordChange(
-          EditorHistoryItem(
-            type: .deletePage,
-            pageIndex: pageIndex,
-            strokes: const [],
-            images: const [],
-            page: page,
-          ),
-        );
-        autosaveAfterDelay();
-      }),
-      onPageSelected: _scrollToPage,
-    );
   }
 
   /// Puts a copy of page [pageIndex] after it, as one undo step.

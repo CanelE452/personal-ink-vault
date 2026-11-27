@@ -408,7 +408,7 @@ class ToolWindowLine extends StatelessWidget {
 }
 
 /// A red row that does something that cannot be taken back without undo
-/// (`.e10red`: 「쪽 지우기」). With [danger] false it is the same row in the
+/// (`.e10red`: 「쪽 비우기」). With [danger] false it is the same row in the
 /// menu's ink at 600, the safe way out (the 「취소」 under the clear-page
 /// window's 「지우기」, final review design call 1).
 class ToolWindowRedButton extends StatelessWidget {

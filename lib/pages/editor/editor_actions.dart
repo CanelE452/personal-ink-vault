@@ -217,7 +217,7 @@ extension _EditorActions on EditorState {
       // the eraser's 「고급 설정」 asks first, then runs it
       AppAction(
         id: AppActionIds.clearPage,
-        label: '쪽 지우기',
+        label: '쪽 비우기',
         icon: KitIconName.delPage,
         enabled: writable,
         run: (_) => clearPage(currentPageIndex),

@@ -25,11 +25,23 @@ import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/editor/editor_chrome.dart';
+import 'package:saber/pages/editor/editor_page_actions.dart';
 import 'package:saber/pages/editor/editor_side_host.dart';
 import 'package:sbn/tool_id.dart';
 
 import '../utils/paint_counts.dart';
 import '../utils/test_mock_channel_handlers.dart';
+
+/// Page actions that do nothing: these tests look at other tabs.
+final _noPageActions = EditorPageActions(
+  locks: ValueNotifier(false),
+  editable: () => true,
+  canPaste: () => false,
+  canDelete: (_) => false,
+  canClear: (_) => false,
+  move: (_, _) {},
+  run: (_, _) {},
+);
 
 /// A player that plays nothing and keeps what it was asked.
 class _Backend implements PlayerBackend {
@@ -239,7 +251,7 @@ void main() {
                     host: host,
                     coreInfo: core,
                     goTo: (_) {},
-                    managePage: (_) {},
+                    pageActions: _noPageActions,
                   ),
                 ),
                 Positioned.fill(child: EditorListenBarLayer(audio: host.audio)),

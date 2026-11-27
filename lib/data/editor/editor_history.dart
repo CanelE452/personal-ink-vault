@@ -131,6 +131,13 @@ class EditorHistory {
     return _past.removeLast();
   }
 
+  /// Whether a change to undo or redo holds [page] (put it in, moved it,
+  /// deleted it): undoing or redoing it finds that page, so the tidying of
+  /// empty pages at the note's end stops there.
+  bool holds(EditorPage page) =>
+      _past.any((item) => identical(item.page, page)) ||
+      _future.any((item) => identical(item.page, page));
+
   /// Returns true if there is something to undo.
   bool get canUndo {
     return _past.isNotEmpty;
@@ -157,6 +164,7 @@ class EditorHistoryItem {
     required this.strokes,
     required this.images,
     this.offset,
+    this.toIndex,
     this.page,
     this.quillChange,
     this.colorChange,
@@ -167,6 +175,10 @@ class EditorHistoryItem {
   }) : assert(
          type != .move || offset != null,
          'Offset must be provided for move',
+       ),
+       assert(
+         type != .movePage || toIndex != null,
+         'toIndex must be provided for movePage',
        ),
        assert(
          (type != .addLink && type != .removeLink) ||
@@ -203,6 +215,10 @@ class EditorHistoryItem {
   final List<Stroke> strokes;
   final List<EditorImage> images;
   final Rect? offset;
+
+  /// Where a [EditorHistoryItemType.movePage] put the page that was at
+  /// [pageIndex].
+  final int? toIndex;
   final EditorPage? page;
   final DocChange? quillChange;
   final Map<Stroke, Change<Color>>? colorChange;
@@ -226,6 +242,7 @@ class EditorHistoryItem {
     List<Stroke>? strokes,
     List<EditorImage>? images,
     Rect? offset,
+    int? toIndex,
     EditorPage? page,
     DocChange? quillChange,
     Map<Stroke, Change<Color>>? colorChange,
@@ -240,6 +257,7 @@ class EditorHistoryItem {
       strokes: strokes ?? this.strokes,
       images: images ?? this.images,
       offset: offset ?? this.offset,
+      toIndex: toIndex ?? this.toIndex,
       page: page ?? this.page,
       quillChange: quillChange ?? this.quillChange,
       colorChange: colorChange ?? this.colorChange,
@@ -258,6 +276,7 @@ enum EditorHistoryItemType {
   deletePage,
   insertPage,
   move,
+  movePage,
   quillChange,
   quillUndoneChange,
   changeColor,

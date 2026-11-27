@@ -1,7 +1,7 @@
 {
   "applicationId": "io.github.canele452.personalinkvault",
   "versionName": "0.2.0",
-  "versionCode": 136233,
+  "versionCode": 136234,
   "platform": "android-arm64",
   "files": {
     ".gitattributes": {
@@ -17,7 +17,7 @@
       "mode": "100644"
     },
     "README.md": {
-      "sha256": "08cd4a09131566d6bfee0ffc7bbc7ee966216dc6a5ad4708824e81342ef6ed29",
+      "sha256": "9aee500d7eef6757c3e8110e04bca94eafc4eec283bfba7aa731980889c8406c",
       "mode": "100644"
     },
     "THIRD_PARTY_NOTICES.md": {
@@ -773,7 +773,7 @@
       "mode": "100644"
     },
     "lib/components/ink_ui/doc_menu/kit_doc_menu.dart": {
-      "sha256": "b0aecb57ec43321e55a4253e5a0a01de1e070023ebc3a92420a7454f68de23c3",
+      "sha256": "50fff8df64fe5ccd05618241c81438427bff8b514b2d0c00cd36483a966189e6",
       "mode": "100644"
     },
     "lib/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart": {
@@ -793,7 +793,7 @@
       "mode": "100644"
     },
     "lib/components/ink_ui/floating_bar/floating_bar_parts.dart": {
-      "sha256": "583964a7ba7a23acdf2226b8aefe52da7ff6c1ce94b68e70cf14ef6461dec623",
+      "sha256": "7ee7aae88211b3bad226ad5483946d4dbf2cd1d772d11a37bb54979c45ea0fd3",
       "mode": "100644"
     },
     "lib/components/ink_ui/floating_bar/kit_floating_bar.dart": {
@@ -884,8 +884,12 @@
       "sha256": "46d2f4f9acda7baa89b4c920c736f26db3a2eaf3ada9795eece4ab43a0a328f5",
       "mode": "100644"
     },
+    "lib/components/ink_ui/side_panel/kit_page_menu.dart": {
+      "sha256": "3f11329f2d8d943148ab64dc03b6cb943a899c340c64bc5ca8f798855f3c9535",
+      "mode": "100644"
+    },
     "lib/components/ink_ui/side_panel/kit_side_pages.dart": {
-      "sha256": "7f365c3e2413747975a917132cfad405c696a6c8b4ac4880f1eff8dcdb337e95",
+      "sha256": "506edd491d3acb2397273d8118477e2bb060c3c10e36c429c587dc99d9144fff",
       "mode": "100644"
     },
     "lib/components/ink_ui/side_panel/kit_side_panel.dart": {
@@ -897,11 +901,11 @@
       "mode": "100644"
     },
     "lib/components/ink_ui/side_panel/side_row_parts.dart": {
-      "sha256": "1a14a35f32b2df964c024c4da655712be7cbe584509f28c05a9e7111594352e2",
+      "sha256": "23db05c0d3df6abbc280d45373dc746cae5f7d7ef5834e56a3a86d16e6162b5f",
       "mode": "100644"
     },
     "lib/components/ink_ui/tool_panels/kit_eraser_panel.dart": {
-      "sha256": "f04de5a1c00a8b004c2fabe71ec555787908a98c2fa9d024ec4251ac82758aba",
+      "sha256": "b2899d424984566d843233ee04ff30899624c9844312a1322997582a0f012b61",
       "mode": "100644"
     },
     "lib/components/ink_ui/tool_panels/kit_lasso_panel.dart": {
@@ -909,7 +913,7 @@
       "mode": "100644"
     },
     "lib/components/ink_ui/tool_panels/tool_panel_common.dart": {
-      "sha256": "18db6ad4be852f50919411be77e84956eb957c392ed4100f853c6440fc92ff1b",
+      "sha256": "4b2123b62b4efa65b90d0cc46c79a7bffb6848eede7a3711840d75b8ca0f616c",
       "mode": "100644"
     },
     "lib/components/kit/kit_controls.dart": {
@@ -921,7 +925,7 @@
       "mode": "100644"
     },
     "lib/components/kit/kit_icons.g.dart": {
-      "sha256": "06c3e69c975f9c697062c5f249a5814b2609d4be162d6baa223534f32a045144",
+      "sha256": "b0a726b31e055bfccc4e75c76973ec91ff5288733a8a45c93e2146b108203ed0",
       "mode": "100644"
     },
     "lib/components/kit/kit_menu.dart": {
@@ -933,7 +937,7 @@
       "mode": "100644"
     },
     "lib/components/kit/kit_motion.dart": {
-      "sha256": "c5f9a4f50ba8b03d6f678fc2420511d84f9748a4ada31b844ac6f9f6e1f6c359",
+      "sha256": "71c1742f424096e0cbba77fa3f8287cae11bae405c84ce2cd75d114196cbbb03",
       "mode": "100644"
     },
     "lib/components/kit/kit_pen_art.dart": {
@@ -949,7 +953,7 @@
       "mode": "100644"
     },
     "lib/components/kit/kit_popover.dart": {
-      "sha256": "b8ed9b3595da75580e5012e258ee13b46aadaca3bc98860b2742d647e48fd418",
+      "sha256": "c585165e332c2efa1f9eaf53f666f6c5f912d1c3755ab7528e390b24982d4c51",
       "mode": "100644"
     },
     "lib/components/kit/kit_selection_bar.dart": {
@@ -965,7 +969,7 @@
       "mode": "100644"
     },
     "lib/components/kit/kit_tokens.dart": {
-      "sha256": "19f31319fc6390f91c9d0533724d339a6d38e1cc1fa078e125d3900ff79018ea",
+      "sha256": "1ab1cea44982217ff679cde4592e9bee389e8813b25ccc2a877d49ecc738c69a",
       "mode": "100644"
     },
     "lib/components/kit/kit_toolbar.dart": {
@@ -1112,10 +1116,6 @@
       "sha256": "d6dbc58e2d5e7ba746ad8a75effab34ccd355115073c91be83840e660590eab1",
       "mode": "100644"
     },
-    "lib/components/toolbar/editor_page_manager.dart": {
-      "sha256": "3197fb8d7c148f0ba4144b9394f8161920787878d788d7ce54c5facd80e59670",
-      "mode": "100644"
-    },
     "lib/components/toolbar/export_dialog.dart": {
       "sha256": "8a6d58552f09066beb355f08b0fbe62b4a1f767e1f2e9a575c7d99c1aa1db4a4",
       "mode": "100644"
@@ -1205,11 +1205,15 @@
       "mode": "100644"
     },
     "lib/data/editor/editor_history.dart": {
-      "sha256": "47462d7f2a62772b68954415fa092c28a2d8b38fa31c134f4220986a31c0a5fb",
+      "sha256": "42b2d7e3cba46381032f7945f7a9a64a4f84d4fe5f90a6fe3bbff60ff50cbd26",
       "mode": "100644"
     },
     "lib/data/editor/page.dart": {
       "sha256": "0e0ae91e4b7606e2b22c57443268f29d7279f89e2e4a59c3d1e12157a5859907",
+      "mode": "100644"
+    },
+    "lib/data/editor/page_clipboard.dart": {
+      "sha256": "51cf1726cfc62fb2d996d451727e3858d011673835fdb554b5c9fd4af73d4ab8",
       "mode": "100644"
     },
     "lib/data/editor/page_link.dart": {
@@ -1218,6 +1222,10 @@
     },
     "lib/data/editor/pdf_outline.dart": {
       "sha256": "78c8c580c1e0157ce74e699e23973e491da95e7d7b77e154fbd092b81d019d8e",
+      "mode": "100644"
+    },
+    "lib/data/editor/pdf_page_extract.dart": {
+      "sha256": "61d638c7f4dfb8c001268b970fd28405a04fed6ff2335d171ed1db0fc646839a",
       "mode": "100644"
     },
     "lib/data/editor/quick_note.dart": {
@@ -2161,15 +2169,15 @@
       "mode": "100644"
     },
     "lib/pages/editor/editor.dart": {
-      "sha256": "82008ec4c1ec6b6f365b3308947e8d52a2274b30320191fed6053f52f5d63aed",
+      "sha256": "083cd81951b8691d42d67acf24b53face18845c6d41096edcc666fed7d6adf5d",
       "mode": "100644"
     },
     "lib/pages/editor/editor_actions.dart": {
-      "sha256": "1109f8423a40330dea4928649fc16f95cce62029638c5a14a2037377f44e231b",
+      "sha256": "e9f6b9b2d11bdc58b2018b4100e5bc9155fa3029c18500abcac5b37f8fe91ca7",
       "mode": "100644"
     },
     "lib/pages/editor/editor_add_page.dart": {
-      "sha256": "0ad2a4347d5a7e005ce206fae20e9e083c10e3982bd3dc4acb398fd627b1555a",
+      "sha256": "9c2276e31cb369126f94cf0f40ee3b11e83b878d28997c94b937baf60de36e6b",
       "mode": "100644"
     },
     "lib/pages/editor/editor_add_page_host.dart": {
@@ -2184,16 +2192,24 @@
       "sha256": "515dc0a7e86b2ff6aa1afbaf4812eb9a80afc53fcc2cf0a833208feb30f02648",
       "mode": "100644"
     },
+    "lib/pages/editor/editor_page_actions.dart": {
+      "sha256": "d01e6bf19ba005809d63850c2c8e5e1779c2050dafd8f454297bb3b03869e89a",
+      "mode": "100644"
+    },
+    "lib/pages/editor/editor_page_ops.dart": {
+      "sha256": "6aa4f3e19914decc6105a6f7072be8fb00bf1e0010f6d05a2545321d2a124793",
+      "mode": "100644"
+    },
     "lib/pages/editor/editor_quick_note_host.dart": {
       "sha256": "058f67e0977ccd7563610a258721d6c19e5e2bbbcc29edfeaaf7fd2fc755bd7e",
       "mode": "100644"
     },
     "lib/pages/editor/editor_side_host.dart": {
-      "sha256": "26238ce1384b2570b2b6997876a5a501ddce217d82b076e284bdf2c789a54305",
+      "sha256": "a1df430ef7d7bd4f1facc4966068fed9fa34c33c8aadd21bc5d0c3cb1554509a",
       "mode": "100644"
     },
     "lib/pages/editor/editor_toolbar_area.dart": {
-      "sha256": "f422d470dab23f1e9a77152085b82b0e62b26d9dad64ab83148ae2c6b2464f3a",
+      "sha256": "9162b722ac8c30a5f190179f3ed974a426ce6502add1abc5a98c32cc904ccb15",
       "mode": "100644"
     },
     "lib/pages/editor/link_dialog.dart": {
@@ -3120,8 +3136,8 @@
       "sha256": "dab5f3197f960f89e7225725aeadd9695934f6ef2399dd27a2669415e04da87a",
       "mode": "100644"
     },
-    "scripts/build-android-233.sh": {
-      "sha256": "e4ac4b59f3f492bd628543b44f6ac311ab97fbb2703411cd91375bc8afa40ff2",
+    "scripts/build-android-234.sh": {
+      "sha256": "dae423b45e690e744d55b8fefa4047372080c302b8e56089757b9cbde720ca87",
       "mode": "100755"
     },
     "scripts/build-hwp-native.ps1": {

@@ -201,7 +201,9 @@ enum KitIconName {
   recDot('rec_dot', '이어서 녹음', '<circle cx="12" cy="12" r="6.2" fill="currentColor" stroke="none"/>', '<circle cx="12" cy="12" r="6.2" fill="currentColor" stroke="none"/>'),
   stopSq('stop_sq', '녹음 멈춤', '<rect x="6.6" y="6.6" width="10.8" height="10.8" rx="2.4" fill="currentColor" stroke="none"/>', '<rect x="6.6" y="6.6" width="10.8" height="10.8" rx="2.4" fill="currentColor" stroke="none"/>'),
   gripCorner('grip_corner', '크기 바꾸기 손잡이', '<path d="M17.4 6.6 6.6 17.4M17.4 12.2l-5.2 5.2"/>', '<path d="M17.4 6.6 6.6 17.4M17.4 12.2l-5.2 5.2"/>'),
-  saveTo('save_to', '기기에 저장', '<path d="M12 4.4v9.6M8.4 10.6 12 14.2l3.6-3.6"/><path d="M4.8 14.6v2.2a2.2 2.2 0 0 0 2.2 2.2h10a2.2 2.2 0 0 0 2.2-2.2v-2.2"/>', '<path d="M12 4.4v9.6M8.4 10.6 12 14.2l3.6-3.6"/><path d="M4.8 14.6v2.2a2.2 2.2 0 0 0 2.2 2.2h10a2.2 2.2 0 0 0 2.2-2.2v-2.2"/>');
+  saveTo('save_to', '기기에 저장', '<path d="M12 4.4v9.6M8.4 10.6 12 14.2l3.6-3.6"/><path d="M4.8 14.6v2.2a2.2 2.2 0 0 0 2.2 2.2h10a2.2 2.2 0 0 0 2.2-2.2v-2.2"/>', '<path d="M12 4.4v9.6M8.4 10.6 12 14.2l3.6-3.6"/><path d="M4.8 14.6v2.2a2.2 2.2 0 0 0 2.2 2.2h10a2.2 2.2 0 0 0 2.2-2.2v-2.2"/>'),
+  pageAddBefore('page_add_before', '앞에 쪽 추가', '<path d="M5.2 9.6 2.8 12l2.4 2.4"/><path d="M14.4 3.8H10a2 2 0 0 0-2 2v12.4a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V8.4z"/><path d="M14.4 3.8v3.4a1.2 1.2 0 0 0 1.2 1.2h3.4"/><path d="M13.5 11.4v5M11 13.9h5"/>', '<path d="M5.2 9.6 2.8 12l2.4 2.4"/><path d="M14.4 3.8H10a2 2 0 0 0-2 2v12.4a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V8.4z"/><path d="M14.4 3.8v3.4a1.2 1.2 0 0 0 1.2 1.2h3.4"/><path d="M13.5 11.4v5M11 13.9h5"/>'),
+  pageAddAfter('page_add_after', '뒤에 쪽 추가', '<path d="M11.4 3.8H7a2 2 0 0 0-2 2v12.4a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V8.4z"/><path d="M11.4 3.8v3.4a1.2 1.2 0 0 0 1.2 1.2h3.4"/><path d="M10.5 11.4v5M8 13.9h5"/><path d="M18.8 9.6 21.2 12l-2.4 2.4"/>', '<path d="M11.4 3.8H7a2 2 0 0 0-2 2v12.4a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V8.4z"/><path d="M11.4 3.8v3.4a1.2 1.2 0 0 0 1.2 1.2h3.4"/><path d="M10.5 11.4v5M8 13.9h5"/><path d="M18.8 9.6 21.2 12l-2.4 2.4"/>');
 
   new(this.id, this.label, this.svg, this.selectedSvg);
 
@@ -228,4 +230,5 @@ const List<(String, List<KitIconName>)> kitIconGroups = [
   ('도구 막대 개정(9판 c)', [KitIconName.noteUp, KitIconName.emoji, KitIconName.recList, KitIconName.offlinePin, KitIconName.ruler]),
   ('지우개·올가미 창 개정(10판)', [KitIconName.toggles]),
   ('1단계 보충·펜 엔진 단계 그림(12판)', [KitIconName.sidePages, KitIconName.outlineList, KitIconName.audioClip, KitIconName.play, KitIconName.pause, KitIconName.recDot, KitIconName.stopSq, KitIconName.gripCorner, KitIconName.saveTo]),
+  ('쪽 섬네일 메뉴(234)', [KitIconName.pageAddBefore, KitIconName.pageAddAfter]),
 ];

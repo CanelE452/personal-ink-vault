@@ -333,17 +333,16 @@ void main() {
     expect(editor.coreInfo.pages, orderedEquals(pages));
   });
 
-  testWidgets('쪽 관리 「쪽 넣기」 moves the pages after it on: a stroke '
+  testWidgets('쪽 메뉴 「뒤에 쪽 추가」 moves the pages after it on: a stroke '
       'erased there comes back on its page', (tester) async {
     final editor = await mountEditor(tester);
     final moved = editor.coreInfo.pages[2];
     final stroke = moved.strokes.single;
     await tester.tap(find.byKey(const ValueKey('editor-page-list')));
     await tester.pumpAndSettle();
-    await tester.longPress(find.byKey(const ValueKey('kit-side-page-0')));
+    await tester.tap(find.byKey(const ValueKey('kit-side-page-0-menu')));
     await tester.pumpAndSettle();
-    expect(find.text('쪽 관리'), findsWidgets);
-    await tester.tap(find.byTooltip(t.editor.menu.insertPage).first);
+    await tester.tap(find.byKey(const ValueKey('kit-page-menu-뒤에 쪽 추가')));
     await tester.pumpAndSettle();
     final pages = editor.coreInfo.pages;
     expect(pages, hasLength(5));
@@ -370,15 +369,15 @@ void main() {
     }
   });
 
-  testWidgets('쪽 관리 「쪽 복제」 undone takes the copy out: the original '
+  testWidgets('쪽 메뉴 「복제」 undone takes the copy out: the original '
       'stays, the pages after it are numbered back', (tester) async {
     final editor = await mountEditor(tester);
     final before = [...editor.coreInfo.pages];
     await tester.tap(find.byKey(const ValueKey('editor-page-list')));
     await tester.pumpAndSettle();
-    await tester.longPress(find.byKey(const ValueKey('kit-side-page-0')));
+    await tester.tap(find.byKey(const ValueKey('kit-side-page-0-menu')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip(t.editor.menu.duplicatePage).first);
+    await tester.tap(find.byKey(const ValueKey('kit-page-menu-복제')));
     await tester.pumpAndSettle();
     final pages = editor.coreInfo.pages;
     expect(pages, hasLength(5));

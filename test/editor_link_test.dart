@@ -386,7 +386,7 @@ void main() {
     editor.cancelAutosaveAndMarkSaved();
   });
 
-  testWidgets('undo and redo past a tidied page bring the link back', (
+  testWidgets('undo and redo past the writing bring the link back to its page', (
     tester,
   ) async {
     final editor = await mountEditor(tester);
@@ -399,21 +399,24 @@ void main() {
     );
     await tester.pumpAndSettle();
     await chooseWeb(tester, 'https://example.com/next');
-    expect(editor.coreInfo.pages[1].links, hasLength(1));
+    final second = editor.coreInfo.pages[1];
+    expect(second.links, hasLength(1));
 
-    // Undo the link, then the writing: the second page is empty and goes.
+    // Undo the link, then the writing: the second page is empty, but the
+    // link change to redo holds it, so the tidying of empty pages keeps it.
     editor.undo();
     editor.undo();
     await tester.pumpAndSettle();
     expect(first.strokes, isEmpty);
-    expect(editor.coreInfo.pages, hasLength(1));
+    expect(editor.coreInfo.pages, [first, second]);
+    expect(second.links, isEmpty);
 
     editor.redo();
     editor.redo();
     await tester.pumpAndSettle();
     expect(first.strokes, hasLength(1));
-    expect(editor.coreInfo.pages, hasLength(2));
-    expect(editor.coreInfo.pages[1].links.single.target, 'https://example.com/next');
+    expect(editor.coreInfo.pages, [first, second]);
+    expect(second.links.single.target, 'https://example.com/next');
     editor.cancelAutosaveAndMarkSaved();
   });
 

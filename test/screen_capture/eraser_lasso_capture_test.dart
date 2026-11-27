@@ -268,7 +268,7 @@ void main() {
       );
       expectWindow(tester, 'kit-eraser-advanced-panel', const Size(586, 726));
     });
-    // Task 19: 쪽 지우기 asks in a tool window (no preview drawing of it)
+    // Task 19: 쪽 비우기 asks in a tool window (no preview drawing of it)
     testWidgets('eraser-clear-confirm', (tester) async {
       await shoot(
         tester,

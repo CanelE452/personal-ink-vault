@@ -1327,6 +1327,37 @@ abstract final class KitTokens {
   static const sideRibbonRight = 8.0;
   static const sideRibbonTop = -1.0;
   static const sideRibbonNotch = 0.7;
+  // a plain page's ribbon spot, drawn only as a 1.2 outline in #8a909c (3.1
+  // to 1 on the paper, the least for a mark that is a button; #b7bcc6 was
+  // 1.9); the ribbon and the dots at the picture's bottom right are each
+  // pressed in a 32 square (our choice: the smallest touch size; the 36
+  // buttons of the panel would cover a third of a phone's 3-column picture);
+  // the dots are the kit's vertical more icon (three 1.6 radius points) on
+  // its 24 grid, in the page number's ink; while their menu is open, on a 28
+  // circle of the fill of a button whose window is open
+  static const sideRibbonHit = 32.0;
+  static const sideMenuDotsHit = 32.0;
+  static const sideRibbonOutline = Color(0xff8a909c);
+  static const sideRibbonOutlineStroke = 1.2;
+  static const sideMenuDotsIconSize = 24.0;
+  static const sideMenuDotsInk = menuSub;
+  static const sideMenuDotsOpenBg = eraserAdvancedOpenFill;
+  static const sideMenuDotsOpenSize = 28.0;
+  // the page lifted by a finger: a 0 8 18 -6 shadow under it, the place it
+  // left (the gap) at 35%; near the top or
+  // bottom 48 of the panel the grid runs on at up to 520 a second
+  static const sideDragLift = [
+    BoxShadow(
+      color: Color.fromRGBO(20, 32, 50, 0.38),
+      offset: Offset(0, 8),
+      blurRadius: (18 / 2 - 0.5) / 0.57735,
+      spreadRadius: -6,
+    ),
+    BoxShadow(color: Color(0xffdfe2e7), spreadRadius: 1),
+  ];
+  static const sideDragLeftOpacity = 0.35;
+  static const sideDragAutoScrollEdge = 48.0;
+  static const sideDragAutoScrollSpeed = 520.0;
   // an empty tab: padding 36 22, 13 on a 1.5 line; its 30 icon (line 1.6)
   // #9aa0aa, 10 above
   static const sideEmptyPadding = EdgeInsets.symmetric(

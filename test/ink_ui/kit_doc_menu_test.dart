@@ -100,7 +100,7 @@ void main() {
         action(AppActionIds.pageDuplicate, '쪽 복제', KitIconName.dup),
         action(AppActionIds.templateChange, '템플릿 바꾸기', KitIconName.template),
         action(AppActionIds.goToPage, '쪽으로 이동', KitIconName.gotoPage),
-        action(AppActionIds.clearPage, '쪽 지우기', KitIconName.delPage),
+        action(AppActionIds.clearPage, '쪽 비우기', KitIconName.delPage),
         action(AppActionIds.moveToTrash, '휴지통으로', KitIconName.trash),
         action(AppActionIds.toolbarCustomize, '도구 막대 사용자화', KitIconName.tune),
         action(AppActionIds.openSettings, '설정', KitIconName.settings),
@@ -228,7 +228,7 @@ void main() {
       '템플릿 바꾸기',
       '쪽으로 이동',
       '지우기',
-      '쪽 지우기',
+      '쪽 비우기',
       '휴지통으로',
       '정렬·설정',
       '도구 막대 사용자화',
@@ -258,7 +258,7 @@ void main() {
       findsNothing,
     );
     // the red rows
-    for (final row in ['쪽 지우기', '휴지통으로']) {
+    for (final row in ['쪽 비우기', '휴지통으로']) {
       expect(
         tester.widget<Text>(find.text(row)).style?.color,
         KitTokens.danger,
@@ -295,7 +295,7 @@ void main() {
     expect(find.text('읽기 전용'), findsOneWidget);
     expect(find.text('탭 줄 숨기기'), findsNothing);
     expect(find.text('지우기'), findsNothing, reason: 'its two rows are gone');
-    expect(find.text('쪽 지우기'), findsNothing);
+    expect(find.text('쪽 비우기'), findsNothing);
   });
 
   testWidgets('rotate page row is hidden because the action does not exist', (
@@ -406,18 +406,18 @@ void main() {
     expect(find.text('지금 저장'), findsOneWidget, reason: 'still open');
   });
 
-  testWidgets('쪽 지우기 asks first, then runs clearPage', (tester) async {
+  testWidgets('쪽 비우기 asks first, then runs clearPage', (tester) async {
     publish();
     await pumpBar(tester);
     await openMenu(tester);
-    await tester.tap(find.text('쪽 지우기'));
+    await tester.tap(find.text('쪽 비우기'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('eraser-clear-page-cancel')));
     await tester.pumpAndSettle();
     expect(ran, isEmpty);
 
     await openMenu(tester);
-    await tester.tap(find.text('쪽 지우기'));
+    await tester.tap(find.text('쪽 비우기'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('eraser-clear-page-confirm')));
     await tester.pumpAndSettle();

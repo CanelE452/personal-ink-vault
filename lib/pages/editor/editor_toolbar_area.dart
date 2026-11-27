@@ -113,7 +113,7 @@ extension _EditorToolbarArea on EditorState {
           host: _side,
           coreInfo: coreInfo,
           goTo: _scrollToPage,
-          managePage: _managePage,
+          pageActions: _pageActions(),
         ),
       ),
       Positioned.fill(
@@ -161,19 +161,6 @@ extension _EditorToolbarArea on EditorState {
         ),
       ),
     ],
-  );
-
-  /// A long press on a page in the left panel: the page manager window
-  /// (move, insert, duplicate, clear and delete pages) on that page.
-  void _managePage(int index) => unawaited(
-    showDialog<void>(
-      context: context,
-      builder: (context) => AdaptiveAlertDialog(
-        title: const Text('쪽 관리'),
-        content: pageManager(context, page: index),
-        actions: const [],
-      ),
-    ),
   );
 
   /// The left panel and the favourites, kept in the vault the host names. A

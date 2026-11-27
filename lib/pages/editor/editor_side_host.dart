@@ -18,6 +18,7 @@ import 'package:saber/data/vault/note_side_store.dart';
 import 'package:saber/pages/editor/editor_add_page_host.dart';
 import 'package:saber/pages/editor/editor_audio_host.dart';
 import 'package:saber/pages/editor/editor_chrome.dart';
+import 'package:saber/pages/editor/editor_page_actions.dart';
 import 'package:saber/pages/editor/editor_quick_note_host.dart';
 
 // the editor lays the host's notice and listening bar over its page area
@@ -626,9 +627,10 @@ class EditorSideHost extends ChangeNotifier {
 
 /// The left panel over the editor's page area, following [host] on its own
 /// (opening it does not build the editor again): the pages of [coreInfo],
-/// drawn small, [goTo] scrolling to one and [managePage] (a long press)
-/// opening the page manager on one, the outline, its lines going to their
-/// pages, and the recordings. On a phone it covers the page area and a page
+/// drawn small, [goTo] scrolling to one, a long press lifting one to drop it
+/// elsewhere, its ribbon making it a favourite and its ⋮ opening its menu
+/// ([pageActions]), the outline, its lines going to their pages, and the
+/// recordings. On a phone it covers the page area and a page
 /// or line press closes it. Without favourites (no vault, or a format 1 one) there are no
 /// recordings either: those tabs are left out, and so is the outline of a
 /// note that is not a PDF.
@@ -638,13 +640,13 @@ class EditorSidePanelLayer extends StatefulWidget {
     required this.host,
     required this.coreInfo,
     required this.goTo,
-    required this.managePage,
+    required this.pageActions,
   });
 
   final EditorSideHost host;
   final EditorCoreInfo coreInfo;
   final void Function(int index) goTo;
-  final void Function(int index) managePage;
+  final EditorPageActions pageActions;
 
   @override
   State<EditorSidePanelLayer> createState() => _EditorSidePanelLayerState();
@@ -686,6 +688,7 @@ class _EditorSidePanelLayerState extends State<EditorSidePanelLayer> {
           host.renaming,
           host.audio,
           host.audio.renaming,
+          widget.pageActions.locks,
         ]),
         builder: (context, _) {
           final tabs = [
@@ -765,6 +768,8 @@ class _EditorSidePanelLayerState extends State<EditorSidePanelLayer> {
           ),
     ];
     if (items.isEmpty) return KitSideEmpty(tab);
+    final actions = widget.pageActions;
+    final editable = actions.editable();
     return KitSidePages(
       pages: items,
       columns: phone
@@ -772,7 +777,14 @@ class _EditorSidePanelLayerState extends State<EditorSidePanelLayer> {
           : KitTokens.sideGridColumns,
       thumbnail: _picture,
       onPage: (i) => _go(i, phone),
-      onManage: widget.managePage,
+      // the favourites tab shows pages with gaps: no dragging there
+      onMove: tab == KitSideTab.pages && editable ? actions.move : null,
+      showRibbon: host.favoritesAvailable,
+      onFavorite: host.favoritesAvailable && editable
+          ? (i) => unawaited(host.toggleFavorite(coreInfo.pages[i].pageId))
+          : null,
+      // the dots show the menu open until it (and its question) is done
+      onMenu: actions.openMenu,
     );
   }
 }

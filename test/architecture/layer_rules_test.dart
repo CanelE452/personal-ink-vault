@@ -53,7 +53,6 @@ const _iconAllow = <String, int>{
   'lib/components/theming/adaptive_text_field.dart': 2,
   'lib/components/toolbar/customize_dialog_frame.dart': 3,
   'lib/components/toolbar/editor_bottom_sheet.dart': 2,
-  'lib/components/toolbar/editor_page_manager.dart': 5,
   'lib/components/toolbar/shortcut_bar_editor.dart': 3,
   'lib/components/toolbar/shortcut_layout.dart': 20,
   'lib/data/routes.dart': 4,

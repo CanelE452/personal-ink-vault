@@ -195,12 +195,12 @@ Future<KitSideRowAction?> showKitSideRowMenu(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _MenuItem(
+          KitSideMenuItem(
             icon: KitIconName.rename,
             label: '이름 바꾸기',
             onTap: () => Navigator.of(context).pop(KitSideRowAction.rename),
           ),
-          _MenuItem(
+          KitSideMenuItem(
             icon: KitIconName.trash,
             label: '지우기',
             danger: true,
@@ -214,14 +214,17 @@ Future<KitSideRowAction?> showKitSideRowMenu(
 }
 
 /// `.r1menu .it`: a row of a row's menu, 44 high; with [lineAbove]
-/// (`.it+.it`) its top 1 is the line between the rows.
-class _MenuItem extends StatelessWidget {
+/// (`.it+.it`) its top 1 is the line between the rows. Not [enabled], its
+/// icon and text are dimmed and a press does nothing.
+class KitSideMenuItem extends StatelessWidget {
   const new({
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,
     this.danger = false,
     this.lineAbove = false,
+    this.enabled = true,
   });
 
   final KitIconName icon;
@@ -229,6 +232,7 @@ class _MenuItem extends StatelessWidget {
   final VoidCallback onTap;
   final bool danger;
   final bool lineAbove;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -236,10 +240,12 @@ class _MenuItem extends StatelessWidget {
     return Semantics(
       button: true,
       label: label,
+      enabled: enabled,
+      onTap: enabled ? onTap : null,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: KitTokens.menuGroupBg,
@@ -261,29 +267,32 @@ class _MenuItem extends StatelessWidget {
                 KitTokens.menuPaddingH,
                 0,
               ),
-              child: Row(
-                children: [
-                  KitIcon(
-                    icon,
-                    size: KitTokens.menuIconSize,
-                    strokeWidth: KitTokens.menuIconStroke,
-                    color: ink,
-                  ),
-                  const SizedBox(width: KitTokens.menuIconGap),
-                  Expanded(
-                    child: KitText(
-                      label,
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontSize: KitTokens.sideMenuFontSize,
-                        height: KitTokens.sideLineHeight,
-                        letterSpacing: 0,
-                        color: ink,
-                        decoration: TextDecoration.none,
+              child: Opacity(
+                opacity: enabled ? 1 : KitTokens.disabledOpacity,
+                child: Row(
+                  children: [
+                    KitIcon(
+                      icon,
+                      size: KitTokens.menuIconSize,
+                      strokeWidth: KitTokens.menuIconStroke,
+                      color: ink,
+                    ),
+                    const SizedBox(width: KitTokens.menuIconGap),
+                    Expanded(
+                      child: KitText(
+                        label,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: KitTokens.sideMenuFontSize,
+                          height: KitTokens.sideLineHeight,
+                          letterSpacing: 0,
+                          color: ink,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

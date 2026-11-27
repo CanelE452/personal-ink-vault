@@ -71,6 +71,9 @@ Future<T> officePreviewRead<T>(
   return result as T;
 }
 
+// The tracker installed here has no PdfDocument.createNew, so extractPdfPage
+// returns null inside this helper. Tests of it load pdfium themselves (see
+// test/editor/pdf_page_extract_test.dart).
 Future<void> withOfficePreviewPdfium(
   WidgetTester tester,
   Future<void> Function() body,

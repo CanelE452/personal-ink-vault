@@ -242,7 +242,7 @@ class _KitEraserAdvancedPanelState extends State<KitEraserAdvancedPanel> {
         const ToolWindowLine(),
         ToolWindowRedButton(
           key: const ValueKey('eraser-clear-page'),
-          label: '쪽 지우기',
+          label: '쪽 비우기',
           onTap: clear,
         ),
       ],
@@ -250,7 +250,7 @@ class _KitEraserAdvancedPanelState extends State<KitEraserAdvancedPanel> {
   );
 }
 
-/// Asks before 「쪽 지우기」; true when the user goes on. The preview draws
+/// Asks before 「쪽 비우기」; true when the user goes on. The preview draws
 /// no confirm window, so it is a tool window (the eraser window's surface,
 /// menu shadow and no outline, as the floating bar's tool windows; title,
 /// note, line and red row) in the middle of the screen, over the kit's
@@ -273,7 +273,7 @@ Future<bool> confirmClearPage(BuildContext context) async {
               child: Material(
                 type: MaterialType.transparency,
                 child: ToolWindow(
-                  title: '쪽 지우기',
+                  title: '쪽 비우기',
                   children: [
                     toolWindowNote(
                       '이 쪽의 필기와 사진을 모두 지웁니다. 실행 취소로 되돌릴 수 있습니다.',

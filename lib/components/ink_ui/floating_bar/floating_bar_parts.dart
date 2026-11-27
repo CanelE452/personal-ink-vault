@@ -164,7 +164,7 @@ Future<void> openFromFloatingBar(
 /// The tool pill while the eraser is in hand (preview 10th draft 1-d,
 /// `fbHtml`): the kind chip, 「고급 설정」, a line, then the three sizes.
 /// The chip opens 「지우개 종류」 and the toggles button 「고급 설정」, each
-/// hanging under its button; 「쪽 지우기」 there asks first and then runs the
+/// hanging under its button; 「쪽 비우기」 there asks first and then runs the
 /// document's `clearPage`. The sizes are shortcuts to the slider's 10, 40 and
 /// 80; the one equal to the size in hand is ringed. Circle select does not
 /// use the size, so they are dimmed then. It follows the eraser's settings
@@ -185,7 +185,7 @@ class FloatingBarEraserPill extends StatefulWidget {
   /// What the document's ink engine has.
   final InkEngineSupport engine;
 
-  /// The document's actions: 「쪽 지우기」 runs `clearPage` from here.
+  /// The document's actions: 「쪽 비우기」 runs `clearPage` from here.
   final AppActionRegistry actions;
 
   /// Whether the bar is picked up ([KitPill.raised]).

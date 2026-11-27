@@ -4,34 +4,21 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter_quill/flutter_quill.dart'
-    show FlutterQuillLocalizations;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/ink_ui/hover_badge.dart';
 import 'package:saber/components/kit/kit_icon.dart';
-import 'package:saber/data/actions/app_action_ids.dart';
-import 'package:saber/data/actions/app_action_registry.dart';
-import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
-import 'package:saber/data/prefs.dart';
-import 'package:saber/i18n/strings.g.dart';
-import 'package:saber/pages/editor/editor.dart';
-import 'package:sbn/tool_id.dart';
 
 import '../utils/screen_capture.dart';
-import '../utils/test_mock_channel_handlers.dart';
 
 /// Writes screenshots to build/screen-review/t16 at device pixel ratio 2:
 /// the pen tip badge (Task 16) over the preview's paper, cropped 120 x 90
 /// around the tip as the references are (ref-t16-*.png,
 /// build/screen-review/t16/ref/make_refs.py): the pen, the eraser and the
-/// badge turned left at the right edge (app-t16-*.png); and 쪽 관리 under
-/// 「읽기 전용」, its buttons dimmed (app-t14-pagemanager-locked.png). Runs only
-/// with PIV_CAPTURE=1.
+/// badge turned left at the right edge (app-t16-*.png). Runs only with
+/// PIV_CAPTURE=1.
 final _capture = Platform.environment['PIV_CAPTURE'] == '1';
 final _outDir = captureDir('build/screen-review/t16');
-const _latin = captureLatin;
-const _korean = captureKorean;
 
 /// The preview's page: `--paper` with a 1px `--paper-grid` line every 22.
 class _Paper extends CustomPainter {
@@ -195,71 +182,6 @@ void main() {
         icon: KitIconName.pen,
         tip: const Offset(581, 646),
       );
-    });
-
-    // Task 14: 쪽 관리 under 「읽기 전용」, a real editor with two pages
-    testWidgets('page manager locked', (tester) async {
-      TestWidgetsFlutterBinding.ensureInitialized();
-      setupMockPathProvider();
-      setupMockPrinting();
-      setupMockWindowManager();
-      await FileManager.init();
-      await tester.runAsync(loadCaptureFonts);
-      final lastTool = stows.lastTool.value;
-      stows.lastTool.value = ToolId.fountainPen;
-      addTearDown(() => stows.lastTool.value = lastTool);
-      const size = Size(586, 46 + 734);
-      tester.view.physicalSize = size * 2;
-      tester.view.devicePixelRatio = 2;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final boundary = GlobalKey();
-      await tester.pumpWidget(
-        RepaintBoundary(
-          key: boundary,
-          child: TranslationProvider(
-            child: MaterialApp(
-              debugShowCheckedModeBanner: false,
-              localizationsDelegates: const [
-                FlutterQuillLocalizations.delegate,
-              ],
-              theme: ThemeData(
-                fontFamily: _latin,
-                fontFamilyFallback: const [_korean],
-              ),
-              home: Editor(
-                path: '/t16-page-manager-locked',
-                customTitle: '강의노트 3주차',
-                showDocumentHeader: false,
-                onSaveSnapshot: (_, _) async {},
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final editor = tester.state<EditorState>(find.byType(Editor));
-      // two pages: the first is not the empty last one, so only the lock
-      // dims its buttons
-      editor.createPage(1);
-      // ignore: invalid_use_of_protected_member
-      editor.setState(() {});
-      await tester.pumpAndSettle();
-      final actions = tester
-          .widget<AppActionScope>(find.byType(AppActionScope))
-          .notifier!;
-      final context = tester.element(find.byType(Editor));
-      actions.run(AppActionIds.readOnly, context);
-      await tester.pumpAndSettle(const Duration(seconds: 3));
-      expect(editor.inkLocked.value, isTrue);
-      // 쪽 목록 opens the left panel, a long press on a page the window
-      actions.run(AppActionIds.pageList, context);
-      await tester.pumpAndSettle();
-      await tester.longPress(find.byKey(const ValueKey('kit-side-page-0')));
-      await tester.pumpAndSettle();
-      expect(find.text('쪽 관리'), findsWidgets);
-      await _write(tester, boundary, 'app-t14-pagemanager-locked.png');
-      editor.cancelAutosaveAndMarkSaved();
     });
   });
 }

@@ -69,7 +69,7 @@ void _publish(AppActionRegistry actions, {bool locked = false}) {
     a(AppActionIds.pageDuplicate, '쪽 복제', KitIconName.dup),
     a(AppActionIds.templateChange, '템플릿 바꾸기', KitIconName.template),
     a(AppActionIds.goToPage, '쪽으로 이동', KitIconName.gotoPage),
-    a(AppActionIds.clearPage, '쪽 지우기', KitIconName.delPage),
+    a(AppActionIds.clearPage, '쪽 비우기', KitIconName.delPage),
     a(AppActionIds.moveToTrash, '휴지통으로', KitIconName.trash),
     a(AppActionIds.toolbarCustomize, '도구 막대 사용자화', KitIconName.tune),
     a(AppActionIds.openSettings, '설정', KitIconName.settings),

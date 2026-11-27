@@ -90,7 +90,8 @@ void main() {
       'save_to',
     ];
     final byId = {for (final n in KitIconName.values) n.id: n};
-    expect(KitIconName.values.length, 198); // 187 + the nine + autoHl, quiz
+    // 187 + the nine + autoHl, quiz + the page menu's add before and after
+    expect(KitIconName.values.length, 200);
     for (final id in ids) {
       final n = byId[id];
       expect(n, isNotNull, reason: id);
@@ -124,6 +125,45 @@ void main() {
       );
       expect(_inked(px), greaterThan(40), reason: id);
     }
+  });
+
+  testWidgets('the page menu add before and add after are mirror images', (
+    tester,
+  ) async {
+    expect(KitIconName.pageAddBefore.label, '앞에 쪽 추가');
+    expect(KitIconName.pageAddAfter.label, '뒤에 쪽 추가');
+    expect(
+      kitIconGroups.any(
+        (g) =>
+            g.$2.contains(KitIconName.pageAddBefore) &&
+            g.$2.contains(KitIconName.pageAddAfter),
+      ),
+      isTrue,
+    );
+    // the middle of the ink, across a 48 wide drawing
+    Future<double> inkMiddle(KitIconName n) async {
+      final px = await _pixels(
+        tester,
+        KitIcon(n, size: 48, color: Colors.black),
+      );
+      expect(_inked(px), greaterThan(40), reason: n.id);
+      var sum = 0.0, count = 0;
+      for (var i = 3; i < px.length; i += 4) {
+        if (px[i] > 8) {
+          sum += (i ~/ 4) % 48;
+          count++;
+        }
+      }
+      return sum / count;
+    }
+
+    final before = await inkMiddle(KitIconName.pageAddBefore);
+    final after = await inkMiddle(KitIconName.pageAddAfter);
+    // mirror images about the middle, each within 1.5 of 24 (12 on its grid)
+    expect(before + after, closeTo(47, 1));
+    expect((before - 23.5).abs(), lessThanOrEqualTo(3));
+    // before: the chevron on the left, the page right of it; after: mirrored
+    expect(before, greaterThan(after));
   });
 
   test('groups only name generated icons', () {

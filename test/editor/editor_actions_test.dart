@@ -306,7 +306,7 @@ void main() {
     final actions = actionsOf(tester);
     final clear = actions.lookup(AppActionIds.clearPage);
     expect(clear, isNotNull, reason: 'the eraser window runs it');
-    expect(clear!.label, '쪽 지우기');
+    expect(clear!.label, '쪽 비우기');
     expect(
       actions.run(AppActionIds.clearPage, tester.element(find.byType(Editor))),
       isTrue,

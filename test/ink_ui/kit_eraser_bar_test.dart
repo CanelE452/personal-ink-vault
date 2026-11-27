@@ -25,7 +25,7 @@ import 'floating_bar_harness.dart';
 /// The eraser's floating bar and its two windows (preview 10th draft 1-d,
 /// spec 「지우개·올가미 창 개정」): [kind chip ▾] · [고급 설정] · [10 · 40 · 80],
 /// 「지우개 종류」 with two cards, 「고급 설정」 with the size slider, the four
-/// targets, 「자동 해제」 and 「쪽 지우기」.
+/// targets, 「자동 해제」 and 「쪽 비우기」.
 
 const _chip = 'floating-bar-eraser-kind';
 const _advanced = 'floating-bar-eraser-advanced';
@@ -258,7 +258,7 @@ void main() {
       host.redo(enabled: false),
       AppAction(
         id: AppActionIds.clearPage,
-        label: '쪽 지우기',
+        label: '쪽 비우기',
         icon: KitIconName.eraser,
         run: (_) => cleared++,
       ),
@@ -326,10 +326,10 @@ void main() {
     await tester.tap(auto);
     await tester.pump();
     expect(stows.disableEraserAfterUse.value, isTrue);
-    // 쪽 지우기 asks first
+    // 쪽 비우기 asks first
     final clear = find.byKey(const ValueKey('eraser-clear-page'));
     expect(
-      tester.widget<Text>(inside(clear, find.text('쪽 지우기'))).style?.color,
+      tester.widget<Text>(inside(clear, find.text('쪽 비우기'))).style?.color,
       KitTokens.danger,
     );
     await tester.tap(clear);
@@ -351,14 +351,14 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('쪽 지우기 asks in a kit window, not a Material dialog', (
+  testWidgets('쪽 비우기 asks in a kit window, not a Material dialog', (
     tester,
   ) async {
     final host = await pumpBar(tester, Eraser());
     host.actions.publish(host, [
       AppAction(
         id: AppActionIds.clearPage,
-        label: '쪽 지우기',
+        label: '쪽 비우기',
         icon: KitIconName.eraser,
         run: (_) {},
       ),
@@ -373,7 +373,7 @@ void main() {
       matching: find.byType(ToolWindow),
     );
     expect(window, findsOneWidget);
-    expect(tester.widget<ToolWindow>(window).title, '쪽 지우기');
+    expect(tester.widget<ToolWindow>(window).title, '쪽 비우기');
     expect(
       inside(
         window,
@@ -539,7 +539,7 @@ void main() {
       host.undo(),
       AppAction(
         id: AppActionIds.clearPage,
-        label: '쪽 지우기',
+        label: '쪽 비우기',
         icon: KitIconName.eraser,
         run: (_) {},
       ),

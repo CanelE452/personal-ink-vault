@@ -3,24 +3,30 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_quill/flutter_quill.dart'
     show FlutterQuillLocalizations;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
+import 'package:logging/logging.dart';
+import 'package:perfect_freehand/perfect_freehand.dart';
+import 'package:saber/components/canvas/_asset_cache.dart';
+import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/canvas_preview.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
+import 'package:saber/components/ink_ui/side_panel/kit_side_pages.dart';
 import 'package:saber/components/ink_ui/side_panel/kit_side_panel.dart';
 import 'package:saber/components/kit/kit_text.dart';
-import 'package:saber/components/kit/kit_tokens.dart';
+import 'package:saber/components/theming/adaptive_alert_dialog.dart';
 import 'package:saber/components/toolbar/editor_bottom_sheet.dart';
-import 'package:saber/components/toolbar/editor_page_manager.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/audio/recording_entry.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
+import 'package:saber/data/editor/page_clipboard.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/prefs.dart';
@@ -956,106 +962,733 @@ void main() {
       await drain(tester);
     });
 
-    testWidgets('a long press on a page opens the page manager on it', (
-      tester,
-    ) async {
+    /// The editor with [count] pages (empty, as a new note's), the left panel
+    /// open on its pages tab. Each test gives its own [path].
+    Future<EditorState> mountPanel(
+      WidgetTester tester, {
+      required String path,
+      int count = 3,
+      Size size = const Size(1000, 1400),
+      EditorChromeController? chrome,
+      Future<EditorCoreInfo> Function()? load,
+    }) async {
       final editor = await mountEditor(
         tester,
-        size: const Size(360, 700),
-        path: '/editor-side-manage',
+        size: size,
+        path: path,
+        chrome: chrome,
+        load: load,
       );
-      editor.createPage(29);
-      // ignore: invalid_use_of_protected_member
-      editor.setState(() {});
+      await drain(tester);
+      if (load == null) {
+        editor.createPage(count - 1);
+        // ignore: invalid_use_of_protected_member
+        editor.setState(() {});
+      }
       await tester.pumpAndSettle();
-      final count = editor.coreInfo.pages.length;
-      expect(count, greaterThanOrEqualTo(30));
-      const held = 27;
-      final heldId = editor.coreInfo.pages[held].pageId;
-
-      await tester.tap(find.byKey(const ValueKey('editor-page-list')));
+      // a note keeps an empty page at its end besides
+      expect(editor.coreInfo.pages.length, greaterThanOrEqualTo(count));
+      if (editor.coreInfo.readOnly) {
+        // the toolbar is folded away on a read-only note
+        editor.side.panelOpen.value = true;
+      } else {
+        await tester.tap(find.byKey(const ValueKey('editor-page-list')));
+      }
       await tester.pumpAndSettle();
-      final thumb = find.byKey(const ValueKey('kit-side-page-$held'));
-      await tester.scrollUntilVisible(
-        thumb,
-        300,
-        scrollable: find
-            .descendant(of: panel, matching: find.byType(Scrollable))
-            .first,
-      );
-      await tester.ensureVisible(thumb);
-      await tester.pumpAndSettle();
-      await tester.longPress(thumb);
-      await tester.pumpAndSettle();
-      expect(find.byType(EditorPageManager), findsOneWidget);
-      // the window opens on that page's row, marked as the page
-      final row = find.text('${held + 1} / $count');
-      expect(row.hitTestable(), findsOneWidget);
-      expect(tester.widget<Text>(row).style?.color, KitTokens.sideThumbOnInk);
-      expect(
-        tester.widget<Text>(find.text('$held / $count')).style?.color,
-        isNot(KitTokens.sideThumbOnInk),
-      );
-      // a long press is not a page press: the phone's panel stays
       expect(panel, findsOneWidget);
+      return editor;
+    }
 
-      // deleted from that row: that page is gone
-      await tester.tap(
-        find.descendant(
-          of: find.ancestor(of: row, matching: find.byType(InkWell)).first,
-          matching: find.byTooltip(t.editor.menu.deletePage),
+    void strokeOn(EditorState editor, int i) {
+      final page = editor.coreInfo.pages[i];
+      page.insertStroke(
+        Stroke(
+          color: const Color(0xFF1E88E5),
+          pressureEnabled: false,
+          options: StrokeOptions(size: 10),
+          pageIndex: i,
+          page: page,
+          toolId: ToolId.ballpointPen,
+        )..addPoints([for (var x = 0.0; x < 5; x++) Offset(100 + x, 300)]),
+      );
+    }
+
+    List<String> ids(EditorState editor) => [
+      for (final page in editor.coreInfo.pages) page.pageId,
+    ];
+
+    Finder dots(int i) => find.byKey(ValueKey('kit-side-page-$i-menu'));
+    Finder menuItem(String label) =>
+        find.byKey(ValueKey('kit-page-menu-$label'));
+
+    Future<void> pickFromMenu(WidgetTester tester, int i, String label) async {
+      await tester.tap(dots(i));
+      await tester.pumpAndSettle();
+      await tester.tap(menuItem(label));
+      await tester.pumpAndSettle();
+    }
+
+    /// [i]'s thumbnail held past the long-press time, taken over thumbnail
+    /// [to] and let go.
+    Future<void> dragThumb(WidgetTester tester, int i, int to) async {
+      final picture = find.byKey(ValueKey('kit-side-page-$i-picture'));
+      final gesture = await tester.startGesture(tester.getCenter(picture));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await gesture.moveTo(
+        tester.getCenter(find.byKey(ValueKey('kit-side-page-$to-picture'))),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    /// A page of another note with one stroke, as the page clipboard holds it.
+    Future<PageClip> otherNotesClip(WidgetTester tester) async {
+      final other = EditorCoreInfo(filePath: '/page-menu-other')
+        ..pages.add(EditorPage());
+      final page = other.pages.first;
+      page.insertStroke(
+        Stroke(
+          color: const Color(0xFFE53935),
+          pressureEnabled: false,
+          options: StrokeOptions(size: 10),
+          pageIndex: 0,
+          page: page,
+          toolId: ToolId.ballpointPen,
+        )..addPoints([for (var x = 0.0; x < 5; x++) Offset(50 + x, 60)]),
+      );
+      return (await tester.runAsync(
+        () => clipPage(
+          page,
+          notePattern: other.backgroundPattern,
+          assetCache: other.assetCache,
         ),
-      );
-      await tester.pumpAndSettle();
-      expect(editor.coreInfo.pages, hasLength(count - 1));
-      expect([
-        for (final page in editor.coreInfo.pages) page.pageId,
-      ], isNot(contains(heldId)));
-      Navigator.of(tester.element(find.byType(EditorPageManager))).pop();
-      await tester.pumpAndSettle();
-      expect(panel, findsOneWidget);
+      ))!;
+    }
+
+    Future<void> endTest(WidgetTester tester, EditorState editor) async {
       editor.cancelAutosaveAndMarkSaved();
       await tester.pumpWidget(const SizedBox());
+      await drain(tester);
+    }
+
+    setUp(() => PageClipboard.current.value = null);
+    tearDown(() => PageClipboard.current.value = null);
+
+    testWidgets(
+      'dots → 붙여넣기 after copying from another note puts the page after '
+      'that thumbnail',
+      (tester) async {
+        final editor = await mountPanel(tester, path: '/page-menu-paste');
+        PageClipboard.current.value = await otherNotesClip(tester);
+        final before = ids(editor);
+
+        await pickFromMenu(tester, 0, '붙여넣기');
+
+        expect(editor.coreInfo.pages, hasLength(before.length + 1));
+        expect(editor.coreInfo.pages[1].strokes, hasLength(1));
+        expect(editor.coreInfo.pages[1].pageId, isNot(before[1]));
+        expect(
+          [ids(editor)[0], ...ids(editor).skip(2)],
+          before,
+          reason: 'the others keep their order around it',
+        );
+        expect(find.text('쪽을 붙여넣었습니다'), findsOneWidget);
+        // pasting after the last thumbnail goes to the end
+        final last = editor.coreInfo.pages.length - 1;
+        await pickFromMenu(tester, last, '붙여넣기');
+        expect(editor.coreInfo.pages, hasLength(before.length + 2));
+        expect(editor.coreInfo.pages[last + 1].strokes, hasLength(1));
+        await endTest(tester, editor);
+      },
+    );
+
+    testWidgets('dots → 쪽 비우기 asks for confirmation first', (tester) async {
+      final editor = await mountPanel(tester, path: '/page-menu-clear');
+      strokeOn(editor, 0);
+      expect(editor.coreInfo.pages[0].strokes, hasLength(1));
+
+      await pickFromMenu(tester, 0, '쪽 비우기');
+      final confirm = find.byKey(const ValueKey('eraser-clear-page-confirm'));
+      expect(confirm, findsOneWidget);
+      expect(editor.coreInfo.pages[0].strokes, hasLength(1));
+
+      await tester.tap(find.byKey(const ValueKey('eraser-clear-page-cancel')));
+      await tester.pumpAndSettle();
+      expect(editor.coreInfo.pages[0].strokes, hasLength(1), reason: 'cancel');
+
+      await pickFromMenu(tester, 0, '쪽 비우기');
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+      expect(editor.coreInfo.pages[0].strokes, isEmpty);
+      await endTest(tester, editor);
     });
 
-    testWidgets("the page manager's mark stays on its page after a delete", (
+    testWidgets('dots → 쪽 삭제 shows 쪽을 삭제했습니다 with 되돌리기, which restores the '
+        'page', (tester) async {
+      final editor = await mountPanel(tester, path: '/page-menu-delete');
+      strokeOn(editor, 1);
+      final before = ids(editor);
+
+      await pickFromMenu(tester, 1, '쪽 삭제');
+
+      expect(
+        find.byKey(const ValueKey('eraser-clear-page-confirm')),
+        findsNothing,
+        reason: 'no confirm window',
+      );
+      expect(ids(editor), [...before]..removeAt(1));
+      final notice = editor.side.notice.notice;
+      expect(notice?.text, '쪽을 삭제했습니다');
+      expect(notice?.action, '되돌리기');
+      expect(find.text('쪽을 삭제했습니다'), findsOneWidget);
+
+      await tester.tap(find.text('되돌리기'));
+      await tester.pumpAndSettle();
+      expect(ids(editor), before);
+      expect(editor.coreInfo.pages[1].strokes, hasLength(1));
+      await endTest(tester, editor);
+    });
+
+    testWidgets('deleting or cutting a filled last page shows its notice with '
+        '되돌리기', (tester) async {
+      final editor = await mountPanel(tester, path: '/page-menu-last-page');
+      PageClipboard.current.value = await otherNotesClip(tester);
+      // pasted after the spare empty page, the pasted page is the last one
+      await pickFromMenu(tester, editor.coreInfo.pages.length - 1, '붙여넣기');
+      final last = editor.coreInfo.pages.length - 1;
+      final pasted = editor.coreInfo.pages[last];
+      expect(pasted.strokes, hasLength(1));
+      final before = ids(editor);
+
+      await pickFromMenu(tester, last, '쪽 삭제');
+      expect(editor.coreInfo.pages, isNot(contains(pasted)));
+      expect(editor.side.notice.notice?.text, '쪽을 삭제했습니다');
+      expect(editor.side.notice.notice?.action, '되돌리기');
+      await tester.tap(find.text('되돌리기'));
+      await tester.pumpAndSettle();
+      expect(ids(editor).take(before.length), before);
+
+      await pickFromMenu(tester, last, '잘라내기');
+      await drain(tester);
+      expect(editor.coreInfo.pages, isNot(contains(pasted)));
+      expect(editor.side.notice.notice?.text, '쪽을 잘라냈습니다');
+      expect(editor.side.notice.notice?.action, '되돌리기');
+      await tester.tap(find.text('되돌리기'));
+      await tester.pumpAndSettle();
+      expect(editor.coreInfo.pages[last], same(pasted));
+      await endTest(tester, editor);
+    });
+
+    testWidgets('a cut whose page went while it was being copied says the '
+        'page was copied', (tester) async {
+      final editor = await mountPanel(tester, path: '/page-menu-cut-gone');
+      final temp = (await tester.runAsync(
+        () => Directory.systemTemp.createTemp('piv-cut-gone-'),
+      ))!;
+      addTearDown(() => temp.deleteSync(recursive: true));
+      final file = File('${temp.path}/photo.png')
+        ..writeAsBytesSync(_onePixelPng);
+      final page = editor.coreInfo.pages[1];
+      strokeOn(editor, 1);
+      // the copy reads this picture's file, which takes real time
+      page.images.add(
+        PngEditorImage(
+          id: editor.coreInfo.nextImageId++,
+          assetCache: editor.coreInfo.assetCache,
+          extension: '.png',
+          imageProvider: FileImage(file),
+          pageIndex: 1,
+          pageSize: page.size,
+          onMoveImage: null,
+          onDeleteImage: null,
+          onMiscChange: null,
+          newImage: false,
+          dstRect: const Rect.fromLTWH(10, 20, 30, 40),
+        ),
+      );
+
+      await pickFromMenu(tester, 1, '잘라내기');
+      expect(PageClipboard.current.value, isNull, reason: 'still copying');
+      editor.deletePageAt(1);
+      final after = ids(editor);
+      await drain(tester);
+
+      expect(PageClipboard.current.value, isNotNull);
+      expect(ids(editor), after, reason: 'nothing else was taken out');
+      expect(editor.side.notice.notice?.text, '쪽을 복사했습니다');
+      expect(editor.side.notice.notice?.onAction, isNull);
+      await endTest(tester, editor);
+      // the picture lets its image go 5 s after it leaves the screen
+      await tester.pump(const Duration(seconds: 6));
+    });
+
+    testWidgets('a cut overtaken by a later copy keeps its page', (
       tester,
     ) async {
-      final editor = await mountEditor(tester, path: '/editor-side-mark');
-      editor.createPage(2);
+      final editor = await mountPanel(tester, path: '/page-menu-cut-overtaken');
+      final temp = (await tester.runAsync(
+        () => Directory.systemTemp.createTemp('piv-cut-overtaken-'),
+      ))!;
+      addTearDown(() => temp.deleteSync(recursive: true));
+      final file = File('${temp.path}/photo.png')
+        ..writeAsBytesSync(_onePixelPng);
+      final page = editor.coreInfo.pages[1];
+      strokeOn(editor, 0);
+      // the copy reads this picture's file, which takes real time
+      page.images.add(
+        PngEditorImage(
+          id: editor.coreInfo.nextImageId++,
+          assetCache: editor.coreInfo.assetCache,
+          extension: '.png',
+          imageProvider: FileImage(file),
+          pageIndex: 1,
+          pageSize: page.size,
+          onMoveImage: null,
+          onDeleteImage: null,
+          onMiscChange: null,
+          newImage: false,
+          dstRect: const Rect.fromLTWH(10, 20, 30, 40),
+        ),
+      );
+      final before = ids(editor);
+
+      await pickFromMenu(tester, 1, '잘라내기');
+      await pickFromMenu(tester, 0, '복사');
+      final copied = PageClipboard.current.value;
+      expect(copied, isNotNull, reason: 'page 1 has no file to wait for');
+      final told = editor.side.notice.notice;
+      expect(told?.text, '쪽을 복사했습니다');
+      await drain(tester);
+
+      expect(PageClipboard.current.value, same(copied));
+      expect(ids(editor), before, reason: 'its copy was not kept');
+      expect(editor.side.notice.notice, same(told), reason: 'the cut is quiet');
+      await endTest(tester, editor);
+      // the picture lets its image go 5 s after it leaves the screen
+      await tester.pump(const Duration(seconds: 6));
+    });
+
+    testWidgets('copy, cut and paste show their messages', (tester) async {
+      final editor = await mountPanel(tester, path: '/page-menu-messages');
+      strokeOn(editor, 1);
+      final before = ids(editor);
+
+      await tester.tap(dots(1));
+      await tester.pumpAndSettle();
+      await tester.tap(menuItem('복사'));
+      await tester.pumpAndSettle();
+      await drain(tester);
+      expect(editor.side.notice.notice?.text, '쪽을 복사했습니다');
+      expect(editor.side.notice.notice?.onAction, isNull);
+      expect(PageClipboard.current.value, isNotNull);
+      expect(ids(editor), before, reason: 'copying leaves the note as it is');
+
+      await pickFromMenu(tester, 1, '잘라내기');
+      await drain(tester);
+      expect(editor.side.notice.notice?.text, '쪽을 잘라냈습니다');
+      expect(editor.side.notice.notice?.action, '되돌리기');
+      expect(ids(editor), [...before]..removeAt(1));
+      // one step brings it back; the copy is kept for pasting
+      await tester.tap(find.text('되돌리기'));
+      await tester.pumpAndSettle();
+      expect(ids(editor), before);
+      expect(PageClipboard.current.value, isNotNull);
+
+      await pickFromMenu(tester, 0, '붙여넣기');
+      expect(editor.side.notice.notice?.text, '쪽을 붙여넣었습니다');
+      expect(editor.side.notice.notice?.onAction, isNull);
+      expect(editor.coreInfo.pages, hasLength(before.length + 1));
+      await endTest(tester, editor);
+    });
+
+    testWidgets('dragging a favourite keeps it favourite by page id', (
+      tester,
+    ) async {
+      final (repository, noteId, _) = await openVault(tester);
+      final store = NoteSideStore(repository);
+      final chrome = EditorChromeController()
+        ..noteSide = () => (store: store, noteId: noteId);
+      addTearDown(chrome.dispose);
+      final editor = await mountPanel(
+        tester,
+        path: '/page-menu-favourite',
+        chrome: chrome,
+        load: () async =>
+            EditorCoreInfo(filePath: '/page-menu-favourite')
+              ..pages.addAll([EditorPage(), EditorPage(), EditorPage()]),
+      );
+      await drain(tester);
+      final before = ids(editor);
+
+      await tester.tap(
+        find.byKey(const ValueKey('kit-side-page-0-favorite-button')),
+      );
+      await tester.pumpAndSettle();
+      var stored = <String>[];
+      for (var i = 0; i < 20 && stored.isEmpty; i++) {
+        await drain(tester);
+        stored = await settle(tester, () => storedFavorites(store, noteId));
+      }
+      expect(stored, [before[0]]);
+
+      await dragThumb(tester, 0, 2);
+
+      expect(ids(editor), [before[1], before[2], before[0], ...before.skip(3)]);
+      expect(editor.side.favorites, [before[0]]);
+      bool filled(int i) => find
+          .descendant(
+            of: find.byKey(ValueKey('kit-side-page-$i-ribbon')),
+            matching: find.byType(ColoredBox),
+          )
+          .evaluate()
+          .isNotEmpty;
+      expect(
+        [for (var i = 0; i < before.length; i++) filled(i)],
+        [false, false, true, ...List.filled(before.length - 3, false)],
+      );
+      for (var i = 0; i < 20; i++) {
+        await drain(tester);
+      }
+      expect(await settle(tester, () => storedFavorites(store, noteId)), [
+        before[0],
+      ]);
+
+      // the favourites tab: the ribbon and the dots, no dragging
+      KitSidePages pages() =>
+          tester.widget<KitSidePages>(find.byType(KitSidePages));
+      expect(pages().onMove, isNotNull);
+      await tester.tap(tab(KitSideTab.favorites));
+      await tester.pumpAndSettle();
+      expect(pages().onMove, isNull);
+      expect(pages().onFavorite, isNotNull);
+      expect(pages().onMenu, isNotNull);
+      expect(pages().showRibbon, isTrue);
+      expect(find.byType(LongPressDraggable<int>), findsNothing);
+      // the page number in the menu is the note's, not its place in the tab
+      await tester.tap(dots(2));
+      await tester.pumpAndSettle();
+      await tester.tap(menuItem('앞에 쪽 추가'));
+      await tester.pumpAndSettle();
+      expect(editor.coreInfo.pages, hasLength(before.length + 1));
+      expect(editor.coreInfo.pages[2].pageId, isNot(before[0]));
+      expect(editor.coreInfo.pages[3].pageId, before[0]);
+      await endTest(tester, editor);
+    });
+
+    testWidgets('a long press no longer opens the old page manager', (
+      tester,
+    ) async {
+      final editor = await mountPanel(tester, path: '/page-menu-long-press');
+      for (final locked in [false, true]) {
+        editor.inkLocked.value = locked;
+        await tester.pump();
+        final thumb = find.byKey(const ValueKey('kit-side-page-1'));
+        final gesture = await tester.startGesture(tester.getCenter(thumb));
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+        expect(find.byType(AdaptiveAlertDialog), findsNothing);
+        expect(find.text('쪽 관리'), findsNothing);
+        await gesture.up();
+        await tester.pumpAndSettle();
+        expect(find.byType(AdaptiveAlertDialog), findsNothing);
+      }
+      await endTest(tester, editor);
+    });
+
+    for (final readOnly in [false, true])
+      testWidgets(
+        readOnly
+            ? 'read-only note: no drag, menu shows copy only, ribbon not '
+                  'tappable'
+            : 'locked note: no drag, menu shows copy only, ribbon not tappable',
+        (tester) async {
+          final (repository, noteId, _) = await openVault(tester);
+          final store = NoteSideStore(repository);
+          final chrome = EditorChromeController()
+            ..noteSide = () => (store: store, noteId: noteId);
+          addTearDown(chrome.dispose);
+          final editor = await mountPanel(
+            tester,
+            path: '/page-menu-locked-$readOnly',
+            chrome: chrome,
+            load: () async => EditorCoreInfo(
+              filePath: '/page-menu-locked-$readOnly',
+              readOnlyReason: readOnly ? ReadOnlyReason.versionTooNew : null,
+            )..pages.addAll([EditorPage(), EditorPage(), EditorPage()]),
+          );
+          await drain(tester);
+          KitSidePages pages() =>
+              tester.widget<KitSidePages>(find.byType(KitSidePages));
+          if (!readOnly) {
+            expect(pages().onMove, isNotNull, reason: 'a note that may change');
+            expect(
+              find.byKey(const ValueKey('kit-side-page-0-favorite-button')),
+              findsOneWidget,
+            );
+            editor.inkLocked.value = true;
+          }
+          await tester.pump();
+          await tester.pumpAndSettle();
+          final before = ids(editor);
+          expect(pages().onMove, isNull);
+          await dragThumb(tester, 0, 2);
+          expect(ids(editor), before, reason: 'nothing dragged');
+
+          // the ribbon is drawn but is not a button
+          expect(
+            find.byKey(const ValueKey('kit-side-page-0-ribbon')),
+            findsOneWidget,
+          );
+          expect(pages().onFavorite, isNull);
+          expect(
+            find.byKey(const ValueKey('kit-side-page-0-favorite-button')),
+            findsNothing,
+          );
+          await tester.tapAt(
+            tester
+                    .getRect(
+                      find.byKey(const ValueKey('kit-side-page-0-picture')),
+                    )
+                    .topRight +
+                const Offset(-10, 10),
+          );
+          await tester.pumpAndSettle();
+          expect(editor.side.favorites, isEmpty);
+
+          // the menu: only 복사 does anything
+          await tester.tap(dots(1));
+          await tester.pumpAndSettle();
+          for (final label in [
+            '앞에 쪽 추가',
+            '뒤에 쪽 추가',
+            '복제',
+            '잘라내기',
+            '붙여넣기',
+            '쪽 비우기',
+            '쪽 삭제',
+          ]) {
+            await tester.tap(menuItem(label));
+            await tester.pumpAndSettle();
+            expect(menuItem(label), findsOneWidget, reason: '$label is off');
+          }
+          expect(ids(editor), before);
+          await tester.tap(menuItem('복사'));
+          await tester.pumpAndSettle();
+          await drain(tester);
+          expect(menuItem('복사'), findsNothing);
+          expect(PageClipboard.current.value, isNotNull);
+          expect(editor.side.notice.notice?.text, '쪽을 복사했습니다');
+          expect(ids(editor), before);
+          await endTest(tester, editor);
+        },
+      );
+
+    testWidgets(
+      'read-only note: a tap on a thumbnail still goes to that page',
+      (tester) async {
+        final editor = await mountPanel(
+          tester,
+          path: '/page-menu-read-only-tap',
+          load: () async => EditorCoreInfo(
+            filePath: '/page-menu-read-only-tap',
+            readOnlyReason: ReadOnlyReason.versionTooNew,
+          )..pages.addAll([EditorPage(), EditorPage(), EditorPage()]),
+        );
+        final before = ids(editor);
+        expect(editor.currentPageIndex, 0);
+
+        await tester.tap(find.byKey(const ValueKey('kit-side-page-2')));
+        await tester.pumpAndSettle();
+
+        expect(editor.currentPageIndex, 2);
+        expect(ids(editor), before, reason: 'going there changes no page');
+        await endTest(tester, editor);
+      },
+    );
+
+    testWidgets('no ribbon outline when favourites are unavailable', (
+      tester,
+    ) async {
+      final editor = await mountPanel(tester, path: '/page-menu-no-vault');
+      expect(editor.side.favoritesAvailable, isFalse);
+      final pages = tester.widget<KitSidePages>(find.byType(KitSidePages));
+      expect(pages.showRibbon, isFalse);
+      expect(pages.onFavorite, isNull);
+      for (var i = 0; i < 3; i++) {
+        expect(
+          find.byKey(ValueKey('kit-side-page-$i-ribbon')),
+          findsNothing,
+          reason: 'page $i',
+        );
+      }
+      // the dots and the drag are there all the same
+      expect(dots(0), findsOneWidget);
+      expect(pages.onMove, isNotNull);
+      await endTest(tester, editor);
+    });
+
+    testWidgets(
+      'dragging, dropping and opening the menu do not repaint the page canvas',
+      (tester) async {
+        final editor = await mountPanel(tester, path: '/page-menu-paint');
+        final page =
+            editor.coreInfo.pages.first.innerCanvasKey.currentContext!
+                    .findRenderObject()!
+                as RenderRepaintBoundary;
+        final before = paintCounts(page);
+        final pageIds = ids(editor);
+
+        // a page lifted, taken over another and let go outside the grid
+        final picture = find.byKey(const ValueKey('kit-side-page-0-picture'));
+        final gesture = await tester.startGesture(tester.getCenter(picture));
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+        await gesture.moveTo(
+          tester.getCenter(
+            find.byKey(const ValueKey('kit-side-page-2-picture')),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        await gesture.moveTo(const Offset(700, 400));
+        await tester.pump(const Duration(milliseconds: 200));
+        await gesture.up();
+        await tester.pumpAndSettle();
+        expect(ids(editor), pageIds, reason: 'nothing was dropped on a page');
+        expectNotPainted(page, before);
+
+        // the menu opened and closed again
+        await tester.tap(dots(1));
+        await tester.pumpAndSettle();
+        expect(menuItem('복사'), findsOneWidget);
+        await tester.tapAt(const Offset(700, 400));
+        await tester.pumpAndSettle();
+        expect(menuItem('복사'), findsNothing);
+        expectNotPainted(page, before);
+
+        // a real drop reorders the note, which paints its pages again (the
+        // editor builds with the new order), so only the order is checked
+        final beforeIds = ids(editor);
+        await dragThumb(tester, 1, 2);
+        expect(ids(editor), [
+          beforeIds[0],
+          beforeIds[2],
+          beforeIds[1],
+          ...beforeIds.skip(3),
+        ]);
+        await endTest(tester, editor);
+      },
+    );
+
+    testWidgets('a drop reorders the note at once, before any frame', (
+      tester,
+    ) async {
+      final editor = await mountPanel(tester, path: '/page-menu-sync');
+      final before = ids(editor);
+      final picture = find.byKey(const ValueKey('kit-side-page-0-picture'));
+      final gesture = await tester.startGesture(tester.getCenter(picture));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await gesture.moveTo(
+        tester.getCenter(find.byKey(const ValueKey('kit-side-page-2-picture'))),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(ids(editor), before, reason: 'only hovering');
+
+      // the lift is dispatched as the call is made, so look before awaiting
+      // it (an await would run a waiting microtask first)
+      final lifted = gesture.up();
+      expectSync(ids(editor), [
+        before[1],
+        before[2],
+        before[0],
+        ...before.skip(3),
+      ]);
+      await lifted;
+      await tester.pumpAndSettle();
+      await endTest(tester, editor);
+    });
+
+    testWidgets('a page that cannot be copied says nothing and is logged', (
+      tester,
+    ) async {
+      final editor = await mountPanel(tester, path: '/page-menu-copy-fails');
+      final broken = _BrokenPage();
+      editor.coreInfo.pages[1] = broken;
       // ignore: invalid_use_of_protected_member
       editor.setState(() {});
       await tester.pumpAndSettle();
-      final count = editor.coreInfo.pages.length;
-      expect(count, greaterThanOrEqualTo(3));
-      await tester.tap(find.byKey(const ValueKey('editor-page-list')));
-      await tester.pumpAndSettle();
-      await tester.longPress(find.byKey(const ValueKey('kit-side-page-1')));
-      await tester.pumpAndSettle();
-      Color? ink(String text) =>
-          tester.widget<Text>(find.text(text)).style?.color;
-      expect(ink('2 / $count'), KitTokens.sideThumbOnInk);
+      final records = <LogRecord>[];
+      final listen = Logger.root.onRecord.listen(records.add);
+      addTearDown(listen.cancel);
 
-      // the page before it deleted inside the window: the mark moves with it
-      await tester.tap(
-        find.descendant(
-          of: find
-              .ancestor(
-                of: find.text('1 / $count'),
-                matching: find.byType(InkWell),
-              )
-              .first,
-          matching: find.byTooltip(t.editor.menu.deletePage),
+      await tester.tap(dots(1));
+      await tester.pumpAndSettle();
+      await tester.tap(menuItem('복사'));
+      await tester.pumpAndSettle();
+      await drain(tester);
+
+      expect(PageClipboard.current.value, isNull);
+      expect(editor.side.notice.notice, isNull);
+      expect(find.text('쪽을 복사했습니다'), findsNothing);
+      expect(
+        records.where(
+          (r) => r.level >= Level.WARNING && r.message.contains('page 1'),
         ),
+        isNotEmpty,
       );
+      // cutting it fails the same way and leaves the page where it is
+      await pickFromMenu(tester, 1, '잘라내기');
+      await drain(tester);
+      expect(editor.coreInfo.pages[1], same(broken));
+      expect(editor.side.notice.notice, isNull);
+      await endTest(tester, editor);
+    });
+
+    testWidgets('insert and duplicate go to the new page', (tester) async {
+      final editor = await mountPanel(
+        tester,
+        path: '/page-menu-scroll',
+        count: 4,
+      );
+      expect(editor.currentPageIndex, 0);
+
+      await pickFromMenu(tester, 1, '뒤에 쪽 추가');
+      expect(editor.currentPageIndex, 2, reason: 'after page 1');
+
+      await pickFromMenu(tester, 3, '앞에 쪽 추가');
+      expect(editor.currentPageIndex, 3, reason: 'before page 3');
+
+      await pickFromMenu(tester, 0, '복제');
+      expect(editor.currentPageIndex, 1, reason: 'a copy after page 0');
+      await endTest(tester, editor);
+    });
+
+    testWidgets('쪽 비우기 is off on a page with nothing on it', (tester) async {
+      final editor = await mountPanel(tester, path: '/page-menu-clear-empty');
+      strokeOn(editor, 1);
+      // ignore: invalid_use_of_protected_member
+      editor.setState(() {});
       await tester.pumpAndSettle();
-      expect(editor.coreInfo.pages, hasLength(count - 1));
-      expect(ink('1 / ${count - 1}'), KitTokens.sideThumbOnInk);
-      expect(ink('2 / ${count - 1}'), isNot(KitTokens.sideThumbOnInk));
-      Navigator.of(tester.element(find.byType(EditorPageManager))).pop();
+
+      await tester.tap(dots(0));
       await tester.pumpAndSettle();
-      editor.cancelAutosaveAndMarkSaved();
-      await tester.pumpWidget(const SizedBox());
+      await tester.tap(menuItem('쪽 비우기'));
+      await tester.pumpAndSettle();
+      expect(menuItem('쪽 비우기'), findsOneWidget, reason: 'page 0 is empty');
+      expect(
+        find.byKey(const ValueKey('eraser-clear-page-confirm')),
+        findsNothing,
+      );
+      await tester.tapAt(const Offset(900, 20));
+      await tester.pumpAndSettle();
+
+      await pickFromMenu(tester, 1, '쪽 비우기');
+      expect(
+        find.byKey(const ValueKey('eraser-clear-page-confirm')),
+        findsOneWidget,
+        reason: 'page 1 has a stroke',
+      );
+      await tester.tap(find.byKey(const ValueKey('eraser-clear-page-cancel')));
+      await tester.pumpAndSettle();
+      await endTest(tester, editor);
     });
 
     testWidgets('a stroke begun keeps the pictures; saved, they draw again', (
@@ -1461,3 +2094,14 @@ final _onePixelPng = Uint8List.fromList(const [
   0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, //
   0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82, //
 ]);
+
+/// A page whose copy cannot be made.
+class _BrokenPage extends EditorPage {
+  new();
+
+  @override
+  Map<String, dynamic> toJson(
+    OrderedAssetCache assets, {
+    required CanvasBackgroundPattern notePattern,
+  }) => throw StateError('this page cannot be copied');
+}

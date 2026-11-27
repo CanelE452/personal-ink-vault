@@ -93,6 +93,11 @@ abstract final class KitMotion {
   static const sidePanelSlide = Duration(milliseconds: 160);
   static const recBlink = Duration(milliseconds: 1200);
 
+  // A page lifted in the left panel's grid: the pages stepping aside slide
+  // to their new places and the gap fades over this long on [fastCurve] (our
+  // choice, the fast step's 120).
+  static const sideDragMove = Duration(milliseconds: 120);
+
   // The quick note rises into place over 160 on [samsungDecel] as it opens
   // (the 9th draft c note window's rise; the 12th draft shows no motion).
   static const quickNoteRise = Duration(milliseconds: 160);

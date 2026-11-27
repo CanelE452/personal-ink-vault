@@ -18,8 +18,20 @@ import 'package:saber/data/vault/note_page_marks.dart';
 import 'package:saber/data/vault/note_side_store.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/pages/editor/editor_chrome.dart';
+import 'package:saber/pages/editor/editor_page_actions.dart';
 import 'package:saber/pages/editor/editor_side_host.dart';
 import 'package:sbn/read_only_reason.dart';
+
+/// Page actions that do nothing: these tests look at other tabs.
+final _noPageActions = EditorPageActions(
+  locks: ValueNotifier(false),
+  editable: () => true,
+  canPaste: () => false,
+  canDelete: (_) => false,
+  canClear: (_) => false,
+  move: (_, _) {},
+  run: (_, _) {},
+);
 
 /// The left panel's outline tab (supplement Task 10, 12th draft `#extras12`):
 /// the PDF's outline and the user's own, kept in the note's page marks.
@@ -219,7 +231,7 @@ void main() {
                       went.add(i);
                       onScreen = i;
                     },
-                    managePage: (_) {},
+                    pageActions: _noPageActions,
                   ),
                 ),
                 Positioned.fill(child: KitUndoNotice(controller: host.notice)),

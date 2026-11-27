@@ -125,7 +125,7 @@ const _changesNote = {
 /// A row shows only when [actions] has its action, a group only with a row
 /// left, and a row is dimmed while its action is off, or while 「읽기 전용」
 /// is on when it changes the note. A row closes the menu (and its submenu)
-/// and then runs its action on [context], the ⋯ button's. 「쪽 지우기」
+/// and then runs its action on [context], the ⋯ button's. 「쪽 비우기」
 /// asks first. 「확대 비율」 shows with [zoom] only.
 KitMenu buildDocMenu({
   required BuildContext context,
@@ -312,7 +312,7 @@ KitMenu buildDocMenu({
           ),
           ?row(
             AppActionIds.clearPage,
-            label: '쪽 지우기',
+            label: '쪽 비우기',
             icon: KitIconName.delPage,
             danger: true,
             onTap: () => closeThen(() async {
