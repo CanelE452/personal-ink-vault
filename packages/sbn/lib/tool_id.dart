@@ -3,8 +3,8 @@ import 'package:logging/logging.dart';
 import 'package:stow_codecs/stow_codecs.dart';
 
 /// An enum of all available tools.
-/// Note that the pens must be ordered in z-axis order,
-/// e.g. so that the highlighter is always below the rest.
+/// Settings store a tool as its position in this list, so a new tool is only
+/// ever added at the end.
 enum ToolId(final String id) {
   highlighter('Highlighter'),
   fountainPen('fountainPen'),
@@ -14,7 +14,9 @@ enum ToolId(final String id) {
   eraser('Eraser'),
   select('Select'),
   textEditing('TextEditingTool'),
-  laserPointer('LaserPointer');
+  laserPointer('LaserPointer'),
+  calligraphyPen('calligraphyPen'),
+  brush('brush');
 
   static const codec = EnumCodec(values);
 

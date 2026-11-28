@@ -14,6 +14,7 @@ import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/canvas_preview.dart';
 import 'package:saber/components/canvas/inner_canvas.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
+import 'package:saber/data/ink/stroke_style.dart';
 import 'package:saber/data/is_this_a_test.dart';
 import 'package:screenshot/screenshot.dart';
 
@@ -24,8 +25,15 @@ abstract class EditorExporter {
   /// Strokes that can't be drawn as vector graphics include:
   /// - Highlighter strokes, because PDFs don't support transparency
   /// - Pencil strokes, which need a special shader to look correct
+  /// - Strokes with an opacity other than their pen's default
+  /// - Dashed and dotted lines
+  /// - Chisel nibs (the calligraphy pen and the flat highlighter)
   static bool shouldRasterizeStroke(Stroke stroke) {
-    return stroke.toolId == .highlighter || stroke.toolId == .pencil;
+    return stroke.toolId == .highlighter ||
+        stroke.toolId == .pencil ||
+        stroke.alpha != defaultAlphaOf(stroke.toolId) ||
+        stroke.isDashed ||
+        stroke.usesChisel;
   }
 
   static Future<pw.Document> generatePdf(

@@ -130,10 +130,10 @@ void main() {
         expect(pen.options.size, 15);
         expect(stows.lastBallpointPenOptions.value.size, 15);
         expect(Pen.ballpointPen().options.size, 15);
-        editor.onDrawEnd(ScaleEndDetails());
+        editor.inkInput.onDrawEnd(ScaleEndDetails());
         beginStroke();
         expect(Pen.currentStroke!.options.size, 15);
-        editor.onDrawEnd(ScaleEndDetails());
+        editor.inkInput.onDrawEnd(ScaleEndDetails());
         expect(page.strokes.map((stroke) => stroke.options.size), [3, 15]);
 
         final (bytes, _) = editor.coreInfo.saveToBinary(currentPageIndex: 0);

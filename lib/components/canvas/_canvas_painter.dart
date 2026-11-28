@@ -10,7 +10,6 @@ import 'package:saber/components/canvas/_rectangle_stroke.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
-import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/tools/shape_pen.dart';
@@ -78,27 +77,32 @@ class CanvasPainter extends CustomPainter {
   }
 
   void _drawHighlighterStrokes(Canvas canvas, Rect canvasRect) {
-    final layerPaint = Paint()
-      ..blendMode = invert ? BlendMode.lighten : BlendMode.darken
-      ..color = Colors.white.withAlpha(Highlighter.alpha);
     bool needToRestoreCanvasLayer = false;
 
     Color? lastColor;
+    int? lastAlpha;
     for (final stroke in strokes) {
       if (stroke.toolId != .highlighter) continue;
 
       final color = stroke.color.withValues(alpha: 1).withInversion(invert);
+      final alpha = stroke.alpha;
 
-      if (color != lastColor) {
-        // new layer for each color
+      if (color != lastColor || alpha != lastAlpha) {
+        // new layer for each color and opacity
         if (needToRestoreCanvasLayer) canvas.restore();
-        canvas.saveLayer(canvasRect, layerPaint);
+        canvas.saveLayer(
+          canvasRect,
+          Paint()
+            ..blendMode = invert ? BlendMode.lighten : BlendMode.darken
+            ..color = Colors.white.withAlpha(alpha),
+        );
 
         needToRestoreCanvasLayer = true;
         lastColor = color;
+        lastAlpha = alpha;
       }
 
-      canvas.drawPath(_selectPath(stroke), Paint()..color = color);
+      _drawInk(canvas, stroke, _selectPath(stroke), Paint()..color = color);
     }
 
     if (needToRestoreCanvasLayer) canvas.restore();
@@ -114,6 +118,10 @@ class CanvasPainter extends CustomPainter {
       if (currentSelection?.strokes.contains(stroke) ?? false) {
         color = Color.lerp(color, primaryColor, 0.5)!;
       }
+      // built when first used: by the layer of a see-through stroke, or by
+      // drawing a pen stroke (a circle or rectangle at full opacity has none)
+      late final path = _selectPath(stroke);
+      final faded = stroke.alpha < 255 && _beginFade(canvas, stroke, path);
 
       paint.color = color;
       paint.shader = null;
@@ -147,8 +155,9 @@ class CanvasPainter extends CustomPainter {
           shapePaint,
         );
       } else {
-        canvas.drawPath(_selectPath(stroke), paint);
+        _drawInk(canvas, stroke, path, paint);
       }
+      if (faded) canvas.restore();
     }
   }
 
@@ -159,7 +168,12 @@ class CanvasPainter extends CustomPainter {
       return _drawLaserStroke(canvas, currentStroke as LaserStroke);
     }
 
-    final color = currentStroke!.color.withInversion(invert);
+    var color = currentStroke!.color.withInversion(invert);
+    // the highlighter's colour carries the default opacity; the layer below
+    // applies the stroke's opacity once, as it does for a finished stroke
+    if (currentStroke!.toolId == .highlighter) {
+      color = color.withValues(alpha: 1);
+    }
     final paint = Paint();
 
     paint.color = color;
@@ -175,7 +189,50 @@ class CanvasPainter extends CustomPainter {
     }
 
     // Current stroke always uses high quality
-    canvas.drawPath(currentStroke!.highQualityPath, paint);
+    final path = currentStroke!.highQualityPath;
+    final faded = _beginFade(canvas, currentStroke!, path);
+    _drawInk(canvas, currentStroke!, path, paint);
+    if (faded) canvas.restore();
+  }
+
+  /// Opens a layer that shows the stroke at its own opacity when that is not
+  /// full, so that parts of the stroke that overlap (the chisel outline and
+  /// its centre line, the pencil's texture) do not add up. Returns whether a
+  /// layer was opened; the caller restores it.
+  bool _beginFade(Canvas canvas, Stroke stroke, Path path) {
+    final alpha = stroke.alpha;
+    if (alpha >= 255) return false;
+    canvas.saveLayer(
+      path.getBounds().inflate(stroke.options.size * 2),
+      Paint()..color = Colors.white.withAlpha(alpha),
+    );
+    return true;
+  }
+
+  /// Draws the [path] of [stroke] with [paint]. A dashed stroke is stroked
+  /// with round caps at its full width (the path holds the dashes along the
+  /// centre line); any other is filled. A chisel stroke also gets its centre
+  /// line stroked at its minimum thickness, so that a nib lying along the
+  /// travel, which fills nothing, still shows a line.
+  void _drawInk(Canvas canvas, Stroke stroke, Path path, Paint paint) {
+    Paint stroked(double width) => Paint()
+      ..color = paint.color
+      ..shader = paint.shader
+      ..maskFilter = paint.maskFilter
+      ..style = .stroke
+      ..strokeWidth = width
+      ..strokeCap = .round
+      ..strokeJoin = .round;
+
+    if (stroke.isDashed) {
+      canvas.drawPath(path, stroked(stroke.options.size));
+      return;
+    }
+    canvas.drawPath(path, paint);
+    final spine = stroke.chiselSpine;
+    if (spine != null) {
+      canvas.drawPath(spine, stroked(stroke.chiselMinThickness));
+    }
   }
 
   void _drawLaserStroke(Canvas canvas, LaserStroke stroke) {
@@ -295,7 +352,8 @@ class CanvasPainter extends CustomPainter {
 
   static const _zoomThreshold = 0.9;
   Path _selectPath(Stroke stroke) => switch (currentScale) {
-    < _zoomThreshold => stroke.lowQualityPath,
+    // the low quality path of a dashed stroke is solid, for selecting
+    < _zoomThreshold when !stroke.isDashed => stroke.lowQualityPath,
     _ => stroke.highQualityPath,
   };
 }

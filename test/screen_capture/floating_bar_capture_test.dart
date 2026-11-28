@@ -16,7 +16,8 @@ import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/pen.dart';
 
-import '../ink_ui/pen_panel_harness.dart' show resetPenPanelState;
+import '../ink_ui/pen_panel_harness.dart'
+    show ShownToolHost, resetPenPanelState;
 import '../utils/screen_capture.dart';
 
 /// Writes screenshots of the floating bar to build/screen-review/t12/ with
@@ -169,9 +170,7 @@ Future<GlobalKey> _pumpBar(
                 const Positioned.fill(child: CustomPaint(painter: _Paper())),
                 Positioned.fill(
                   child: KitFloatingBar(
-                    currentTool: tool,
-                    setTool: (_) {},
-                    setColor: (_) {},
+                    host: ShownToolHost(tool),
                     actions: acts,
                     penPanelCollapsed: collapsed,
                   ),

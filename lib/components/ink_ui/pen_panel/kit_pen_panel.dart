@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:path_drawing/path_drawing.dart';
 import 'package:perfect_freehand/perfect_freehand.dart' show StrokeOptions;
-import 'package:saber/components/ink_ui/ink_engine_support.dart';
 import 'package:saber/components/ink_ui/pen_panel/kit_pen_box.dart';
 import 'package:saber/components/ink_ui/pen_panel/kit_pen_color_row.dart';
 import 'package:saber/components/ink_ui/pen_panel/pen_column.dart';
-import 'package:saber/components/ink_ui/pen_panel/pen_kinds.dart';
 import 'package:saber/components/ink_ui/pen_panel/pen_panel_common.dart';
 import 'package:saber/components/ink_ui/pen_panel/size_level.dart';
 import 'package:saber/components/kit/kit_controls.dart';
@@ -13,13 +12,17 @@ import 'package:saber/components/kit/kit_pen_art.dart';
 import 'package:saber/components/kit/kit_text.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
+import 'package:saber/data/ink/ink_engine.dart';
+import 'package:saber/data/ink/ink_tool_state.dart';
+import 'package:saber/data/ink/pen_kind.dart';
+import 'package:saber/data/ink/pen_prefs.dart';
+import 'package:saber/data/ink/stroke_style.dart';
 import 'package:saber/data/prefs.dart';
-import 'package:saber/data/tools/_tool.dart';
+import 'package:saber/data/settings/app_settings.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pen_box.dart';
 import 'package:saber/data/tools/shape_pen.dart';
-import 'package:sbn/tool_id.dart';
 import 'package:stow_plain/stow_plain.dart';
 
 /// Which pens a [KitPenPanel] offers: the pens, or the highlighters.
@@ -29,12 +32,13 @@ enum KitPenPanelKind { pens, highlighters }
 /// box, star, collapse, close), the pens with the chosen one raised and its
 /// sample stroke on its tip, then the size, the straight-line switch and the
 /// colours, and last the pens' stroke stabiliser or, on the highlighter
-/// panel, the horizontal/vertical switch under the straight line. Stage 1
-/// offers only the pens the engine has and hides the opacity row, the line
-/// types and the highlighter's text-height row.
+/// panel, the horizontal/vertical switch under the straight line. The
+/// highlighters and the pencil have an opacity row under the size, the fine
+/// pen its four line styles; the highlighter's text-height row stays hidden.
 ///
-/// The tool in hand is always read with [currentTool]. The panel draws itself
-/// again after each change it asks for, so the host never has to rebuild it.
+/// The tool in hand is always read from [host]'s tool state. The panel draws
+/// itself again after each change it asks of [host], so the host never has
+/// to rebuild it.
 /// Dragging the size or the stabiliser only redraws the slider (and the
 /// sample); the value is kept once, when the drag ends. When the screen is
 /// too short (split screen) the rows under the pens scroll.
@@ -46,9 +50,7 @@ class KitPenPanel extends StatefulWidget {
   const new({
     super.key,
     required this.kind,
-    required this.currentTool,
-    required this.setTool,
-    required this.setColor,
+    required this.host,
     required this.onClose,
     required this.collapsed,
     this.actions,
@@ -57,9 +59,10 @@ class KitPenPanel extends StatefulWidget {
   });
 
   final KitPenPanelKind kind;
-  final ValueGetter<Tool> currentTool;
-  final ValueChanged<Tool> setTool;
-  final ValueChanged<Color> setColor;
+
+  /// The document: the tool in hand, and where a pen, colour, size or
+  /// stabilisation chosen here goes.
+  final InkToolHost host;
   final VoidCallback onClose;
 
   /// Whether only the head and the pens show. The host keeps it, so a panel
@@ -88,14 +91,17 @@ class _KitPenPanelState extends State<KitPenPanel> {
   /// The stabilisation shown, in percent.
   late final ValueNotifier<int> _stab;
 
+  /// The opacity shown, in percent of the pen's own ([defaultAlphaOf]).
+  late final ValueNotifier<int> _opacity;
+
   /// The pen [_level] and [_stab] were read from.
   Pen? _levelPen;
 
   /// The setting that pen keeps its options in, listened to so a
   /// stabilisation set elsewhere shows here.
-  PlainStow<StrokeOptions>? _options;
+  PlainStow<StrokeOptions?>? _options;
 
-  Pen? get _pen => switch (widget.currentTool()) {
+  Pen? get _pen => switch (widget.host.toolState.tool) {
     final Pen pen => pen,
     _ => null,
   };
@@ -109,10 +115,10 @@ class _KitPenPanelState extends State<KitPenPanel> {
 
   bool get _penSettings => widget.engine.penSettings;
 
-  /// The panel's straight-line setting: one for all pens, one for the
-  /// highlighter.
-  PlainStow<bool> get _straight =>
-      _highlighters ? stows.highlighterStraightLine : stows.autoStraightenLines;
+  /// The straight line and the 수평/수직 of the pen in hand (each pen has
+  /// its own).
+  late final PenSettingInHand _straight;
+  late final PenSettingInHand _axis;
 
   static int _levelOf(Pen pen) =>
       sizeToLevel(pen.options.size, min: pen.sizeMin, max: pen.sizeMax);
@@ -124,25 +130,20 @@ class _KitPenPanelState extends State<KitPenPanel> {
   bool _stabilised(Pen pen) =>
       _penSettings && !_highlighters && pen is! Highlighter && pen is! ShapePen;
 
-  /// The setting [pen] keeps its options in ([Pen] writes them there), for
+  /// Follows the setting [pen] keeps its options in ([Pen.optionsStow]), for
   /// the pens the stabiliser shows for.
-  static PlainStow<StrokeOptions>? _optionsOf(Pen? pen) =>
-      switch (pen?.toolId) {
-        ToolId.fountainPen => stows.lastFountainPenOptions,
-        ToolId.ballpointPen => stows.lastBallpointPenOptions,
-        ToolId.pencil => stows.lastPencilOptions,
-        _ => null,
-      };
-
   void _listenToOptions(Pen? pen) {
-    final next = _optionsOf(pen);
+    final next = pen != null && _stabilised(pen) ? pen.optionsStow : null;
     if (identical(next, _options)) return;
     _options?.removeListener(_optionsChanged);
     _options = next?..addListener(_optionsChanged);
   }
 
-  void _optionsChanged() =>
-      _stab.value = (_options!.value.streamline * 100).round();
+  void _optionsChanged() {
+    if (_options!.value case final options?) {
+      _stab.value = (options.streamline * 100).round();
+    }
+  }
 
   @override
   void initState() {
@@ -151,7 +152,21 @@ class _KitPenPanelState extends State<KitPenPanel> {
     _level = ValueNotifier(_levelPen == null ? 1 : _levelOf(_levelPen!))
       ..addListener(() => widget.onSizeLevel?.call(_level.value));
     _stab = ValueNotifier(_levelPen == null ? 0 : _stabOf(_levelPen!));
+    _opacity = ValueNotifier(_opacityNow);
     _listenToOptions(_levelPen);
+    // made now, while the host's tool state is there: the host may be gone
+    // before this panel is
+    _straight = PenSettingInHand.straightLine(widget.host.toolState);
+    _axis = PenSettingInHand.axisLock(widget.host.toolState);
+  }
+
+  /// The opacity of the pen in hand in percent of its own: the highlighter's
+  /// 100 of 255 is 100, so the default sits on the slider's end.
+  int get _opacityNow {
+    final state = widget.host.toolState;
+    return (state.alpha * 100 / defaultAlphaOf(state.tool.toolId))
+        .round()
+        .clamp(KitTokens.opacityMin, KitTokens.opacityMax);
   }
 
   @override
@@ -159,6 +174,9 @@ class _KitPenPanelState extends State<KitPenPanel> {
     _options?.removeListener(_optionsChanged);
     _level.dispose();
     _stab.dispose();
+    _opacity.dispose();
+    _straight.dispose();
+    _axis.dispose();
     super.dispose();
   }
 
@@ -173,19 +191,20 @@ class _KitPenPanelState extends State<KitPenPanel> {
       if (pen != null) {
         _level.value = _levelOf(pen);
         _stab.value = _stabOf(pen);
+        _opacity.value = _opacityNow;
       }
     }
     setState(() {});
   }
 
   void _choose(KitPenKind kind) {
-    if (penKindOf(widget.currentTool()) == kind) return;
-    widget.setTool(widget.engine.toolFor(kind));
+    if (penKindOf(widget.host.toolState.tool) == kind) return;
+    widget.host.selectTool(widget.engine.toolFor(kind, widget.host.toolState));
     _refresh();
   }
 
   void _setColor(Color colour) {
-    widget.setColor(colour);
+    widget.host.setColor(colour);
     _refresh();
   }
 
@@ -194,7 +213,7 @@ class _KitPenPanelState extends State<KitPenPanel> {
     // The same number keeps the size as it is: a size kept before may sit
     // between two numbers, and a tap on the thumb should not move it.
     if (pen == null || level == _levelOf(pen)) return;
-    pen.setSize(levelToSize(level, min: pen.sizeMin, max: pen.sizeMax));
+    widget.host.setSize(levelToSize(level, min: pen.sizeMin, max: pen.sizeMax));
     _refresh();
   }
 
@@ -203,7 +222,20 @@ class _KitPenPanelState extends State<KitPenPanel> {
     // As with the size, the same number leaves the value alone: one kept
     // before may lie between the tens.
     if (pen == null || percent == _stabOf(pen)) return;
-    pen.setStreamline(percent / 100);
+    widget.host.setStabiliser(percent / 100);
+    _refresh();
+  }
+
+  void _keepOpacity(int percent) {
+    final pen = _pen;
+    if (pen == null || percent == _opacityNow) return;
+    widget.host.setAlpha((defaultAlphaOf(pen.toolId) * percent / 100).round());
+    _refresh();
+  }
+
+  void _setLine(KitPenDash style) {
+    if (style == widget.host.toolState.lineStyle) return;
+    widget.host.setLineStyle(style);
     _refresh();
   }
 
@@ -211,9 +243,9 @@ class _KitPenPanelState extends State<KitPenPanel> {
     await showKitPenBox(
       context,
       anchor: _boxAnchor,
-      setTool: widget.setTool,
-      setColor: widget.setColor,
-      currentTool: widget.currentTool,
+      setTool: widget.host.selectTool,
+      setColor: widget.host.setColor,
+      currentTool: () => widget.host.toolState.tool,
     );
     _refresh();
   }
@@ -344,9 +376,14 @@ class _KitPenPanelState extends State<KitPenPanel> {
           child: Padding(
             padding: EdgeInsets.only(bottom: line),
             child: ClipRect(
-              child: ValueListenableBuilder(
-                valueListenable: _straight,
-                builder: (context, straight, _) => Row(
+              child: ListenableBuilder(
+                // each pen's ruler shows its own straight line
+                listenable: Listenable.merge([
+                  stows.straightLineByPen,
+                  stows.highlighterStraightLine,
+                  _opacity,
+                ]),
+                builder: (context, _) => Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -359,12 +396,21 @@ class _KitPenPanelState extends State<KitPenPanel> {
                         ink: visibleInk(
                           k == chosen
                               ? pen!.color
-                              : (widget.engine.toolFor(k) as Pen).color,
+                              : (widget.engine.toolFor(
+                                  k,
+                                  widget.host.toolState,
+                                ) as Pen).color,
                           invert,
                         ),
-                        ruler: _penSettings && straight,
+                        ruler: _penSettings && straightLineOf(k),
                         level: _level,
                         onTap: () => _choose(k),
+                        alpha: k == chosen && pen!.opacityStow != null
+                            ? _opacity.value / 100
+                            : 1,
+                        dash: k == chosen
+                            ? widget.host.toolState.lineStyle
+                            : KitPenDash.solid,
                       ),
                     ],
                   ],
@@ -392,17 +438,20 @@ class _KitPenPanelState extends State<KitPenPanel> {
               key: const ValueKey('pen-panel-size'),
               height: KitTokens.penPanelRowHeight,
               child: Center(
-                child: ValueListenableBuilder(
-                  valueListenable: _level,
-                  builder: (context, level, _) => KitSlider(
-                    value: level,
+                // the dots carry the opacity, so they follow its slider too
+                child: ListenableBuilder(
+                  listenable: Listenable.merge([_level, _opacity]),
+                  builder: (context, _) => KitSlider(
+                    value: _level.value,
                     onChanged: (v) => _level.value = v,
                     onChangeEnd: _keepSize,
                     // the preview's `size` slider names (`SLD.size`)
                     label: '굵기',
                     decreaseLabel: '가늘게',
                     increaseLabel: '굵게',
-                    markColor: ink,
+                    markColor: pen.opacityStow == null
+                        ? ink
+                        : ink.withValues(alpha: _opacity.value / 100),
                     markDiameter: kind == null
                         ? null
                         : (v) => _markDiameter(kind, v),
@@ -410,7 +459,12 @@ class _KitPenPanelState extends State<KitPenPanel> {
                 ),
               ),
             ),
-            if (_penSettings)
+            if (pen.opacityStow != null) _opacityRow(ink),
+            if (pen.lineStyleStow != null) _lineStyles(),
+            // an ink pen's own straight line and 수평/수직 (the controller's
+            // ruling: the same row for every ink pen); the shape pen has
+            // neither
+            if (_penSettings && kind != null)
               ValueListenableBuilder(
                 valueListenable: _straight,
                 builder: (context, on, _) => KitToggleRow(
@@ -420,7 +474,7 @@ class _KitPenPanelState extends State<KitPenPanel> {
                   onChanged: (v) => _straight.value = v,
                 ),
               ),
-            if (_penSettings && _highlighters) _axisLock(),
+            if (_penSettings && kind != null) _axisLock(),
             const SizedBox(height: KitTokens.penPanelColorsTop),
             KitPenColorRow(
               key: const ValueKey('pen-panel-colors'),
@@ -456,26 +510,26 @@ class _KitPenPanelState extends State<KitPenPanel> {
   static const _dotsBandIntoStabiliser =
       _dotsBandBelow - KitTokens.penPanelStabTop;
 
-  /// 「수평/수직 그리기」 (preview `axisRow`): the highlighter's lock to the
-  /// nearer of horizontal and vertical works only with its straight line, so
-  /// while that is off the row is dimmed and its note says to turn it on. It
-  /// listens to both settings. Both notes are one line (user change 1), so
-  /// the panel keeps its height when the straight line is turned on.
+  /// 「수평/수직 그리기」 (preview `axisRow`): an ink pen's lock to the nearer
+  /// of horizontal and vertical works only with its straight line, so
+  /// while that is off the row is dimmed and its note says to turn it on
+  /// (the settings table's rule, given this panel's pen in hand). It
+  /// listens to both settings of the pen in hand. Both notes are one line
+  /// (user change 1), so the panel keeps its height when the straight line
+  /// is turned on.
   Widget _axisLock() => ListenableBuilder(
-    listenable: Listenable.merge([
-      stows.highlighterStraightLine,
-      stows.highlighterAxisLock,
-    ]),
+    listenable: Listenable.merge([_straight, _axis]),
     builder: (context, _) {
-      final straight = stows.highlighterStraightLine.value;
+      final blocked = settingsRegistry.unusableReason(
+        axisLockInHandKey,
+        values: {straightLineInHandKey: _straight.value},
+      );
       return KitToggleRow(
         key: const ValueKey('tool-panel-axis-lock'),
         label: '수평/수직 그리기',
-        description: straight
-            ? '선을 수평·수직 중 가까운 쪽으로 맞춥니다.'
-            : '먼저 위의 ‘직선 자동 보정’을 켜세요.',
-        value: stows.highlighterAxisLock.value,
-        onChanged: straight ? (v) => stows.highlighterAxisLock.value = v : null,
+        description: blocked ?? '선을 수평·수직 중 가까운 쪽으로 맞춥니다.',
+        value: _axis.value,
+        onChanged: blocked == null ? (v) => _axis.value = v : null,
       );
     },
   );
@@ -598,10 +652,138 @@ class _KitPenPanelState extends State<KitPenPanel> {
     ),
   );
 
-  /// The dot in the held size pill: the pen's own width at [level].
-  static double _markDiameter(KitPenKind kind, int level) =>
-      ((KitTokens.penMarkWidths[kind.previewId] ?? KitTokens.penMarkMin) *
-              kitPenK(kind, level) *
-              KitTokens.penMarkScale)
-          .clamp(KitTokens.penMarkMin, KitTokens.penMarkMax);
+  /// The dot in the held size pill: the pen's own width at [level] (preview
+  /// `dotW`), the fine pen's after its line style.
+  double _markDiameter(KitPenKind kind, int level) {
+    final line = widget.host.toolState.lineStyle;
+    if (kind == KitPenKind.calligraphy) {
+      return KitTokens.penMarkCalliBase +
+          KitTokens.penMarkCalliPerLevel * level;
+    }
+    if (kind == KitPenKind.finePen && line == KitPenDash.dot) {
+      return [
+        KitTokens.penMarkMin,
+        KitTokens.penMarkDotBase + KitTokens.penMarkDotPerLevel * level,
+        KitTokens.penMarkDotSlope * level - KitTokens.penMarkDotOffset,
+      ].reduce((a, b) => a > b ? a : b);
+    }
+    var width =
+        (KitTokens.penMarkWidths[kind.previewId] ?? KitTokens.penMarkMin) *
+        kitPenK(kind, level) *
+        KitTokens.penMarkScale;
+    if (kind == KitPenKind.finePen && line == KitPenDash.thin) {
+      width *= KitTokens.penMarkThinScale;
+    }
+    return width.clamp(KitTokens.penMarkMin, KitTokens.penMarkMax);
+  }
+
+  /// 「투명도」 (preview `slRow('alpha')`): the opacity in percent of the
+  /// pen's own, on the checkerboard ramp to [ink]. The pen keeps it once,
+  /// when a drag ends.
+  Widget _opacityRow(Color ink) => SizedBox(
+    key: const ValueKey('pen-panel-opacity'),
+    height: KitTokens.penPanelRowHeight,
+    child: Center(
+      child: ValueListenableBuilder(
+        valueListenable: _opacity,
+        builder: (context, percent, _) => KitSlider(
+          value: percent,
+          onChanged: (v) => _opacity.value = v,
+          onChangeEnd: _keepOpacity,
+          min: KitTokens.opacityMin,
+          max: KitTokens.opacityMax,
+          step: KitTokens.opacityStep,
+          // the preview's `alpha` slider names (`SLD.alpha`)
+          label: '투명도',
+          decreaseLabel: '흐리게',
+          increaseLabel: '진하게',
+          opacityInk: ink,
+        ),
+      ),
+    ),
+  );
+
+  /// The fine pen's four lines (preview `.pills`): 실선, 가는 선, 파선, 점선.
+  Widget _lineStyles() {
+    final chosen = widget.host.toolState.lineStyle;
+    const lines = [
+      (KitPenDash.solid, '실선'),
+      (KitPenDash.thin, '가는 선'),
+      (KitPenDash.dash, '파선'),
+      (KitPenDash.dot, '점선'),
+    ];
+    return Padding(
+      key: const ValueKey('pen-panel-line-style'),
+      padding: const EdgeInsets.symmetric(vertical: KitTokens.penLinePadV),
+      child: Row(
+        children: [
+          for (final (i, (style, name)) in lines.indexed) ...[
+            if (i > 0) const SizedBox(width: KitTokens.penLineGap),
+            Expanded(
+              child: Semantics(
+                key: ValueKey('pen-panel-line-${style.name}'),
+                button: true,
+                selected: style == chosen,
+                label: name,
+                onTap: () => _setLine(style),
+                excludeSemantics: true,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _setLine(style),
+                  child: SizedBox(
+                    height: KitTokens.penLinePillHeight,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: style == chosen
+                            ? KitTokens.penLinePillOnBg
+                            : KitTokens.penLinePillBg,
+                        borderRadius: BorderRadius.circular(
+                          KitTokens.penLinePillRadius,
+                        ),
+                      ),
+                      child: Center(
+                        child: CustomPaint(
+                          size: const Size(
+                            KitTokens.penLineDrawingWidth,
+                            KitTokens.penLineDrawingHeight,
+                          ),
+                          painter: _LinePainter(style),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One line style's drawing in its pill (preview `SP_LINES`).
+class _LinePainter extends CustomPainter {
+  const new(this.style);
+
+  final KitPenDash style;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final (d, width, dashes) = KitTokens.penLineDrawings[style.name]!;
+    final path = parseSvgPathData(d);
+    canvas.drawPath(
+      dashes.isEmpty
+          ? path
+          : dashPath(path, dashArray: CircularIntervalList(dashes)),
+      Paint()
+        ..color = KitTokens.penLineInk
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_LinePainter old) => old.style != style;
 }

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/ink_ui/pen_panel/kit_pen_color_row.dart';
 import 'package:saber/components/ink_ui/pen_panel/kit_pen_panel.dart';
-import 'package:saber/components/ink_ui/pen_panel/pen_kinds.dart';
 import 'package:saber/components/ink_ui/pen_panel/pen_panel_common.dart';
 import 'package:saber/components/ink_ui/pen_panel/size_level.dart';
 import 'package:saber/components/kit/kit_controls.dart';
@@ -17,6 +16,7 @@ import 'package:saber/data/actions/app_action.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/ink/pen_kind.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/eraser.dart';
@@ -55,7 +55,7 @@ void main() {
     await tester.pumpAndSettle();
     final panel = tester.widget<KitPenPanel>(find.byType(KitPenPanel));
     expect(panel.kind, KitPenPanelKind.pens);
-    expect(panel.currentTool(), same(host.tool));
+    expect(panel.host, same(host));
     expect(panel.collapsed, same(host.collapsed));
     expect(panel.actions, same(host.actions));
     expect(host.tools, isEmpty);
@@ -92,6 +92,7 @@ void main() {
     final host = await pumpBar(tester, Pen.currentPen);
     for (final (key, kind) in const [
       ('floating-bar-pen-pen', KitPenKind.finePen),
+      ('floating-bar-pen-brush', KitPenKind.brush),
       ('floating-bar-pen-pencil', KitPenKind.pencil),
       ('floating-bar-pen-hlchisel', KitPenKind.highlighterChisel),
       ('floating-bar-pen-fountain', KitPenKind.fountain),
@@ -108,6 +109,37 @@ void main() {
     }
     expect(isOn(tester, 'floating-bar-pen-pen'), isFalse);
     expect(host.colors, isEmpty);
+  });
+
+  testWidgets('the bar offers the brush and one highlighter button', (
+    tester,
+  ) async {
+    Pen.currentPen = Pen.fountainPen();
+    final host = await pumpBar(tester, Pen.currentPen);
+    // the preview's `#toolPill`: fountain, ball, brush, pencil, marker
+    const order = ['fountain', 'pen', 'brush', 'pencil', 'hlchisel'];
+    final xs = [
+      for (final id in order)
+        tester.getTopLeft(barKey('floating-bar-pen-$id')).dx,
+    ];
+    for (var i = 1; i < xs.length; i++) {
+      expect(xs[i - 1], lessThan(xs[i]), reason: order[i]);
+    }
+    expect(barKey('floating-bar-pen-calli'), findsNothing);
+    expect(barKey('floating-bar-pen-hlround'), findsNothing);
+    expect(tooltipOf(tester, 'floating-bar-pen-brush'), KitPenKind.brush.label);
+    // with the round highlighter in hand the highlighter button is on, and
+    // pressed again it opens the highlighter panel on that pen
+    host.pick(host.toolState.penFor(KitPenKind.highlighterRound));
+    await tester.pumpAndSettle();
+    expect(isOn(tester, 'floating-bar-pen-hlchisel'), isTrue);
+    await tester.tap(barKey('floating-bar-pen-hlchisel'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<KitPenPanel>(find.byType(KitPenPanel)).kind,
+      KitPenPanelKind.highlighters,
+    );
+    expect(host.tools, isEmpty);
   });
 
   testWidgets('undo and redo come from the action registry', (tester) async {
@@ -395,16 +427,26 @@ void main() {
     await dragBar(tester, const Offset(30, 140));
     expect(stows.floatingBarPosition.value, 'left');
     expect(tester.widget<KitPill>(toolPill).direction, Axis.vertical);
-    expect(tester.getRect(floatingBar), const Rect.fromLTWH(10, 10, 40, 416));
+    // the four pens' bar (416 x 40) and one pen more, the brush
+    Offset slot() =>
+        tester.getTopLeft(barKey('floating-bar-pen-pencil')) -
+        tester.getTopLeft(barKey('floating-bar-pen-brush'));
+    expect(slot().dy, greaterThan(KitTokens.pillButton));
+    expect(
+      tester.getRect(floatingBar),
+      Rect.fromLTWH(10, 10, 40, 416 + slot().dy),
+    );
     // at 200 it goes back across the top
     await dragBar(tester, const Offset(190, 0));
     expect(stows.floatingBarPosition.value, 'top');
-    expect(tester.getRect(floatingBar), const Rect.fromLTWH(10, 10, 440, 40));
+    final across = Rect.fromLTWH(10, 10, 440 + slot().dx, 40);
+    expect(slot().dx, greaterThan(KitTokens.pillButton));
+    expect(tester.getRect(floatingBar), across);
     // a value it does not know is the top
     stows.floatingBarPosition.value = 'right';
     await tester.pumpAndSettle();
     expect(tester.widget<KitPill>(toolPill).direction, Axis.horizontal);
-    expect(tester.getRect(floatingBar), const Rect.fromLTWH(10, 10, 440, 40));
+    expect(tester.getRect(floatingBar), across);
     // holding the undo button did not press it
     expect(host.undoRuns, 0);
   });

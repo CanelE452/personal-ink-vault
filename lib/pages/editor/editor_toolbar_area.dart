@@ -61,9 +61,7 @@ extension _EditorToolbarArea on EditorState {
             stows.editorGestureMode,
           ]),
           builder: (context, _) => KitFloatingBar(
-            currentTool: currentTool,
-            setTool: _setTool,
-            setColor: _setColor,
+            host: _ink,
             actions: _actions,
             penPanelCollapsed: stows.penPanelCollapsed,
             growFrom: _floatingBarFrom,
@@ -177,7 +175,7 @@ extension _EditorToolbarArea on EditorState {
     pages: () => coreInfo.pages,
     pageOnScreen: () => currentPageIndex,
     pageMoves: _transformationController,
-    onChanged: _savingChanged,
+    onChanged: _publishActions,
     onError: (error) {
       if (mounted) showUserErrorSnackBar(context, error);
     },
@@ -403,9 +401,6 @@ class _SelectionBarLayerState extends State<_SelectionBarLayer> {
     return _textBox;
   }
 
-  /// Runs the action [id] of the editor's actions.
-  void _run(String id) => AppActionScope.read(context)?.run(id, context);
-
   @override
   Widget build(BuildContext context) => ValueListenableBuilder(
     valueListenable: _editor.quillFocus,
@@ -438,8 +433,6 @@ class _SelectionBarLayerState extends State<_SelectionBarLayer> {
       }
       if (!_lassoed || owner != Select.currentSelect) return null;
       return KitLassoBar(
-        duplicateSelection: () => _run(AppActionIds.duplicateSelection),
-        deleteSelection: () => _run(AppActionIds.deleteSelection),
         // what the 「색 바꾸기」 action does with the colour it is given,
         // while that action may run
         recolorSelection: (colour) {
@@ -450,7 +443,6 @@ class _SelectionBarLayerState extends State<_SelectionBarLayer> {
           _editor._recolorSelection(colour);
           _editor._setState();
         },
-        linkSelection: () => _run(AppActionIds.linkSelection),
         selectionRect: target,
         selectionColor: Select.currentSelect.getDominantStrokeColor(),
       );

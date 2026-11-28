@@ -6,6 +6,7 @@ import 'package:saber/components/kit/kit_text.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/editor/quick_note.dart';
+import 'package:saber/data/ink/ink_input_policy.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/pen.dart';
 
@@ -63,23 +64,21 @@ class _KitQuickNotePaperState extends State<KitQuickNotePaper> {
 
   bool get _gesture => stows.editorGestureMode.value;
 
-  bool _writes(PointerDeviceKind kind) => switch (kind) {
-    _ when _gesture => false,
-    PointerDeviceKind.touch => stows.editorFingerDrawing.value,
-    PointerDeviceKind.stylus ||
-    PointerDeviceKind.invertedStylus ||
-    PointerDeviceKind.mouse => true,
-    _ => false,
-  };
+  // The page is a scroll view with no two-finger fallback, so the
+  // single-finger lock is not passed here.
+  InkRoute _route(PointerDeviceKind kind) => inkRoute(
+    device: kind,
+    gestureMode: _gesture,
+    fingerDrawing: stows.editorFingerDrawing.value,
+  );
+
+  bool _writes(PointerDeviceKind kind) => _route(kind) == InkRoute.draw;
 
   Set<PointerDeviceKind> get _scrolls => {
-    PointerDeviceKind.trackpad,
-    if ((_gesture || !stows.editorFingerDrawing.value) && !_penDown.value)
-      PointerDeviceKind.touch,
-    if (_gesture) ...{
-      PointerDeviceKind.stylus,
-      PointerDeviceKind.invertedStylus,
-    },
+    for (final kind in PointerDeviceKind.values)
+      if (_route(kind) == InkRoute.pan &&
+          !(kind == PointerDeviceKind.touch && _penDown.value))
+        kind,
   };
 
   Offset _onPage(Offset local) => local / _scale;

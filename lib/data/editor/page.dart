@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' show FragmentShader;
 
+import 'package:collection/collection.dart' show mergeSort;
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:ink_vault_core/ink_vault_core.dart' show newId, validateId;
@@ -13,6 +14,7 @@ import 'package:saber/components/canvas/inner_canvas.dart';
 import 'package:saber/components/canvas/pencil_shader.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/page_link.dart';
+import 'package:saber/data/ink/stroke_style.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:sbn/canvas_background_pattern.dart';
 import 'package:sbn/has_size.dart';
@@ -49,6 +51,12 @@ class EditorPage extends ChangeNotifier implements HasSize {
   FragmentShader? _pencilShader;
 
   final List<Stroke> strokes;
+
+  /// The strokes as opening put them, when it grouped them by tool the old
+  /// way ([sortStrokes]): saving compares the strokes with it
+  /// ([drawnOrderChanged]). Not saved, and not given to a [copyWith].
+  List<Stroke>? openedOrder;
+
   final List<LaserStroke> laserStrokes;
   final List<EditorImage> images;
   final QuillStruct quill;
@@ -72,6 +80,11 @@ class EditorPage extends ChangeNotifier implements HasSize {
       backgroundImage == null &&
       backgroundPattern != null &&
       backgroundPattern != notePattern;
+
+  /// Whether this page holds something only version 21 notes can carry (a
+  /// pen engine tool or stroke value), which makes the note version 21
+  /// ([EditorCoreInfo.versionToWrite]).
+  bool get needsV21 => strokes.any((stroke) => stroke.needsV21);
 
   bool get isEmpty =>
       strokes.isEmpty &&
@@ -226,36 +239,71 @@ class EditorPage extends ChangeNotifier implements HasSize {
     if (hasOwnPattern(notePattern)) 'bp': backgroundPattern!.name,
   };
 
-  /// Inserts a stroke, while keeping the strokes sorted by
-  /// pen type and color.
-  void insertStroke(Stroke newStroke) {
-    final int newStrokeColor = newStroke.color.toARGB32();
-
-    int index = 0;
-    for (final stroke in strokes) {
-      final penTypeComparison = stroke.toolId.id.compareTo(newStroke.toolId.id);
-      final color = stroke.color.toARGB32();
-      if (penTypeComparison > 0) {
-        break; // this stroke's pen type comes after the new stroke's pen type
-      } else if (stroke.toolId == .highlighter &&
-          penTypeComparison == 0 &&
-          color > newStrokeColor) {
-        break; // this highlighter color comes after the new highlighter color
-      }
-      index++;
-    }
-
-    strokes.insert(index, newStroke);
+  /// The order of the strokes: highlighters first, by colour and then
+  /// opacity, the rest in the order they were drawn. The canvas draws the
+  /// highlighters under the rest anyway, so only the order among them and
+  /// among the rest shows.
+  static int layerCompare(Stroke a, Stroke b) {
+    final aHighlights = a.toolId == .highlighter;
+    if (aHighlights != (b.toolId == .highlighter)) return aHighlights ? -1 : 1;
+    if (!aHighlights) return 0;
+    final colour = a.color.toARGB32().compareTo(b.color.toARGB32());
+    if (colour != 0) return colour;
+    return (a.style.alpha ?? defaultAlphaOf(a.toolId)).compareTo(
+      b.style.alpha ?? defaultAlphaOf(b.toolId),
+    );
   }
 
-  /// Sorts the strokes by pen type and color.
-  void sortStrokes() {
-    strokes.sort((Stroke a, Stroke b) {
-      final penTypeComparison = a.toolId.id.compareTo(b.toolId.id);
-      if (penTypeComparison != 0) return penTypeComparison;
-      if (a.toolId != .highlighter) return 0;
-      return a.color.toARGB32().compareTo(b.color.toARGB32());
-    });
+  /// The order build 234 opens every note in: by pen type, highlighters
+  /// among themselves by colour.
+  static int legacyCompare(Stroke a, Stroke b) {
+    final penTypeComparison = a.toolId.id.compareTo(b.toolId.id);
+    if (penTypeComparison != 0) return penTypeComparison;
+    if (a.toolId != .highlighter) return 0;
+    return a.color.toARGB32().compareTo(b.color.toARGB32());
+  }
+
+  /// Inserts a stroke before the first stroke that [compare] puts after
+  /// it: by default a stroke goes on top, a highlighter at the end of its
+  /// colour and opacity.
+  void insertStroke(
+    Stroke newStroke, {
+    Comparator<Stroke> compare = EditorPage.layerCompare,
+  }) {
+    final index = strokes.indexWhere(
+      (stroke) => compare(stroke, newStroke) > 0,
+    );
+    strokes.insert(index == -1 ? strokes.length : index, newStroke);
+  }
+
+  /// Orders the strokes of a page just opened. In [drawnOrder] (a version
+  /// 21 note, or one marked `so`) they keep the file's order but the
+  /// highlighters' ([layerCompare]). Otherwise they are grouped by tool as
+  /// build 234 does, with the same [List.sort], and [openedOrder] keeps
+  /// the result.
+  void sortStrokes({required bool drawnOrder}) {
+    if (drawnOrder) {
+      mergeSort(strokes, compare: layerCompare);
+    } else {
+      strokes.sort(legacyCompare);
+      openedOrder = List.of(strokes);
+    }
+  }
+
+  /// Whether opening this page the old way would not give its strokes in
+  /// the order they have now, so the note must be saved marked `so`. A
+  /// page opened the old way compares with [openedOrder]: [List.sort] does
+  /// not keep equal strokes in order from 34 on, so sorting again could
+  /// move strokes of an untouched page. Any other page is opened next
+  /// time from the order it is saved in, so a sorted copy of it is what
+  /// that opening would give.
+  bool get drawnOrderChanged {
+    final old = openedOrder ?? (List.of(strokes)..sort(legacyCompare));
+    if (old.length != strokes.length) return true;
+    for (var i = 0; i < old.length; i++) {
+      if (!identical(old[i], strokes[i])) return true;
+    }
+    return false;
   }
 
   static List<Stroke> parseStrokesJson(

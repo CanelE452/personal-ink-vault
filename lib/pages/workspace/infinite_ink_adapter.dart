@@ -24,8 +24,9 @@ final _infiniteTools = [
 /// Task 12 → 18). Those take the engine's [Tool]s, so the pen and the
 /// highlighter are [_InfinitePen]s that read and write the infinite note's
 /// own width and colour, and the eraser is an [Eraser] the floating bar
-/// knows by its type. [engine] tells the bars what the infinite note can do.
-class _InkAdapter {
+/// knows by its type. [engine] tells the bars what the infinite note can do;
+/// [toolState] follows the tool, the colour and the width ([sync]).
+class _InkAdapter implements InkToolHost {
   new(this._canvas);
 
   final InfiniteCanvasState _canvas;
@@ -52,12 +53,41 @@ class _InkAdapter {
     _Tool.lasso || _Tool.pan => const _NoBarTool(),
   };
 
+  @override
+  late final toolState = InkToolState(currentTool);
+
+  /// Tells [toolState] the tool in hand, with its colour and width: the
+  /// canvas calls it when one of them changes.
+  void sync() => toolState.update(tool: currentTool);
+
   /// A pen chosen on the floating bar or in the pen panel; none while a
   /// stroke goes on.
-  void setTool(Tool tool) {
+  @override
+  void selectTool(Tool tool) {
     if (tool is! _InfinitePen || _canvas._interacting) return;
     _canvas._setTool(tool.highlighter ? _Tool.highlighter : _Tool.pen);
   }
+
+  @override
+  void setColor(Color color) => _canvas._setColor(color);
+
+  @override
+  void setSize(double size) {
+    if (currentTool case final Pen pen) pen.setSize(size);
+  }
+
+  /// Nothing: the infinite note has no stabiliser (its engine has no pen
+  /// settings), and its pens keep nothing in the editor's settings.
+  @override
+  void setStabiliser(double value) {}
+
+  /// Nothing: the infinite note's pens have no opacity or line style yet
+  /// (stage 2 Task 27), so its pen panel shows neither row.
+  @override
+  void setAlpha(int alpha) {}
+
+  @override
+  void setLineStyle(KitPenDash style) {}
 
   /// The toolbar button of the tool in hand (the pen button holds the
   /// highlighter too).
@@ -164,6 +194,39 @@ class _InkAdapter {
           () => stows.editorFingerDrawing.value =
               !stows.editorFingerDrawing.value,
         ),
+      ),
+      // the toolbar's mode button and the editor's keys; 확대 잠금 is the
+      // editor's setting (the zoom badge and the gestures read it)
+      AppAction(
+        id: AppActionIds.gestureMode,
+        label: '제스처 모드',
+        icon: KitIconName.palm,
+        run: (_) => stows.editorGestureMode.value =
+            !stows.editorGestureMode.value,
+      ),
+      AppAction(
+        id: AppActionIds.floatingBar,
+        label: '떠 있는 막대',
+        icon: KitIconName.brush,
+        run: (_) =>
+            canvas._floatingBarOpen.value = !canvas._floatingBarOpen.value,
+      ),
+      AppAction(
+        id: AppActionIds.zoomLock,
+        label: '확대 잠금',
+        icon: KitIconName.zoom,
+        run: (_) => stows.lastZoomLock.value = !stows.lastZoomLock.value,
+      ),
+      // writing again, with the eraser and its bar
+      AppAction(
+        id: AppActionIds.eraserBar,
+        label: '지우개',
+        icon: KitIconName.eraser,
+        run: (context) {
+          stows.editorGestureMode.value = false;
+          canvas._actions.run(AppActionIds.toolEraser, context);
+          canvas._floatingBarOpen.value = true;
+        },
       ),
     ];
   }

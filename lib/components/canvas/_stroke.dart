@@ -9,8 +9,11 @@ import 'package:perfect_freehand/perfect_freehand.dart';
 import 'package:saber/components/canvas/_circle_stroke.dart';
 import 'package:saber/components/canvas/_rectangle_stroke.dart';
 import 'package:saber/components/canvas/stroke_stabiliser.dart';
+import 'package:saber/components/kit/kit_pen_art.dart';
 import 'package:saber/data/extensions/list_extensions.dart';
 import 'package:saber/data/extensions/point_extensions.dart';
+import 'package:saber/data/ink/stroke_outline.dart';
+import 'package:saber/data/ink/stroke_style.dart';
 import 'package:sbn/has_size.dart';
 import 'package:sbn/tool_id.dart';
 
@@ -35,21 +38,115 @@ class Stroke {
   bool pressureEnabled;
   final StrokeOptions options;
 
+  /// Opacity, line style and nib of this stroke. The default is what every
+  /// stroke of an older note looks like.
+  StrokeStyle style;
+
+  /// Whether a note holding this stroke must be written as version 21: a pen
+  /// engine tool, or a style value an older app would drop.
+  bool get needsV21 =>
+      toolId == .calligraphyPen ||
+      toolId == .brush ||
+      style.needsV21(tool: toolId);
+
+  /// The opacity 0 to 255 this stroke is drawn with.
+  int get alpha => style.alpha ?? defaultAlphaOf(toolId);
+
+  /// Whether the pen is a flat chisel: the calligraphy pen, or a stroke whose
+  /// style says so (the flat highlighter).
+  bool get usesChisel => toolId == .calligraphyPen || style.nib == .chisel;
+
+  /// Whether the line is cut into dashes or dots.
+  bool get isDashed =>
+      style.lineStyle == KitPenDash.dash || style.lineStyle == KitPenDash.dot;
+
+  /// The angle of the chisel in degrees (0 is right, 90 is up).
+  ///
+  /// The flat highlighter's nib (60) is steeper than the calligraphy pen's
+  /// (45), so a line written left to right is nearly as thick as the nib is
+  /// long.
+  double get nibAngle =>
+      style.nibAngle ?? (toolId == .highlighter ? 60.0 : 45.0);
+
+  /// A chisel stroke is never thinner than this fraction of its width, nor
+  /// than one pixel.
+  double get chiselMinThickness => max(1.0, options.size * 0.2);
+
+  /// The centre line of a chisel stroke, to be stroked at
+  /// [chiselMinThickness] under the filled outline: a nib that lies exactly
+  /// along the travel makes a zero-area outline, and this keeps the line.
+  /// Null for any other stroke.
+  Path? get chiselSpine {
+    if (!usesChisel || points.isEmpty) return null;
+    return _chiselSpine ??= Path()..addPolygon(points.toList(), false);
+  }
+
+  Path? _chiselSpine;
+
+  /// The outline of a stroke that is not drawn as one filled perfect_freehand
+  /// polygon: chisel or dashed. Null for every other stroke.
+  InkOutline? _outlineOf(StrokeQuality quality) {
+    if (!usesChisel && !isDashed) return null;
+    return switch (quality) {
+      .low => _lowOutline ??= _buildOutline(quality),
+      .high => _highOutline ??= _buildOutline(quality),
+    };
+  }
+
+  InkOutline? _lowOutline, _highOutline;
+
+  InkOutline _buildOutline(StrokeQuality quality) {
+    final used = skipPoints(points, quality.N);
+    final centre = <Offset>[for (final p in used) p];
+    if (usesChisel) {
+      // pressure is 0.4 (light) to 1 (full) of the nib length
+      final pressure = pressureEnabled
+          ? [for (final p in used) 0.4 + 0.6 * (p.pressure ?? 1.0)]
+          : null;
+      return chiselOutline(
+        centre,
+        width: options.size,
+        angleDegrees: nibAngle,
+        minThickness: chiselMinThickness,
+        pressure: pressure,
+      );
+    }
+    return dashedOutline(
+      centre,
+      width: options.size,
+      style: style.lineStyle,
+    );
+  }
+
   List<Offset>? _lowQualityPolygon, _highQualityPolygon;
   List<Offset> get lowQualityPolygon =>
-      _lowQualityPolygon ??= getPolygon(quality: .low);
+      _lowQualityPolygon ??=
+          _outlineOf(.low)?.hitPolygon ?? getPolygon(quality: .low);
   List<Offset> get highQualityPolygon =>
-      _highQualityPolygon ??= getPolygon(quality: .high);
+      _highQualityPolygon ??=
+          _outlineOf(.high)?.hitPolygon ?? getPolygon(quality: .high);
 
   Path? _lowQualityPath, _highQualityPath;
   Path get lowQualityPath =>
-      _lowQualityPath ??= getPath(lowQualityPolygon, smooth: false);
-  Path get highQualityPath => _highQualityPath ??= getPath(highQualityPolygon);
+      _lowQualityPath ??= (isDashed && !usesChisel)
+          // the dashes are pieces of the centre line; selecting and bounds
+          // need the whole stroke, so this path is the solid hit outline
+          ? (Path()..addPolygon(lowQualityPolygon, true))
+          : _outlineOf(.low)?.path ??
+                getPath(lowQualityPolygon, smooth: false);
+  Path get highQualityPath =>
+      _highQualityPath ??=
+          _outlineOf(.high)?.path ?? getPath(highQualityPolygon);
 
   void shift(Offset offset) {
     if (offset == .zero) return;
 
     points.shift(offset);
+    if (usesChisel || isDashed) {
+      // built from the points, so build again from the moved points
+      markPolygonNeedsUpdating();
+      return;
+    }
     _lowQualityPolygon?.shift(offset);
     _highQualityPolygon?.shift(offset);
     _lowQualityPath = _lowQualityPath?.shift(offset);
@@ -61,6 +158,9 @@ class Stroke {
     _highQualityPolygon = null;
     _lowQualityPath = null;
     _highQualityPath = null;
+    _lowOutline = null;
+    _highOutline = null;
+    _chiselSpine = null;
   }
 
   new({
@@ -70,6 +170,7 @@ class Stroke {
     required this.pageIndex,
     required this.page,
     required this.toolId,
+    this.style = const StrokeStyle(),
   });
 
   factory fromJson(
@@ -149,11 +250,12 @@ class Stroke {
       pageIndex: pageIndex,
       page: page,
       toolId: toolId,
+      style: StrokeStyle.fromJson(json),
     )..points.addAll(points);
   }
   Map<String, dynamic> toJson() {
     // these json keys should not be the same as the ones in [StrokeOptions.toJson]
-    return {
+    final json = <String, dynamic>{
       'shape': null,
       'p': points
           .where((point) => point.isFinite)
@@ -164,6 +266,8 @@ class Stroke {
       'pe': pressureEnabled,
       'c': color.toARGB32(),
     }..addAll(options.toJson());
+    style.writeTo(json, tool: toolId);
+    return json;
   }
 
   void addPoint(Offset point, [double? pressure]) {
@@ -241,16 +345,27 @@ class Stroke {
     final rememberSimulatedPressure =
         quality == .high && options.simulatePressure && options.isComplete;
 
+    var drawn = switch (quality) {
+      .low => options.copyWith(
+        simulatePressure: false,
+        smoothing: 0,
+        streamline: 0,
+      ),
+      .high => options,
+    };
+    if (toolId == .brush) {
+      // Intended for the low quality polygon too: it is the brush's own
+      // shape, so selecting and erasing match what is drawn. With pressure
+      // off, simulatePressure is already false, so there is no speed taper.
+      drawn = brushOptions(drawn, hasPressure: !options.simulatePressure);
+    }
+    if (style.lineStyle == KitPenDash.thin) {
+      drawn = drawn.copyWith(size: drawn.size * 0.5);
+    }
+
     final polygon = getStroke(
       skipPoints(points, quality.N),
-      options: switch (quality) {
-        .low => options.copyWith(
-          simulatePressure: false,
-          smoothing: 0,
-          streamline: 0,
-        ),
-        .high => options,
-      },
+      options: drawn,
       rememberSimulatedPressure: rememberSimulatedPressure,
     );
 
@@ -449,6 +564,7 @@ class Stroke {
     pageIndex: pageIndex,
     page: page,
     toolId: toolId,
+    style: style,
   )..points.addAll(points);
 }
 

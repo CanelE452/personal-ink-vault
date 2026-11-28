@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
@@ -32,6 +34,47 @@ final _onePixelPng = Uint8List.fromList(const [
   0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, //
   0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82, //
 ]);
+
+/// A picture the picker hands over.
+final class _PickedPhoto extends PlatformFile {
+  @override
+  String get name => 'photo.png';
+
+  @override
+  String? get path => null;
+
+  @override
+  Future<Uint8List> readAsBytes() async => _onePixelPng;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw StateError(
+    'Unexpected picked file access: ${invocation.memberName}',
+  );
+}
+
+/// The picture picker, which answers only when [answer] completes.
+final class _HeldPicker extends FilePickerPlatform {
+  final answer = Completer<List<PlatformFile>>();
+  var asked = false;
+
+  @override
+  Future<List<PlatformFile>> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) {
+    asked = true;
+    return answer.future;
+  }
+}
 
 /// The editor's actions (editor_actions.dart): the old toolbar and the
 /// actions call the same code.
@@ -317,5 +360,29 @@ void main() {
     await tester.pump();
     expect(page.strokes, hasLength(2), reason: 'one undo brings both back');
     editor.cancelAutosaveAndMarkSaved();
+  });
+
+  // The tool state goes with the editor: a picture picked after the editor
+  // closed takes no lasso up there.
+  testWidgets('a picture picked after the editor closed changes nothing', (
+    tester,
+  ) async {
+    final picker = _HeldPicker();
+    final previous = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = previous);
+    final editor = await mountEditor(tester);
+    expect(
+      actionsOf(tester)
+          .run(AppActionIds.pickPhoto, tester.element(find.byType(Editor))),
+      isTrue,
+    );
+    await tester.pump();
+    expect(picker.asked, isTrue);
+    editor.cancelAutosaveAndMarkSaved();
+    await tester.pumpWidget(const SizedBox());
+    picker.answer.complete([_PickedPhoto()]);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
   });
 }

@@ -12,9 +12,11 @@ import 'package:saber/components/canvas/inner_canvas.dart';
 import 'package:saber/components/ink_ui/selection_bars/kit_lasso_bar.dart';
 import 'package:saber/components/ink_ui/selection_bars/kit_text_bar.dart';
 import 'package:saber/components/ink_ui/selection_bars/selection_bar_anchor.dart';
+import 'package:saber/components/kit/kit_icon.dart';
 import 'package:saber/components/kit/kit_pill.dart';
 import 'package:saber/components/kit/kit_selection_bar.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
+import 'package:saber/data/actions/app_action.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/data/editor/saving_state.dart';
@@ -503,28 +505,119 @@ void main() {
     }
   });
 
-  testWidgets('lasso bar has duplicate, delete, colour and link', (
-    tester,
-  ) async {
-    screen(tester);
-    final pressed = <String>[];
-    final colours = <Color>[];
+  /// The lasso bar under a registry that publishes [ids] (stand-ins that note
+  /// the id they ran into [ran]).
+  Future<void> mountLassoBar(
+    WidgetTester tester,
+    List<String> ran, {
+    List<Color>? colours,
+    List<String> ids = const [
+      AppActionIds.duplicateSelection,
+      AppActionIds.deleteSelection,
+      AppActionIds.linkSelection,
+    ],
+  }) async {
+    final actions = AppActionRegistry()
+      ..publish(Object(), [
+        for (final id in ids)
+          AppAction(
+            id: id,
+            label: id,
+            icon: KitIconName.dup,
+            run: (_) => ran.add(id),
+          ),
+      ]);
+    addTearDown(actions.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Material(
-          child: SizedBox.expand(
-            child: KitLassoBar(
-              duplicateSelection: () => pressed.add('duplicate'),
-              deleteSelection: () => pressed.add('delete'),
-              recolorSelection: colours.add,
-              linkSelection: () => pressed.add('link'),
-              selectionRect: const Rect.fromLTWH(200, 200, 300, 120),
+          child: AppActionScope(
+            actions: actions,
+            child: SizedBox.expand(
+              child: KitLassoBar(
+                recolorSelection: (colours ?? <Color>[]).add,
+                selectionRect: const Rect.fromLTWH(200, 200, 300, 120),
+              ),
             ),
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  testWidgets('the lasso bar runs duplicateSelection and deleteSelection by id', (
+    tester,
+  ) async {
+    screen(tester);
+    final ran = <String>[];
+    await mountLassoBar(tester, ran);
+    await tester.tap(find.byKey(const ValueKey('lasso-bar-duplicate')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('lasso-bar-delete')));
+    await tester.pumpAndSettle();
+    expect(ran, [
+      AppActionIds.duplicateSelection,
+      AppActionIds.deleteSelection,
+    ]);
+    // the ⋯ rows run them by id too
+    await tester.tap(find.byKey(const ValueKey('lasso-bar-more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('lasso-menu-duplicate')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('lasso-bar-more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('lasso-menu-delete')));
+    await tester.pumpAndSettle();
+    expect(ran.skip(2), [
+      AppActionIds.duplicateSelection,
+      AppActionIds.deleteSelection,
+    ]);
+  });
+
+  testWidgets('the lasso bar hides a button whose action is not published', (
+    tester,
+  ) async {
+    screen(tester);
+    final ran = <String>[];
+    await mountLassoBar(
+      tester,
+      ran,
+      ids: const [AppActionIds.duplicateSelection],
+    );
+    expect(find.byKey(const ValueKey('lasso-bar-duplicate')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lasso-bar-delete')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('lasso-bar-more')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('lasso-menu-duplicate')), findsOneWidget);
+    expect(find.byKey(const ValueKey('selection-link')), findsNothing);
+    expect(find.byKey(const ValueKey('lasso-menu-delete')), findsNothing);
+  });
+
+  testWidgets('the lasso bar leaves out a group with no published action', (
+    tester,
+  ) async {
+    screen(tester);
+    final ran = <String>[];
+    const divider = ValueKey('kit-selection-bar-divider');
+    await mountLassoBar(tester, ran);
+    expect(find.byKey(divider), findsNWidgets(2), reason: 'three groups');
+    // neither duplicate nor delete: no group, so no line for it either
+    await mountLassoBar(tester, ran, ids: const []);
+    expect(find.byKey(const ValueKey('lasso-bar-duplicate')), findsNothing);
+    expect(find.byKey(const ValueKey('lasso-bar-delete')), findsNothing);
+    expect(find.byKey(divider), findsOneWidget, reason: 'colour | ⋯ only');
+    expect(find.byKey(const ValueKey('lasso-bar-colour')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lasso-bar-more')), findsOneWidget);
+  });
+
+  testWidgets('lasso bar has duplicate, delete, colour and link', (
+    tester,
+  ) async {
+    screen(tester);
+    final pressed = <String>[];
+    final colours = <Color>[];
+    await mountLassoBar(tester, pressed, colours: colours);
 
     final bar = tester.getRect(find.byType(KitSelectionBar));
     expect(bar.top, 200 + 120 + 12, reason: 'under the selection');
@@ -552,7 +645,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(delete);
     await tester.pumpAndSettle();
-    expect(pressed, ['duplicate', 'delete']);
+    expect(pressed, [
+      AppActionIds.duplicateSelection,
+      AppActionIds.deleteSelection,
+    ]);
 
     await tester.tap(find.byKey(const ValueKey('lasso-bar-more')));
     await tester.pumpAndSettle();
@@ -564,7 +660,11 @@ void main() {
     }
     await tester.tap(find.byKey(const ValueKey('selection-link')));
     await tester.pumpAndSettle();
-    expect(pressed, ['duplicate', 'delete', 'link']);
+    expect(pressed, [
+      AppActionIds.duplicateSelection,
+      AppActionIds.deleteSelection,
+      AppActionIds.linkSelection,
+    ]);
     expect(find.text('링크'), findsNothing, reason: 'the menu closed');
     expect(colours, isEmpty);
   });

@@ -2,6 +2,7 @@ import 'package:saber/components/canvas/_circle_stroke.dart';
 import 'package:saber/components/canvas/_rectangle_stroke.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/data/prefs.dart';
+import 'package:saber/data/settings/app_settings.dart';
 import 'package:sbn/tool_id.dart';
 
 /// What a stroke on the page is, for the eraser's 「지울 대상」 and the
@@ -60,11 +61,14 @@ abstract final class EraserTargets {
   /// Whether the eraser rubs out [stroke].
   static bool erases(Stroke stroke) => value.contains(StrokeKind.of(stroke));
 
-  /// Whether [kind] is the only one on, so it cannot be turned off now.
-  static bool isLocked(StrokeKind kind) {
-    final on = value;
-    return on.length == 1 && on.contains(kind);
-  }
+  /// Whether [kind] is the only one on, so it cannot be turned off now. The
+  /// settings table decides (its 「하나는 켜 두기」 rule).
+  static bool isLocked(StrokeKind kind) =>
+      settingsRegistry.keepOneReason(
+        stows.eraserTargets.key,
+        item: kind.name,
+      ) !=
+      null;
 
   /// Sets [kind] to [on], unless that would turn the last one off: then
   /// nothing changes and this returns false.

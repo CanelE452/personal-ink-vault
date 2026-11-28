@@ -198,7 +198,11 @@ void main() {
       expect(selected(tester, byKey('editor-tool-pen')), isTrue);
       // the bar's highlighter has the engine's widths: 5 to 40, 12.5 now
       final inHand =
-          tester.widget<KitFloatingBar>(find.byType(KitFloatingBar)).currentTool
+          tester
+                  .widget<KitFloatingBar>(find.byType(KitFloatingBar))
+                  .host
+                  .toolState
+                  .tool
               as Pen;
       expect((inHand.sizeMin, inHand.sizeMax), (5, 40));
       expect(inHand.options.size, 12.5);
@@ -540,7 +544,11 @@ void main() {
     expect(checked(tester, AppActionIds.toolPen), isTrue);
     // nor the width (a window would end the stroke first: opening one
     // cancels the pointers under it)
-    (tester.widget<KitFloatingBar>(find.byType(KitFloatingBar)).currentTool
+    (tester
+                .widget<KitFloatingBar>(find.byType(KitFloatingBar))
+                .host
+                .toolState
+                .tool
             as Pen)
         .setSize(5);
     await tester.pump();

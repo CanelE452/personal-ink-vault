@@ -11,7 +11,6 @@ import 'package:saber/components/ink_ui/doc_menu/kit_doc_menu.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
 import 'package:saber/components/ink_ui/floating_bar/kit_floating_bar.dart';
 import 'package:saber/components/ink_ui/kit_zoom_badge.dart';
-import 'package:saber/components/ink_ui/pen_panel/pen_kinds.dart';
 import 'package:saber/components/kit/kit_icon.dart';
 import 'package:saber/components/toolbar/note_function_row.dart';
 import 'package:saber/components/toolbar/shortcut_layout.dart';
@@ -19,6 +18,7 @@ import 'package:saber/data/actions/app_action.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/ink/pen_kind.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/eraser.dart';
@@ -27,6 +27,7 @@ import 'package:saber/data/tools/select.dart';
 import 'package:saber/data/vault/infinite_document.dart';
 import 'package:saber/pages/workspace/infinite_canvas.dart';
 
+import '../ink_ui/pen_panel_harness.dart' show ShownToolHost;
 import '../utils/screen_capture.dart';
 
 /// Writes screenshots of the infinite note on the editor's toolbar (Task 18)
@@ -218,9 +219,7 @@ void main() {
               const Positioned.fill(child: CustomPaint(painter: _Paper())),
               Positioned.fill(
                 child: KitFloatingBar(
-                  currentTool: tool,
-                  setTool: (_) {},
-                  setColor: (_) {},
+                  host: ShownToolHost(tool),
                   actions: registry,
                   penPanelCollapsed: ValueNotifier(false),
                 ),

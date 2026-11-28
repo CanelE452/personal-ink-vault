@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:saber/components/ink_ui/ink_engine_support.dart';
 import 'package:saber/components/ink_ui/tool_panels/tool_panel_common.dart';
 import 'package:saber/components/kit/kit_icon.dart';
+import 'package:saber/data/ink/ink_engine.dart';
 import 'package:saber/data/prefs.dart';
+import 'package:saber/data/settings/app_settings.dart';
 import 'package:saber/data/tools/lasso_targets.dart';
+import 'package:stow_plain/stow_plain.dart';
 
 /// 「올가미 선택」 (preview 10th draft `lassoPop`), opened from the chosen
 /// lasso button: 「올가미 유형」 자유 · 사각형 as cards, then 「선택 대상」
@@ -19,8 +21,10 @@ class KitLassoPanel extends StatelessWidget {
   /// What the document's ink engine has.
   final InkEngineSupport engine;
 
-  /// Why the last target on cannot be turned off.
-  static const keepOne = '하나는 켜 두어야 합니다.';
+  /// Why the last target on cannot be turned off (the settings table's
+  /// line).
+  static String get keepOne =>
+      settingsRegistry.keepOneText(stows.selectInk.key)!;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -28,7 +32,12 @@ class KitLassoPanel extends StatelessWidget {
     builder: (context, _) {
       final all = LassoTargets.all;
       final shown = engine.lassoTargets ?? all;
-      final oneOn = shown.where((t) => t.value).length == 1;
+      final shownKeys = [for (final t in shown) t.key];
+      String? lockedReason(PlainStow<bool> t) =>
+          settingsRegistry.keepOneReason(t.key, among: shownKeys);
+      final hint = [for (final t in shown) lockedReason(t)]
+          .nonNulls
+          .firstOrNull;
       return ToolWindow(
         key: const ValueKey('kit-lasso-panel'),
         title: '올가미 선택',
@@ -64,14 +73,11 @@ class KitLassoPanel extends StatelessWidget {
                 key: ValueKey('lasso-target-$id'),
                 label: label,
                 value: target.value,
-                lockedReason: target.value && oneOn ? keepOne : null,
+                lockedReason: lockedReason(target),
                 onChanged: (on) => LassoTargets.set(target, on),
               ),
-          if (oneOn)
-            toolWindowMessage(
-              keepOne,
-              key: const ValueKey('lasso-target-hint'),
-            ),
+          if (hint != null)
+            toolWindowMessage(hint, key: const ValueKey('lasso-target-hint')),
         ],
       );
     },

@@ -56,4 +56,27 @@ void main() {
 
     expect(history.undo(), item2, reason: 'Undo should return the last item');
   });
+
+  test('listeners hear record, undo and redo', () {
+    final history = EditorHistory();
+    var heard = 0;
+    history.addListener(() => heard++);
+    EditorHistoryItem item() =>
+        EditorHistoryItem(type: .draw, pageIndex: 0, strokes: [], images: []);
+
+    history.recordChange(item());
+    expect(heard, 1);
+    history.undo();
+    expect(heard, 2);
+    history.canRedo = true;
+    history.redo();
+    expect(heard, 3);
+
+    // These stay quiet: the editor builds after each, and the lasso's start
+    // setting canRedo would take the undo notice away.
+    history.markLastChangeAsSaved();
+    history.canRedo = false;
+    history.clearRedo();
+    expect(heard, 3);
+  });
 }

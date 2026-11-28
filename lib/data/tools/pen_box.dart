@@ -1,10 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:saber/components/kit/kit_pen_art.dart';
+import 'package:saber/data/ink/ink_tool_state.dart';
+import 'package:saber/data/ink/pen_kind.dart';
 import 'package:saber/data/prefs.dart';
-import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
-import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 import 'package:sbn/tool_id.dart';
 
@@ -17,6 +18,7 @@ class PenBoxEntry {
     required this.color,
     required this.size,
     required this.streamline,
+    this.kind,
   });
 
   /// The pen in hand. The colour is kept opaque: the editor adds the
@@ -26,6 +28,7 @@ class PenBoxEntry {
     color: pen.color.withValues(alpha: 1).toARGB32(),
     size: pen.options.size,
     streamline: pen.options.streamline,
+    kind: penKindOf(pen),
   );
 
   /// Null for anything the pen box did not write.
@@ -37,6 +40,9 @@ class PenBoxEntry {
         color: map['color'] as int,
         size: (map['size'] as num).toDouble(),
         streamline: (map['streamline'] as num).toDouble(),
+        kind: KitPenKind.values
+            .where((k) => k.previewId == map['kind'])
+            .firstOrNull,
       );
     } catch (_) {
       return null;
@@ -48,22 +54,36 @@ class PenBoxEntry {
   final double size;
   final double streamline;
 
+  /// The pen window's pen by its name (`previewId`), as given.
+  final KitPenKind? kind;
+
+  /// The pen window's pen of this entry: the one given, else the first with
+  /// its tool (entries written before the round highlighter are the flat
+  /// one); null for the shape pen.
+  KitPenKind? get penKind {
+    if (kind != null) return kind;
+    for (final k in KitPenKind.values) {
+      if (k.toolId == toolId) return k;
+    }
+    return null;
+  }
+
   String toJson() => jsonEncode({
     'tool': toolId.name,
     'color': color,
     'size': size,
     'streamline': streamline,
+    if (penKind case final kind?) 'kind': kind.previewId,
   });
 
   /// A new pen of this kind with this entry's width and stabilisation, kept
   /// within the pen's range. The colour goes through the editor's setColor.
   Pen createPen() {
-    final pen = switch (toolId) {
-      .ballpointPen => Pen.ballpointPen(),
-      .pencil => Pencil(),
-      .shapePen => ShapePen(),
-      .highlighter => Highlighter(),
-      _ => Pen.fountainPen(),
+    final pen = switch (penKind) {
+      // picked up, so it gets its own values like one from the pen panel
+      KitPenKind.highlighterRound => InkToolState.roundHighlighter(),
+      final kind? => newPenOf(kind),
+      null => toolId == .shapePen ? ShapePen() : Pen.fountainPen(),
     };
     pen.setSize(size.clamp(pen.sizeMin, pen.sizeMax).toDouble());
     pen.setStreamline(streamline.clamp(0, 1).toDouble());
@@ -76,10 +96,11 @@ class PenBoxEntry {
       other.toolId == toolId &&
       other.color == color &&
       other.size == size &&
-      other.streamline == streamline;
+      other.streamline == streamline &&
+      other.penKind == penKind;
 
   @override
-  int get hashCode => Object.hash(toolId, color, size, streamline);
+  int get hashCode => Object.hash(toolId, color, size, streamline, penKind);
 }
 
 /// The pens kept with "펜박스에 추가", oldest first.

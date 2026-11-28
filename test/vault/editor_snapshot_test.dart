@@ -81,7 +81,7 @@ void main() {
         if (tool == 'select') editor.currentTool = Select.currentSelect;
         final box = editor.coreInfo.pages.first.renderBox!;
         editor.dragPageIndex = 0;
-        editor.onDrawStart(
+        editor.inkInput.onDrawStart(
           ScaleStartDetails(
             focalPoint: box.localToGlobal(const Offset(40, 40)),
             pointerCount: 1,
@@ -98,13 +98,13 @@ void main() {
           saved,
           reason: 'unfinished gestures must never be snapshotted',
         );
-        editor.onDrawUpdate(
+        editor.inkInput.onDrawUpdate(
           ScaleUpdateDetails(
             focalPoint: box.localToGlobal(const Offset(90, 90)),
             pointerCount: 1,
           ),
         );
-        editor.onDrawEnd(ScaleEndDetails());
+        editor.inkInput.onDrawEnd(ScaleEndDetails());
         await editor.saveToFile();
         editor.cancelAutosaveAndMarkSaved();
       },

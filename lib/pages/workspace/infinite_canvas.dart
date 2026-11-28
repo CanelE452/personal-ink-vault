@@ -12,7 +12,6 @@ import 'package:saber/components/ink_ui/editor_toolbar/toolbar_tools_layout.dart
 import 'package:saber/components/ink_ui/floating_bar/kit_floating_bar.dart';
 import 'package:saber/components/ink_ui/host_focus.dart';
 import 'package:saber/components/ink_ui/hover_badge.dart';
-import 'package:saber/components/ink_ui/ink_engine_support.dart';
 import 'package:saber/components/ink_ui/kit_mode_pill.dart';
 import 'package:saber/components/ink_ui/kit_zoom_badge.dart';
 import 'package:saber/components/kit/kit_icon.dart';
@@ -20,6 +19,10 @@ import 'package:saber/components/kit/kit_pen_art.dart';
 import 'package:saber/data/actions/app_action.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
+import 'package:saber/data/actions/shortcut_keys.dart';
+import 'package:saber/data/ink/ink_engine.dart';
+import 'package:saber/data/ink/ink_input_policy.dart';
+import 'package:saber/data/ink/ink_tool_state.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/eraser.dart';
@@ -106,8 +109,8 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
 
   /// The colour of new strokes: the floating bar's first dot at first
   /// (ledger ruling, Task 18), so that dot is ringed. It and the pen's
-  /// [_width] are heard by the floating bar alone: changing them builds and
-  /// paints nothing else.
+  /// [_width] are heard by the floating bar alone (through the ink tool
+  /// state): changing them builds and paints nothing else.
   late final ValueNotifier<int> _color;
   final _width = ValueNotifier(2.5);
   var _activeWidth = 2.5;
@@ -154,7 +157,9 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
     super.initState();
     _document = widget.initialDocument;
     _viewport = widget.initialViewport;
-    _color = ValueNotifier(floatingBarDotColours().first.toARGB32());
+    _color = ValueNotifier(floatingBarDotColours().first.toARGB32())
+      ..addListener(_ink.sync);
+    _width.addListener(_ink.sync);
     stows.editorGestureMode.addListener(_gestureModeChanged);
     stows.editorFingerDrawing.addListener(_sharedSettingChanged);
     stows.lastZoomLock.addListener(_sharedSettingChanged);
@@ -285,8 +290,13 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
 
   void _down(PointerDownEvent event) {
     final stylus = _isStylus(event);
-    // gesture mode: pens and fingers move the view and draw nothing
-    final gesture = stows.editorGestureMode.value;
+    if (stylusTurnsFingerDrawingOff(
+      device: event.kind,
+      autoDisable: stows.autoDisableFingerDrawingWhenStylusDetected.value,
+      toggleHidden: stows.hideFingerDrawingToggle.value,
+    )) {
+      stows.editorFingerDrawing.value = false;
+    }
     if (event.kind == PointerDeviceKind.touch &&
         (_stylusDown ||
             (_lastStylus != null &&
@@ -306,28 +316,38 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
     }
     _contacts[event.pointer] = event;
     _touching.value = _touches.isNotEmpty;
-    if (event.kind == PointerDeviceKind.touch) {
-      final touches = _touches;
-      if (touches.length > 1 ||
-          !stows.editorFingerDrawing.value ||
-          _tool == _Tool.pan ||
-          gesture) {
-        if (_activePointer != null &&
-            _contacts[_activePointer]?.kind == PointerDeviceKind.touch)
-          _finish(cancel: true);
+    final route = inkRoute(
+      device: event.kind,
+      touches: event.kind == PointerDeviceKind.touch ? _touches.length : 1,
+      gestureMode: stows.editorGestureMode.value,
+      fingerDrawing: stows.editorFingerDrawing.value,
+      panTool: _tool == _Tool.pan,
+      singleFingerPanLock: stows.lastSingleFingerPanLock.value,
+    );
+    if (event.kind == PointerDeviceKind.touch && route != InkRoute.draw) {
+      if (_activePointer != null &&
+          _contacts[_activePointer]?.kind == PointerDeviceKind.touch)
+        _finish(cancel: true);
+      if (route == InkRoute.ignore) {
+        _touchStartViewport = null;
+      } else {
         _resetTouch();
-        return;
       }
+      return;
     }
     if (_activePointer != null) return;
-    if (_tool == _Tool.pan ||
-        gesture ||
-        (event.kind == PointerDeviceKind.mouse &&
-            event.buttons & (kMiddleMouseButton | kSecondaryMouseButton) !=
-                0)) {
+    // a mouse's middle and secondary buttons move the view (outside the
+    // rule, like the pen's button)
+    if (event.kind == PointerDeviceKind.mouse &&
+        event.buttons & (kMiddleMouseButton | kSecondaryMouseButton) != 0) {
       _panPointer = event.pointer;
       return;
     }
+    if (route == InkRoute.pan) {
+      _panPointer = event.pointer;
+      return;
+    }
+    if (route == InkRoute.ignore) return;
     setState(() {
       _activePointer = event.pointer;
       final activeTool = event.kind == PointerDeviceKind.invertedStylus
@@ -414,6 +434,8 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
         _touchStartViewport != null) {
       final touches = _touches;
       if (touches.isEmpty) return;
+      // the single-finger lock holds after a second finger lifts too
+      if (touches.length < 2 && stows.lastSingleFingerPanLock.value) return;
       final focal = _focal(touches);
       // 확대 잠금 (the editor's): two fingers move the view only
       final factor = touches.length < 2 || stows.lastZoomLock.value
@@ -621,6 +643,7 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
     if (tool == _Tool.pen || tool == _Tool.highlighter) _lastInk = tool;
     if (tool != _Tool.eraser) _lastNonEraser = tool;
     if (tool != _Tool.lasso) _selected.clear();
+    _ink.sync();
   }
 
   double _widthScale(_Tool tool) =>
@@ -652,16 +675,9 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
   /// The floating bar: for the pen, the highlighter and the eraser while the
   /// toolbar shows it, not in gesture mode.
   Widget _floatingBar() => ListenableBuilder(
-    listenable: Listenable.merge([
-      _floatingBarOpen,
-      stows.editorGestureMode,
-      _color,
-      _width,
-    ]),
+    listenable: Listenable.merge([_floatingBarOpen, stows.editorGestureMode]),
     builder: (context, _) => KitFloatingBar(
-      currentTool: _ink.currentTool,
-      setTool: _ink.setTool,
-      setColor: _setColor,
+      host: _ink,
       actions: _actions,
       penPanelCollapsed: stows.penPanelCollapsed,
       growFrom: _floatingBarFrom,
@@ -824,34 +840,11 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
     ],
   );
 
-  /// The editor's keys that the infinite note has (editor_actions.dart):
-  /// Ctrl+Z undoes, Ctrl+Y and Ctrl+Shift+Z redo, Ctrl+F finger writing,
-  /// Ctrl+E the eraser (with its bar, out of gesture mode), Ctrl+C shows
-  /// and hides the floating bar.
-  Map<ShortcutActivator, VoidCallback> _keys(BuildContext context) {
-    void run(String id) => _actions.run(id, context);
-    return {
-      const SingleActivator(LogicalKeyboardKey.keyZ, control: true): () =>
-          run(AppActionIds.undo),
-      const SingleActivator(LogicalKeyboardKey.keyY, control: true): () =>
-          run(AppActionIds.redo),
-      const SingleActivator(
-        LogicalKeyboardKey.keyZ,
-        control: true,
-        shift: true,
-      ): () =>
-          run(AppActionIds.redo),
-      const SingleActivator(LogicalKeyboardKey.keyF, control: true): () =>
-          run(AppActionIds.finger),
-      const SingleActivator(LogicalKeyboardKey.keyE, control: true): () {
-        stows.editorGestureMode.value = false;
-        run(AppActionIds.toolEraser);
-        _floatingBarOpen.value = true;
-      },
-      const SingleActivator(LogicalKeyboardKey.keyC, control: true): () =>
-          _floatingBarOpen.value = !_floatingBarOpen.value,
-    };
-  }
+  /// The keys it shares with the editor ([appShortcutKeys]), for the ids it
+  /// published just now in [build]; the others (Ctrl+S, F11, Ctrl+V, ...) are
+  /// not bound and go on to its ancestors.
+  Map<ShortcutActivator, VoidCallback> _keys(BuildContext context) =>
+      shortcutCallbacks(_actions, context);
 
   @override
   void dispose() {
@@ -864,6 +857,7 @@ class InfiniteCanvasState extends State<InfiniteCanvas> {
     _floatingBarFrom.dispose();
     _color.dispose();
     _width.dispose();
+    _ink.toolState.dispose();
     _hoverBadge.dispose();
     _strokeAt.dispose();
     _touching.dispose();

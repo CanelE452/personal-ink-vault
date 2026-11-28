@@ -1,4 +1,5 @@
 import 'package:saber/data/prefs.dart';
+import 'package:saber/data/settings/app_settings.dart';
 import 'package:stow_plain/stow_plain.dart';
 
 /// What the lasso picks up (「선택 대상」): handwriting, highlighter, shapes,
@@ -14,9 +15,10 @@ abstract final class LassoTargets {
     stows.selectImages,
   ];
 
-  /// Whether [target] is the only one on, so it cannot be turned off now.
+  /// Whether [target] is the only one on, so it cannot be turned off now. The
+  /// settings table decides (its 「하나는 켜 두기」 rule).
   static bool isLocked(PlainStow<bool> target) =>
-      target.value && all.where((t) => t.value).length == 1;
+      settingsRegistry.keepOneReason(target.key) != null;
 
   /// Sets [target] to [on], unless that would turn the last one off: then
   /// nothing changes and this returns false.

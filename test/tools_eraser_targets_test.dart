@@ -6,6 +6,8 @@ import 'package:saber/components/canvas/_rectangle_stroke.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/prefs.dart';
+import 'package:saber/data/settings/app_settings.dart';
+import 'package:saber/data/settings/setting_entry.dart';
 import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/eraser_targets.dart';
 import 'package:saber/data/tools/lasso_targets.dart';
@@ -91,6 +93,27 @@ void main() {
       // and without it every kind is erased
       stows.eraseHighlighterOnly.value = false;
       expect(EraserTargets.value, StrokeKind.values.toSet());
+    });
+
+    test('the settings table reads the same targets as the eraser', () {
+      final row =
+          settingsRegistry.byKey(stows.eraserTargets.key)! as ListSetting;
+      List<String> names() =>
+          [for (final k in EraserTargets.value) k.name]..sort();
+      void same() => expect([...row.value]..sort(), names());
+      same();
+      stows.eraseHighlighterOnly.value = true;
+      same();
+      expect(row.value, ['highlighter']);
+      stows.eraserTargets.value = ['pen', 'shape'];
+      same();
+      stows.eraserTargets.value = ['pen', 'nonsense'];
+      same();
+      // the last one on is held through the table, from the fallback too
+      stows.eraserTargets.value = [];
+      expect(EraserTargets.isLocked(StrokeKind.highlighter), isTrue);
+      expect(EraserTargets.isLocked(StrokeKind.pen), isFalse);
+      expect(EraserTargets.set(StrokeKind.highlighter, false), isFalse);
     });
 
     test('a new value wins over the old highlighter-only switch', () {

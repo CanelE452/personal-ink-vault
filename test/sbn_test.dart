@@ -18,6 +18,7 @@ import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/tools/laser_pointer.dart';
 import 'package:saber/data/tools/stroke_properties.dart';
 import 'package:saber/i18n/strings.g.dart';
+import 'package:sbn/tool_id.dart';
 
 import 'utils/test_mock_channel_handlers.dart';
 import 'utils/upstream_suites.dart';
@@ -315,6 +316,22 @@ void main() {
       coreInfo.dispose();
       importedCoreInfo.dispose();
     });
+  });
+
+  test('new tool ids are only at the end', () {
+    expect(ToolId.values.map((t) => t.id), [
+      'Highlighter',
+      'fountainPen',
+      'ballpointPen',
+      'Pencil',
+      'ShapePen',
+      'Eraser',
+      'Select',
+      'TextEditingTool',
+      'LaserPointer',
+      'calligraphyPen',
+      'brush',
+    ]);
   });
 }
 

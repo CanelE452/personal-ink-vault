@@ -102,27 +102,10 @@ extension _EditorAddPage on EditorState {
 
   /// Puts [page] in at [at], as one undo step unless not [record]; the
   /// pages after it move on.
-  void _putPage(int at, EditorPage page, {bool record = true}) {
-    coreInfo.pages.insert(at, page);
-    _renumberPages(at);
-    listenToQuillChanges(page.quill);
-    if (!record) return;
-    history.recordChange(
-      EditorHistoryItem(
-        type: .insertPage,
-        pageIndex: at,
-        strokes: const [],
-        images: const [],
-        page: page,
-      ),
-    );
-  }
+  void _putPage(int at, EditorPage page, {bool record = true}) =>
+      pageList.put(at, page, record: record);
 
   /// Tells the pages from [from] on (their strokes and pictures) where they
   /// are now.
-  void _renumberPages(int from) {
-    for (var i = from; i < coreInfo.pages.length; i++) {
-      coreInfo.pages[i].updatePageIndex(i);
-    }
-  }
+  void _renumberPages(int from) => pageList.renumber(from);
 }

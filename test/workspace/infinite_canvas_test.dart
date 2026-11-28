@@ -15,6 +15,7 @@ import 'package:saber/components/kit/kit_pill.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/prefs.dart';
 import 'package:saber/data/vault/infinite_document.dart';
 
 import '../utils/paint_counts.dart';
@@ -540,6 +541,124 @@ void main() {
       await tester.pump(KitMotion.zoomBadgeHide);
       await tester.pumpAndSettle();
       expect(shownOf(tester, zoomBadge), 0);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('a stylus touch turns finger drawing off in the infinite note too', (
+    tester,
+  ) async {
+    final autoOld = stows.autoDisableFingerDrawingWhenStylusDetected.value;
+    final hideOld = stows.hideFingerDrawingToggle.value;
+    addTearDown(() {
+      stows.autoDisableFingerDrawingWhenStylusDetected.value = autoOld;
+      stows.hideFingerDrawingToggle.value = hideOld;
+    });
+    stows.autoDisableFingerDrawingWhenStylusDetected.value = true;
+    stows.hideFingerDrawingToggle.value = false;
+    await mount(tester);
+    final center = tester.getCenter(surface);
+
+    stows.editorFingerDrawing.value = true;
+    await draw(tester, [center, center + const Offset(30, 10)]);
+    expect(stows.editorFingerDrawing.value, isFalse);
+
+    // a hidden toggle is the user's fixed value: the pen leaves it alone
+    stows.hideFingerDrawingToggle.value = true;
+    stows.editorFingerDrawing.value = true;
+    await draw(tester, [center, center + const Offset(30, 10)], pointer: 2);
+    expect(stows.editorFingerDrawing.value, isTrue);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    "one finger pans and two fingers zoom by the editor's rules in the infinite note",
+    (tester) async {
+      final lockOld = stows.lastSingleFingerPanLock.value;
+      addTearDown(() => stows.lastSingleFingerPanLock.value = lockOld);
+      final key = await mount(tester);
+      final center = tester.getCenter(surface);
+      stows.editorFingerDrawing.value = false;
+
+      // finger drawing off: one finger moves the view
+      stows.lastSingleFingerPanLock.value = false;
+      var finger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+        pointer: 21,
+      );
+      await finger.down(center);
+      await finger.moveBy(const Offset(40, 0));
+      await finger.up();
+      await tester.pump();
+      expect(key.currentState!.viewport.offset.dx, closeTo(40, 1e-6));
+
+      // the single-finger lock: one finger does nothing
+      stows.lastSingleFingerPanLock.value = true;
+      final before = key.currentState!.viewport;
+      finger = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+        pointer: 22,
+      );
+      await finger.down(center);
+      await finger.moveBy(const Offset(40, 0));
+      await finger.up();
+      await tester.pump();
+      expect(key.currentState!.viewport.offset, before.offset);
+
+      // two fingers still move and zoom the view under the lock
+      final a = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+        pointer: 23,
+      );
+      final b = await tester.createGesture(
+        kind: PointerDeviceKind.touch,
+        pointer: 24,
+      );
+      await a.down(center - const Offset(50, 0));
+      await b.down(center + const Offset(50, 0));
+      await a.moveBy(const Offset(-50, 0));
+      await b.moveBy(const Offset(50, 0));
+      await a.up();
+      await b.up();
+      await tester.pump();
+      expect(key.currentState!.viewport.scale, greaterThan(before.scale));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a middle or right mouse drag pans the infinite note with finger drawing on',
+    (tester) async {
+      final key = await mount(tester);
+      final center = tester.getCenter(surface);
+      stows.editorFingerDrawing.value = true;
+      for (final button in [kMiddleMouseButton, kSecondaryMouseButton]) {
+        final before = key.currentState!.viewport.offset;
+        final mouse = await tester.startGesture(
+          center,
+          kind: PointerDeviceKind.mouse,
+          buttons: button,
+        );
+        await mouse.moveBy(const Offset(30, 20));
+        await mouse.up();
+        await tester.pump();
+        expect(
+          key.currentState!.viewport.offset - before,
+          const Offset(30, 20),
+          reason: 'button $button pans',
+        );
+      }
+      // the primary button still draws
+      final mouse = await tester.startGesture(
+        center,
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryMouseButton,
+      );
+      await mouse.moveBy(const Offset(30, 20));
+      await mouse.moveBy(const Offset(30, 20));
+      await mouse.up();
+      await tester.pump();
+      expect(key.currentState!.document.strokes, hasLength(1));
       await tester.pumpWidget(const SizedBox());
     },
   );

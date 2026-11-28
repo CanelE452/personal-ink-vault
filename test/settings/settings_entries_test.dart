@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/kit/kit_icons.g.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/ink/pen_prefs.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/settings/setting_entry.dart';
 import 'package:saber/data/settings/settings_registry.dart';
@@ -27,7 +28,7 @@ void main() {
       all.where((k) => k == stows.shapeRecognitionDelay.key),
       hasLength(1),
     );
-    expect(all.where((k) => k == stows.autoStraightenLines.key), hasLength(1));
+    expect(all.where((k) => k == straightLineInHandKey), hasLength(1));
     expect(
       all.where(
         (k) => k == stows.autoDisableFingerDrawingWhenStylusDetected.key,
@@ -71,7 +72,7 @@ void main() {
       stows.lastZoomLock.key,
       stows.lastSingleFingerPanLock.key,
       stows.lastAxisAlignedPanLock.key,
-      stows.autoStraightenLines.key,
+      straightLineInHandKey,
       stows.autoDisableFingerDrawingWhenStylusDetected.key,
       stows.shapeRecognitionDelay.key,
     ]);
@@ -100,7 +101,7 @@ void main() {
   });
 
   test('the moved writing rows keep their names and old keys', () {
-    expect(reg.byKey(stows.autoStraightenLines.key)!.label, '직선 자동 보정');
+    expect(reg.byKey(straightLineInHandKey)!.label, '직선 자동 보정');
     final delay = reg.byKey(stows.shapeRecognitionDelay.key);
     expect(delay, isA<ChoiceSetting<int>>());
     expect((delay! as ChoiceSetting<int>).options, [
@@ -110,7 +111,7 @@ void main() {
     ]);
     expect(reg.byKey(stows.lastZoomLock.key)!.widgetKey, const ValueKey('toolbar-zoom-lock'));
     expect(
-      reg.byKey(stows.autoStraightenLines.key)!.widgetKey,
+      reg.byKey(straightLineInHandKey)!.widgetKey,
       const ValueKey('toolbar-auto-straighten'),
     );
     expect(delay.widgetKey, const ValueKey('toolbar-shape-delay'));

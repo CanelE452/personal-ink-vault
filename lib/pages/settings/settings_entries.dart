@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:saber/components/kit/kit_icons.g.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
+import 'package:saber/data/ink/pen_prefs.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/settings/setting_entry.dart';
 import 'package:saber/data/settings/settings_registry.dart';
 import 'package:stow_plain/stow_plain.dart';
-
-/// The app's one settings table. Only `main` and the settings page use it.
-final settingsRegistry = SettingsRegistry(reasons: stows.settingsAutoOffReasons);
 
 // Group assignment lives here and only here (option B: the six value rows of
 // the old 「기타 설정」 stay together in 「필기」; the other groups come from the
@@ -39,7 +37,7 @@ final _rowIcons = Map<String, KitIconName>.unmodifiable({
   stows.lastZoomLock.key: KitIconName.zoom,
   stows.lastSingleFingerPanLock.key: KitIconName.tap,
   stows.lastAxisAlignedPanLock.key: KitIconName.move,
-  stows.autoStraightenLines.key: KitIconName.magic,
+  straightLineInHandKey: KitIconName.magic,
   stows.autoDisableFingerDrawingWhenStylusDetected.key: KitIconName.draw,
   stows.shapeRecognitionDelay.key: KitIconName.shapes,
   stows.disableEraserAfterUse.key: KitIconName.eraser,
@@ -214,12 +212,30 @@ void registerSettingsEntries(SettingsRegistry registry) {
     _writing,
     description: '화면을 비스듬히 움직이지 않습니다.',
   );
-  toggle(
-    stows.autoStraightenLines,
-    '직선 자동 보정',
-    _writing,
-    description: '손으로 그은 선이 거의 곧으면 반듯하게 바꿉니다.',
-    widgetKey: 'toolbar-auto-straighten',
+  // the pen in hand's straight line (each pen has its own, user answer 2),
+  // and its 수평/수직 for the pen panel's rule only; outside the editor the
+  // pen a note opens with. The table owns the two values and lets them go
+  // with their rows, so filling it again leaves no listener behind.
+  registry.register(
+    ToggleSetting(
+      key: straightLineInHandKey,
+      label: '직선 자동 보정',
+      description: '손으로 그은 선이 거의 곧으면 반듯하게 바꿉니다.',
+      group: _writing,
+      widgetKey: const ValueKey('toolbar-auto-straighten'),
+      notifier: PenSettingInHand.straightLine(),
+      ownsNotifier: true,
+    ),
+  );
+  registry.register(
+    ToggleSetting(
+      key: axisLockInHandKey,
+      label: '수평/수직 그리기',
+      group: _pen,
+      onPage: false,
+      notifier: PenSettingInHand.axisLock(),
+      ownsNotifier: true,
+    ),
   );
   toggle(
     stows.autoDisableFingerDrawingWhenStylusDetected,

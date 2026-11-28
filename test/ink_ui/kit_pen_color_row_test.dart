@@ -163,10 +163,14 @@ void main() {
     final host = await _openWith(tester, _red, actions: acts);
     final eye = iconNamed(KitIconName.eyedrop);
     expect(eye, findsOneWidget);
-    // after the colours: the eyedropper, then the palette, 4 apart
+    // after the colours: the eyedropper, then the palette, 4 apart; under
+    // the pen's 수평/수직 row (Task 13: every ink pen has it)
     final panel = tester.getRect(find.byKey(const ValueKey('kit-pen-panel')));
-    expect(tester.getTopLeft(eye) - panel.topLeft, const Offset(237, 281));
-    expect(tester.getTopLeft(_palette) - panel.topLeft, const Offset(263, 281));
+    final down = tester
+        .getSize(find.byKey(const ValueKey('tool-panel-axis-lock')))
+        .height;
+    expect(tester.getTopLeft(eye) - panel.topLeft, Offset(237, 281 + down));
+    expect(tester.getTopLeft(_palette) - panel.topLeft, Offset(263, 281 + down));
     await tester.tap(eye);
     await tester.pumpAndSettle();
     expect(find.byType(KitPenPanel), findsNothing);

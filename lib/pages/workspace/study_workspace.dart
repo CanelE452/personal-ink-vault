@@ -87,6 +87,7 @@ import 'package:saber/data/vault/workspace_markdown_templates.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:saber/pages/editor/editor_chrome.dart';
+import 'package:saber/pages/editor/ink_timing_replay.dart';
 import 'package:saber/pages/office/office_workspace.dart';
 import 'package:saber/pages/planner/calendar_page.dart';
 import 'package:saber/pages/planner/planner_screen.dart';
@@ -277,6 +278,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
     ..docInfo = (() => _docInfo());
   _LibrarySelectionScope? _librarySelection;
   var _editor = GlobalKey<EditorState>();
+  // the measurement build's notes and input (tablet measurement 1); idle in other builds
+  final _inkTimingReplay = InkTimingReplay();
   var _infinite = GlobalKey<InfiniteCanvasState>();
   var _office = GlobalKey<OfficeWorkspaceState>();
   var _cards = GlobalKey<CardCanvasState>();
@@ -463,6 +466,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
         return;
       }
       controller = value;
+      unawaited(_inkTimingReplay.seedNotes(value.repository));
       _mcp = McpAccessController(
         () {
           _mcpRepository = value.repository;
@@ -6098,6 +6102,8 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
           markdownTab = false;
         }
         _editor = GlobalKey<EditorState>();
+        // a measurement replay stays with the note it started in
+        _inkTimingReplay.cancel();
         _infinite = GlobalKey<InfiniteCanvasState>();
         _office = GlobalKey<OfficeWorkspaceState>();
         _cards = GlobalKey<CardCanvasState>();
@@ -6532,6 +6538,11 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
                   ? null
                   : (value) => c.setInkBusy(value, session: session),
               onLoaded: (core) {
+                _inkTimingReplay.noteLoaded(
+                  title: session.note.title,
+                  folderId: session.note.folderId,
+                  editor: () => _editor.currentState,
+                );
                 if (identical(c.activeSession, session) && !pdfPeerPreview) {
                   _pendingPdf = null;
                   final linkedInk = c.resolveLinkedInkPage(session, core);
@@ -6939,6 +6950,7 @@ class _StudyWorkspaceState extends State<StudyWorkspace>
 
   @override
   void dispose() {
+    _inkTimingReplay.cancel();
     _retireThumbnailScope();
     _sharedDocumentTimer?.cancel();
     _externalScreenGrace?.cancel();

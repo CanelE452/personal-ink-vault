@@ -57,6 +57,38 @@ extension _EditorActions on EditorState {
           checked: stows.editorFingerDrawing.value,
           run: (_) => _toggleFingerDrawing(),
         ),
+      // The toolbar's mode button, ⋯ 「확대 잠금」 and the old toolbar's keys.
+      // They work on a read-only note too (the lock and the mode are views).
+      AppAction(
+        id: AppActionIds.gestureMode,
+        label: '제스처 모드',
+        icon: KitIconName.palm,
+        run: (_) => stows.editorGestureMode.value =
+            !stows.editorGestureMode.value,
+      ),
+      AppAction(
+        id: AppActionIds.floatingBar,
+        label: '떠 있는 막대',
+        icon: KitIconName.brush,
+        run: (_) => _floatingBarOpen.value = !_floatingBarOpen.value,
+      ),
+      AppAction(
+        id: AppActionIds.zoomLock,
+        label: '확대 잠금',
+        icon: KitIconName.zoom,
+        run: (_) => stows.lastZoomLock.value = !stows.lastZoomLock.value,
+      ),
+      // as the toolbar's eraser button: writing again, with the bar
+      AppAction(
+        id: AppActionIds.eraserBar,
+        label: '지우개',
+        icon: KitIconName.eraser,
+        run: (context) {
+          stows.editorGestureMode.value = false;
+          _actions.run(AppActionIds.toolEraser, context);
+          _floatingBarOpen.value = true;
+        },
+      ),
       AppAction(
         id: AppActionIds.fullscreen,
         label: '전체 화면',
@@ -364,37 +396,18 @@ extension _EditorActions on EditorState {
   }
 
   /// The editor's keys, while the focus is in it (not in the Markdown beside
-  /// it, not in another editor): Ctrl+Z undoes, Ctrl+Y and Ctrl+Shift+Z
-  /// redo, Esc ends the eyedropper's wait. The old toolbar's keys too:
-  /// Ctrl+F finger drawing, Ctrl+E the eraser, Ctrl+C the floating bar (its
-  /// colours, where the old colour row was), Ctrl+S 「지금 저장」, Ctrl+Shift+S
-  /// export, F11 full
-  /// screen, Ctrl+V paste. Ctrl+= (and Ctrl++) zooms in, Ctrl+− out, and the
-  /// arrows move the page while the editor itself has the focus
-  /// (keybinder's global keys before Task 19).
-  /// [_EditorKeyAction] leaves them to a text field inside the editor that
-  /// has the focus.
+  /// it, not in another editor): the keys it shares with the infinite note
+  /// ([appShortcutKeys]: Ctrl+Z undo, Ctrl+Y and Ctrl+Shift+Z redo, Ctrl+F
+  /// finger drawing, Ctrl+E the eraser with the bar, Ctrl+C the floating bar,
+  /// Ctrl+S 「지금 저장」, Ctrl+Shift+S export, F11 full screen, Ctrl+V paste)
+  /// each run their action id. Esc ends the eyedropper's wait. Ctrl+= (and
+  /// Ctrl++) zooms in, Ctrl+− out, and the arrows move the page while the
+  /// editor itself has the focus (keybinder's global keys before Task 19):
+  /// no action stands behind these, so they stay here. [_EditorKeyAction]
+  /// leaves all of them to a text field inside the editor that has the focus.
   Map<ShortcutActivator, Intent> _keyboardShortcuts() => {
-    const SingleActivator(LogicalKeyboardKey.keyZ, control: true):
-        const _EditorKeyIntent(_EditorKey.undo),
-    const SingleActivator(LogicalKeyboardKey.keyY, control: true):
-        const _EditorKeyIntent(_EditorKey.redo),
-    const SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true):
-        const _EditorKeyIntent(_EditorKey.redo),
-    const SingleActivator(LogicalKeyboardKey.keyF, control: true):
-        const _EditorKeyIntent(_EditorKey.finger),
-    const SingleActivator(LogicalKeyboardKey.keyE, control: true):
-        const _EditorKeyIntent(_EditorKey.eraser),
-    const SingleActivator(LogicalKeyboardKey.keyC, control: true):
-        const _EditorKeyIntent(_EditorKey.floatingBar),
-    const SingleActivator(LogicalKeyboardKey.keyS, control: true):
-        const _EditorKeyIntent(_EditorKey.saveNow),
-    const SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true):
-        const _EditorKeyIntent(_EditorKey.export),
-    const SingleActivator(LogicalKeyboardKey.f11):
-        const _EditorKeyIntent(_EditorKey.fullscreen),
-    const SingleActivator(LogicalKeyboardKey.keyV, control: true):
-        const _EditorKeyIntent(_EditorKey.paste),
+    for (final (key, id) in appShortcutKeys)
+      key: _EditorKeyIntent(_EditorKey.action, id),
     const SingleActivator(LogicalKeyboardKey.equal, control: true):
         const _EditorKeyIntent(_EditorKey.zoomIn),
     const SingleActivator(LogicalKeyboardKey.equal, control: true, shift: true):
@@ -416,31 +429,12 @@ extension _EditorActions on EditorState {
           const _EditorKeyIntent(_EditorKey.stopEyedropper),
   };
 
-  void _runKey(_EditorKey key) {
-    switch (key) {
-      case _EditorKey.undo:
-        _actions.run(AppActionIds.undo, context);
-      case _EditorKey.redo:
-        _actions.run(AppActionIds.redo, context);
+  void _runKey(_EditorKeyIntent intent) {
+    switch (intent.key) {
+      case _EditorKey.action:
+        _actions.run(intent.actionId!, context);
       case _EditorKey.stopEyedropper:
         _stopEyedropper();
-      case _EditorKey.finger:
-        _actions.run(AppActionIds.finger, context);
-      case _EditorKey.eraser:
-        // as the toolbar's eraser button: writing again, with the bar
-        stows.editorGestureMode.value = false;
-        _actions.run(AppActionIds.toolEraser, context);
-        _floatingBarOpen.value = true;
-      case _EditorKey.floatingBar:
-        _floatingBarOpen.value = !_floatingBarOpen.value;
-      case _EditorKey.saveNow:
-        _actions.run(AppActionIds.saveNow, context);
-      case _EditorKey.export:
-        _actions.run(AppActionIds.export, context);
-      case _EditorKey.fullscreen:
-        _actions.run(AppActionIds.fullscreen, context);
-      case _EditorKey.paste:
-        _actions.run(AppActionIds.paste, context);
       case _EditorKey.zoomIn:
         _canvasGestureDetectorKey.currentState?.zoomIn();
       case _EditorKey.zoomOut:
@@ -462,9 +456,11 @@ extension _EditorActions on EditorState {
   Tool _firstInkTool() {
     if (isInkTool(currentTool)) return currentTool;
     for (final kind in KitPenKind.values) {
-      if (kind.toolId == stows.lastPenFamily.value) return toolForPenKind(kind);
+      if (kind.toolId == stows.lastPenFamily.value) {
+        return toolForPenKind(kind, _ink.toolState);
+      }
     }
-    return toolForPenKind(KitPenKind.fountain);
+    return toolForPenKind(KitPenKind.fountain, _ink.toolState);
   }
 
   /// Takes [tool] in hand. The eraser again puts the tool before it back.
@@ -479,8 +475,9 @@ extension _EditorActions on EditorState {
 
     currentTool = tool;
 
+    // the round highlighter is kept by the tool state, not here
     if (tool is Highlighter) {
-      Highlighter.currentHighlighter = tool;
+      if (tool.nib == InkNib.chisel) Highlighter.currentHighlighter = tool;
     } else if (tool is Pencil) {
       Pencil.currentPencil = tool;
     } else if (tool is Pen) {
@@ -557,6 +554,7 @@ extension _EditorActions on EditorState {
         pageIndex: select.selectResult.pageIndex,
         strokes: duplicatedStrokes,
         images: duplicatedImages,
+        page: page,
       ),
     );
     autosaveAfterDelay();
@@ -571,32 +569,36 @@ extension _EditorActions on EditorState {
     // The lasso's page (unselect() forgets it); it may hold pictures only.
     final pageIndex = select.selectResult.pageIndex;
     final page = coreInfo.pages[pageIndex];
-    final strokes = select.selectResult.strokes;
-    final images = select.selectResult.images;
+    // Their places before they go, so undoing puts each back there.
+    final swap = InkSwap(
+      removedStrokes: [
+        for (final stroke in select.selectResult.strokes)
+          (page.strokes.indexOf(stroke), stroke),
+      ],
+      removedImages: [
+        for (final image in select.selectResult.images)
+          (page.images.indexOf(image), image),
+      ],
+    );
 
-    for (final stroke in strokes) {
+    for (final (_, stroke) in swap.removedStrokes) {
       page.strokes.remove(stroke);
     }
-    for (final image in images) {
+    for (final (_, image) in swap.removedImages) {
       page.images.remove(image);
     }
 
     select.unselect();
 
-    history.recordChange(
-      EditorHistoryItem(
-        type: .erase,
-        pageIndex: pageIndex,
-        strokes: strokes,
-        images: images,
-      ),
-    );
+    pageList.recordReplace([(page: page, swap: swap)]);
     autosaveAfterDelay();
     _setState();
   }
 
   /// Gives the pen in hand [color] (and keeps it for the next pen of that
-  /// kind), or the lassoed strokes with the lasso in hand.
+  /// kind), or the lassoed strokes with the lasso in hand. Only the
+  /// lassoed strokes build the editor again: the pen's windows follow
+  /// [_ink]'s tool state.
   void _setColor(Color color) {
     updateColorBar(color);
 
@@ -609,8 +611,9 @@ extension _EditorActions on EditorState {
       (currentTool as Pen).setColor(color);
     } else if (currentTool is Select) {
       _recolorSelection(color);
+      return _setState();
     }
-    _setState();
+    _ink.toolState.update(tool: currentTool);
   }
 
   /// Gives the lassoed strokes [color], as one undo step; nothing when the
@@ -666,7 +669,7 @@ extension _EditorActions on EditorState {
   /// draws nothing. Pressed again, or Esc, it stops waiting.
   void _toggleEyedropper() {
     if (_eyedropping) return _stopEyedropper();
-    _eyedropping = true;
+    _ink.toolState.update(eyedropper: true);
     _setState();
     // Esc reaches the editor's keys only while the focus is in it.
     if (!_editorFocus.hasFocus) _editorFocus.requestFocus();
@@ -674,7 +677,7 @@ extension _EditorActions on EditorState {
 
   void _stopEyedropper() {
     if (!_eyedropping) return;
-    _eyedropping = false;
+    _ink.toolState.update(eyedropper: false);
     _setState();
   }
 
@@ -714,18 +717,63 @@ extension _EditorActions on EditorState {
   }
 }
 
-/// The editor's keys.
+/// The editor's side of the ink windows (the floating bar, the pen panel):
+/// a tool goes through the toolbar's way of taking it, a colour through
+/// [_EditorActions._setColor], a size and a stabilisation to the pen in
+/// hand. Each then reaches [toolState] (the tool through
+/// [EditorState.currentTool]), so only a new tool builds the editor again.
+class _EditorInkHost implements InkToolHost {
+  new(this._editor);
+
+  final EditorState _editor;
+
+  @override
+  late final toolState = InkToolState(_editor.currentTool);
+
+  @override
+  void selectTool(Tool tool) => _editor._setTool(tool);
+
+  @override
+  void setColor(Color color) => _editor._setColor(color);
+
+  @override
+  void setSize(double size) {
+    if (_editor.currentTool case final Pen pen) {
+      pen.setSize(size);
+      toolState.update(tool: pen);
+    }
+  }
+
+  @override
+  void setStabiliser(double value) {
+    if (_editor.currentTool case final Pen pen) {
+      pen.setStreamline(value);
+      toolState.update(tool: pen);
+    }
+  }
+
+  @override
+  void setAlpha(int alpha) {
+    if (_editor.currentTool case final Pen pen) {
+      pen.setAlpha(alpha);
+      toolState.update(tool: pen);
+    }
+  }
+
+  @override
+  void setLineStyle(KitPenDash style) {
+    if (_editor.currentTool case final Pen pen) {
+      pen.setLineStyle(style);
+      toolState.update(tool: pen);
+    }
+  }
+}
+
+/// The editor's keys: [action] runs the action id the key carries; the others
+/// have no action and are the editor's own.
 enum _EditorKey {
-  undo,
-  redo,
+  action,
   stopEyedropper,
-  finger,
-  eraser,
-  floatingBar,
-  saveNow,
-  export,
-  fullscreen,
-  paste,
   zoomIn,
   zoomOut,
   panLeft,
@@ -735,9 +783,12 @@ enum _EditorKey {
 }
 
 class _EditorKeyIntent extends Intent {
-  const new(this.key);
+  const new(this.key, [this.actionId]);
 
   final _EditorKey key;
+
+  /// The action id of an [_EditorKey.action] key.
+  final String? actionId;
 }
 
 /// Runs an editor key, unless the focus is in a text field inside the editor
@@ -748,7 +799,7 @@ class _EditorKeyIntent extends Intent {
 class _EditorKeyAction extends ContextAction<_EditorKeyIntent> {
   new(this._run, this._editorFocused);
 
-  final void Function(_EditorKey key) _run;
+  final void Function(_EditorKeyIntent intent) _run;
   final bool Function() _editorFocused;
 
   static const _arrows = {
@@ -766,7 +817,7 @@ class _EditorKeyAction extends ContextAction<_EditorKeyIntent> {
 
   @override
   Object? invoke(_EditorKeyIntent intent, [BuildContext? context]) {
-    _run(intent.key);
+    _run(intent);
     return null;
   }
 

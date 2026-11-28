@@ -28,12 +28,14 @@ enum KitPenKind {
   final String label;
 
   /// The engine tool this pen writes with, null for pens the engine lacks.
+  /// The two highlighters are one tool; their nib tells them apart.
   ToolId? get toolId => switch (this) {
     fountain => ToolId.fountainPen,
+    calligraphy => ToolId.calligraphyPen,
     finePen => ToolId.ballpointPen,
     pencil => ToolId.pencil,
-    highlighterChisel => ToolId.highlighter,
-    calligraphy || brush || highlighterRound => null,
+    brush => ToolId.brush,
+    highlighterChisel || highlighterRound => ToolId.highlighter,
   };
 
   bool get inEngine => toolId != null;
@@ -660,6 +662,39 @@ String kitSvgForFlutter(String svg) => svg.replaceAllMapped(_strokeTag, (m) {
   return '<${m.group(1)}$attrs fill="none"${m.group(3)}>';
 });
 
+final _pathTag = RegExp(r'<path\b[^>]*>');
+final _pathD = RegExp(r'\sd="([^"]*)"');
+final _dashes = RegExp(r'\sstroke-dasharray="([\d.]+) ([\d.]+)"');
+
+/// A sample [svg] as flutter_svg should get it: a dash along a path of
+/// `pathLength="1"` (the brush's layers, each over a part of the path) is
+/// given in the path's own units. flutter_svg ignores pathLength, so a dash
+/// of .5 was half a unit, not half the path, and the brush came out even
+/// instead of thinning to its tail. [kitPenSampleSvg] stays the preview's.
+/// The attributes may come in any order; a pathLength path without a `d` or
+/// without two dash numbers is a [StateError].
+String kitSampleForFlutter(String svg) => svg.replaceAllMapped(_pathTag, (m) {
+  final tag = m.group(0)!;
+  if (!tag.contains(' pathLength="1"')) return tag;
+  final d = _pathD.firstMatch(tag);
+  final dashes = _dashes.firstMatch(tag);
+  if (d == null || dashes == null) {
+    throw StateError('a pathLength path needs d and two dashes: $tag');
+  }
+  final length = _svgPath(d.group(1)!)
+      .computeMetrics()
+      .fold(0.0, (sum, metric) => sum + metric.length);
+  String units(String v) => _fx(double.parse(v) * length, 3);
+  return tag
+      .replaceRange(
+        dashes.start,
+        dashes.end,
+        ' stroke-dasharray="${units(dashes.group(1)!)} '
+        '${units(dashes.group(2)!)}"',
+      )
+      .replaceFirst(' pathLength="1"', '');
+});
+
 /// A pen drawn on its 48 x 200 sheet; the parent decides the size.
 class KitPenArt extends StatelessWidget {
   const new(
@@ -686,7 +721,7 @@ class KitPenArt extends StatelessWidget {
 /// The sample stroke of a pen at slider [level], drawn in its 60 x 34 box
 /// and past it where the stroke reaches out (preview `.psmp{overflow:visible}`:
 /// the chisel flag's pole, the round end at the tip).
-class KitPenSample extends StatelessWidget {
+class KitPenSample extends StatefulWidget {
   const new(
     this.kind,
     this.ink, {
@@ -705,7 +740,31 @@ class KitPenSample extends StatelessWidget {
   final KitPenDash dash;
 
   @override
+  State<KitPenSample> createState() => _KitPenSampleState();
+}
+
+class _KitPenSampleState extends State<KitPenSample> {
+  /// The last sample drawing and the whole SVG made from it: the write-on
+  /// animation builds the sample every frame, and turning the brush's dashes
+  /// into path units ([kitSampleForFlutter]) measures its path.
+  String? _inner;
+  var _svg = '';
+
+  String _svgFor(String inner) {
+    if (inner != _inner) {
+      _inner = inner;
+      _svg =
+          '<svg xmlns="http://www.w3.org/2000/svg" '
+          'viewBox="${_n(-_sampleReach)} ${_n(-_sampleReach)} '
+          '${_n(60 + 2 * _sampleReach)} ${_n(34 + 2 * _sampleReach)}">'
+          '${kitSampleForFlutter(inner)}</svg>';
+    }
+    return _svg;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final KitPenSample(:kind, :ink, :level, :alpha, :straight, :dash) = widget;
     if (kind == KitPenKind.pencil) {
       // Drawn instead of SVG: flutter_svg has no grain filter (see _PencilPainter).
       return FittedBox(
@@ -719,13 +778,15 @@ class KitPenSample extends StatelessWidget {
         ),
       );
     }
-    final inner = kitPenSampleSvg(
-      kind,
-      ink,
-      k: kitPenK(kind, level),
-      alpha: alpha,
-      straight: straight,
-      dash: dash,
+    final svg = _svgFor(
+      kitPenSampleSvg(
+        kind,
+        ink,
+        k: kitPenK(kind, level),
+        alpha: alpha,
+        straight: straight,
+        dash: dash,
+      ),
     );
     // flutter_svg cuts a drawing at its viewBox, so the sheet is drawn
     // _sampleReach units larger on every side and placed so its 60 x 34 box
@@ -745,10 +806,7 @@ class KitPenSample extends StatelessWidget {
                   width: (60 + 2 * _sampleReach) * scale,
                   height: (34 + 2 * _sampleReach) * scale,
                   child: SvgPicture.string(
-                    '<svg xmlns="http://www.w3.org/2000/svg" '
-                    'viewBox="${_n(-_sampleReach)} ${_n(-_sampleReach)} '
-                    '${_n(60 + 2 * _sampleReach)} ${_n(34 + 2 * _sampleReach)}">'
-                    '$inner</svg>',
+                    svg,
                     fit: BoxFit.fill,
                     clipBehavior: Clip.none,
                     excludeFromSemantics: true,

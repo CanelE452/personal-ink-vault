@@ -20,6 +20,7 @@ import 'package:saber/data/vault/saber_ink_adapter.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:sbn/canvas_background_pattern.dart';
 import 'package:sbn/read_only_reason.dart';
+import 'package:sbn/tool_id.dart';
 
 /// The newest note version Android 232 and Windows 226 read: their
 /// `EditorCoreInfo.sbnVersion` (editor_core_info.dart:51 at 1c85dcd and at
@@ -38,7 +39,7 @@ ReadOnlyReason? _readIn232(Map<String, dynamic> body) =>
     ? ReadOnlyReason.versionTooNew
     : null;
 
-Pen _pen() => Pen(
+Pen _pen([ToolId tool = ToolId.ballpointPen]) => Pen(
   name: 'test',
   sizeMin: 1,
   sizeMax: 25,
@@ -47,12 +48,12 @@ Pen _pen() => Pen(
   options: StrokeOptions(size: 5, streamline: 0),
   pressureEnabled: false,
   color: Colors.black,
-  toolId: .ballpointPen,
+  toolId: tool,
 );
 
 /// A finished stroke along a row of whole page units.
-void _drawOn(EditorPage page) {
-  final stroke = _pen().createStroke(page, 0);
+void _drawOn(EditorPage page, [ToolId tool = ToolId.ballpointPen]) {
+  final stroke = _pen(tool).createStroke(page, 0);
   for (var i = 0; i <= 10; i++) {
     stroke.addPoint(Offset(40 + 10.0 * i, 60), null);
   }
@@ -103,6 +104,7 @@ void main() {
     NoteRepository repository,
     String title, {
     required CanvasBackgroundPattern firstPattern,
+    ToolId tool = ToolId.ballpointPen,
   }) async {
     final workspace = WorkspaceStore(repository);
     final note = await workspace.create(title);
@@ -112,7 +114,7 @@ void main() {
         EditorPage(backgroundPattern: firstPattern),
         EditorPage(),
       ]);
-    _drawOn(core.pages.first);
+    _drawOn(core.pages.first, tool);
     final session = await workspace.open(note);
     await session.saveInk(await SaberInkAdapter.capture(core, 0));
     return (note, core);
@@ -224,6 +226,27 @@ void main() {
     final opened = await SaberInkAdapter.load(repository, ink);
     expect(opened.readOnlyReason, isNull);
     expect(opened.pages.first.backgroundPattern, CanvasBackgroundPattern.dots);
+    opened.dispose();
+  });
+
+  test('a note with a brush stroke is version 21, which 232 does not open, '
+      'and this app opens to write in', () async {
+    final repository = await openVault('c');
+    final (note, core) = await createNote(
+      repository,
+      'Brush',
+      firstPattern: .lined,
+      tool: ToolId.brush,
+    );
+    core.dispose();
+
+    final (ink, body) = await inkOf(repository, note);
+    expect(body['v'], 21);
+    expect(_readIn232(body), ReadOnlyReason.versionTooNew);
+
+    final opened = await SaberInkAdapter.load(repository, ink);
+    expect(opened.readOnlyReason, isNull);
+    expect(opened.pages.first.strokes.single.toolId, ToolId.brush);
     opened.dispose();
   });
 }

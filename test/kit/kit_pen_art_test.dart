@@ -161,8 +161,11 @@ void main() {
     expect(KitPenKind.pencil.toolId, ToolId.pencil);
     expect(KitPenKind.highlighterChisel.toolId, ToolId.highlighter);
     expect(KitPenKind.fountain.label, '펜(가는 촉)');
-    expect(KitPenKind.calligraphy.inEngine, isFalse);
-    expect(KitPenKind.values.where((k) => k.inEngine).length, 4);
+    // stage 2 draws every pen
+    expect(KitPenKind.calligraphy.toolId, ToolId.calligraphyPen);
+    expect(KitPenKind.brush.toolId, ToolId.brush);
+    expect(KitPenKind.highlighterRound.toolId, ToolId.highlighter);
+    expect(KitPenKind.values.every((k) => k.inEngine), isTrue);
     expect(KitPenKind.values.where((k) => k.isHighlighter).toList(), [
       KitPenKind.highlighterChisel,
       KitPenKind.highlighterRound,
@@ -498,5 +501,146 @@ void main() {
         expect(sd, greaterThan(20), reason: 'halo is mottled');
       }
     }
+  });
+
+  testWidgets('the brush sample thins toward its tail like the preview', (
+    tester,
+  ) async {
+    // The preview draws seven layers along the path, each of falling width
+    // over a longer part (pathLength 1). flutter_svg ignores pathLength, so
+    // the dashes were in path units and the thickest layer ran the whole way
+    // (screen review: middle 13-14 px, tail 12 at scale 2; preview 8 and 4).
+    const level = 60;
+    final k = kitPenK(KitPenKind.brush, level);
+    final key = GlobalKey();
+    tester.view.physicalSize = const Size(600, 400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // the 60 x 34 box at 10 px a unit, with room under it: the stroke along
+    // its foot reaches past it
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: RepaintBoundary(
+            key: key,
+            child: const ColoredBox(
+              color: Colors.white,
+              child: SizedBox(
+                width: 600,
+                height: 400,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    width: 600,
+                    height: 340,
+                    child: KitPenSample(
+                      KitPenKind.brush,
+                      Color(0xff1f2329),
+                      level: level,
+                      straight: true,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pump();
+    late List<int> gray;
+    await tester.runAsync(() async {
+      final b =
+          key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final img = await b.toImage();
+      final data = (await img.toByteData(format: ui.ImageByteFormat.rawRgba))!
+          .buffer
+          .asUint8List();
+      gray = [for (var i = 0; i < data.length; i += 4) data[i]];
+      img.dispose();
+    });
+    // 10 px a unit; the straight path runs along y 32.6 from x 0 to 34. The
+    // ink height of a column, counting the inside of the stroke only.
+    int inkAt(double unit) {
+      final x = (unit * 10).round();
+      var n = 0;
+      for (var y = 0; y < 400; y++) {
+        if (gray[y * 600 + x] < 200) n++;
+      }
+      return n;
+    }
+
+    final middle = inkAt(34 * .4);
+    final tail = inkAt(34 * .92);
+    debugPrint('brush level $level (k $k): middle $middle px, tail $tail px');
+    // at .4 of the path the layers from the half on cover it: the width
+    // halfway from the tip's 4.2 k to the tail's 1.7; near the end only the
+    // last layer (1.7) does
+    const tailWidth = 1.7;
+    final middleWidth = (4.2 * k + tailWidth) / 2;
+    expect(middle, closeTo(middleWidth * 10, 3), reason: 'middle');
+    expect(tail, closeTo(tailWidth * 10, 3), reason: 'tail');
+    expect(tail, lessThan(middle * .75));
+  });
+
+  test('pathLength dashes reach flutter_svg in path units in any order', () {
+    // a 10-unit line: .5 of it is 5 units, the gap of 2 is 20
+    for (final tag in const [
+      '<path d="M0 0H10" pathLength="1" stroke-dasharray=".5 2" fill="none"/>',
+      '<path stroke-dasharray=".5 2" fill="none" pathLength="1" d="M0 0H10"/>',
+    ]) {
+      final drawn = kitSampleForFlutter('<g>$tag</g>');
+      expect(drawn, isNot(contains('pathLength')), reason: tag);
+      expect(_dashArray(drawn), [5, 20], reason: tag);
+      expect(drawn, contains('d="M0 0H10"'), reason: tag);
+      expect(drawn, contains('fill="none"'), reason: tag);
+    }
+    // a path without pathLength is left as it is
+    const plain = '<path d="M0 0H10" stroke-dasharray="1 2"/>';
+    expect(kitSampleForFlutter(plain), plain);
+    // pathLength with no dashes or no path cannot be turned into units
+    expect(
+      () => kitSampleForFlutter('<path d="M0 0H10" pathLength="1"/>'),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  testWidgets('a sample drawn again with the same drawing reuses its text', (
+    tester,
+  ) async {
+    // the write-on animation builds the sample every frame: the brush's
+    // dashes are measured once, not per frame
+    String drawn() =>
+        (tester.widget<SvgPicture>(find.byType(SvgPicture)).bytesLoader
+                as SvgStringLoader)
+            .provideSvg(null);
+    // a new sample widget each time (not const), so it is built again
+    Future<void> pump(int level) => tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: SizedBox(
+            width: 60,
+            height: 34,
+            child: KitPenSample(
+              KitPenKind.brush,
+              const Color(0xff1f2329),
+              level: level,
+            ),
+          ),
+        ),
+      ),
+    );
+    await pump(60);
+    final first = drawn();
+    expect(first, isNot(contains('pathLength')));
+    await pump(60);
+    expect(identical(drawn(), first), isTrue);
   });
 }

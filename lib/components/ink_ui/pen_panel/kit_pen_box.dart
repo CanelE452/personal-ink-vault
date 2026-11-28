@@ -5,12 +5,11 @@ import 'package:saber/components/kit/kit_pen_art.dart';
 import 'package:saber/components/kit/kit_popover.dart';
 import 'package:saber/components/kit/kit_text.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
+import 'package:saber/data/ink/pen_kind.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
-import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pen_box.dart';
-import 'package:saber/data/tools/pencil.dart';
 import 'package:saber/data/tools/shape_pen.dart';
 import 'package:sbn/tool_id.dart';
 
@@ -168,21 +167,13 @@ class _PenBox extends StatelessWidget {
 
 /// How the box shows a kept pen: its sample, its name and its size range.
 /// The shape pen has no drawing of its own and shows the fine pen's sample.
-(KitPenKind, String, Pen) _look(ToolId toolId) => switch (toolId) {
-  ToolId.ballpointPen => (
-    KitPenKind.finePen,
-    KitPenKind.finePen.label,
-    Pen.ballpointPen(),
-  ),
-  ToolId.pencil => (KitPenKind.pencil, KitPenKind.pencil.label, Pencil()),
-  ToolId.highlighter => (
-    KitPenKind.highlighterChisel,
-    KitPenKind.highlighterChisel.label,
-    Highlighter(),
-  ),
-  ToolId.shapePen => (KitPenKind.finePen, _shapePen, ShapePen()),
-  _ => (KitPenKind.fountain, KitPenKind.fountain.label, Pen.fountainPen()),
-};
+(KitPenKind, String, Pen) _look(PenBoxEntry entry) {
+  if (entry.toolId == ToolId.shapePen) {
+    return (KitPenKind.finePen, _shapePen, ShapePen());
+  }
+  final kind = entry.penKind ?? KitPenKind.fountain;
+  return (kind, kind.label, newPenOf(kind));
+}
 
 class _Card extends StatelessWidget {
   const new({
@@ -213,7 +204,7 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (kind, name, range) = _look(entry.toolId);
+    final (kind, name, range) = _look(entry);
     void remove() => PenBox.remove(entry);
     return Semantics(
       key: ValueKey('pen-box-entry-$index'),

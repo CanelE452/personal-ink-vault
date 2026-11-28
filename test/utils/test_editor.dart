@@ -11,6 +11,6 @@ extension TestEditor on EditorState {
     const i = 0;
     dragPageIndex = i;
     pen.onDragStart(.zero, coreInfo.pages[i], i, null);
-    onDrawEnd(.new());
+    inkInput.onDrawEnd(.new());
   }
 }

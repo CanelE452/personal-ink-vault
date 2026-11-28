@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'package:saber/components/kit/kit_icon.dart';
 import 'package:saber/components/kit/kit_motion.dart';
+import 'package:saber/components/kit/kit_opacity_track.dart';
 import 'package:saber/components/kit/kit_text.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 
@@ -268,6 +269,7 @@ class KitSlider extends StatefulWidget {
     this.valueLabel,
     this.markColor,
     this.markDiameter,
+    this.opacityInk,
     this.label,
     this.decreaseLabel,
     this.increaseLabel,
@@ -309,6 +311,11 @@ class KitSlider extends StatefulWidget {
   /// drawn only when [markDiameter] is given.
   final Color? markColor;
   final double Function(int value)? markDiameter;
+
+  /// Given, this is the opacity slider (preview `.atrack`) of a pen in this
+  /// opaque ink: a checkerboard ramp to the ink with no dots, the thumb in
+  /// the ink at its value, its number in white. The value is a percent.
+  final Color? opacityInk;
 
   @override
   State<KitSlider> createState() => _KitSliderState();
@@ -624,12 +631,15 @@ class _KitSliderState extends State<KitSlider> with TickerProviderStateMixin {
     final markOpacity =
         ((g - KitTokens.sliderMarkShowAt) / (1 - KitTokens.sliderMarkShowAt))
             .clamp(0.0, 1.0);
+    final opacityInk = widget.opacityInk;
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Positioned.fill(
           child: CustomPaint(
-            painter: _TrackPainter(min: _min, max: _max, x0: _x0, x1: _x1),
+            painter: opacityInk == null
+                ? _TrackPainter(min: _min, max: _max, x0: _x0, x1: _x1)
+                : KitOpacityTrackPainter(opacityInk),
           ),
         ),
         Positioned(
@@ -640,7 +650,9 @@ class _KitSliderState extends State<KitSlider> with TickerProviderStateMixin {
           child: DecoratedBox(
             key: const Key('kit-slider-thumb'),
             decoration: BoxDecoration(
-              color: KitTokens.sliderThumbColor,
+              color: opacityInk == null
+                  ? KitTokens.sliderThumbColor
+                  : KitOpacityTrackPainter.thumbAt(opacityInk, shown),
               borderRadius: BorderRadius.circular(KitTokens.sliderPillRadius),
               boxShadow: KitTokens.sliderThumbShadow,
             ),
@@ -689,7 +701,12 @@ class _KitSliderState extends State<KitSlider> with TickerProviderStateMixin {
                           ? KitTokens.sliderValueSizeLong
                           : KitTokens.sliderValueSize,
                       height: KitTokens.lineHeightOne,
-                      color: KitTokens.sliderValueInk,
+                      color: opacityInk == null
+                          ? KitTokens.sliderValueInk
+                          : KitTokens.opacityNumberInk,
+                      shadows: opacityInk == null
+                          ? null
+                          : KitTokens.opacityNumberShadow,
                       decoration: TextDecoration.none,
                       fontWeight: FontWeight.w400,
                     ),

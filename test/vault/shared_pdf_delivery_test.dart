@@ -10,6 +10,7 @@ import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/office/office_document_store.dart';
 import 'package:saber/data/office/office_preview_engine.dart';
 import 'package:saber/data/office/office_templates.dart';
+import 'package:saber/data/settings/app_settings.dart';
 import 'package:saber/data/vault/thumbnail_cache.dart';
 import 'package:saber/data/vault/workspace_store.dart';
 import 'package:saber/i18n/strings.g.dart';

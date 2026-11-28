@@ -139,6 +139,16 @@ abstract final class KitTokens {
   static const penMarkScale = 0.9;
   static const penMarkMin = 2.0;
   static const penMarkMax = 24.0;
+  // The broad nib's dot was measured instead: 2.8 + 0.113 x value. The fine
+  // pen's thin line halves its dot; its dotted line has
+  // max(2, 1.13 + .017 x value, .0857 x value - .43) (`dotW`, line 2141).
+  static const penMarkCalliBase = 2.8;
+  static const penMarkCalliPerLevel = 0.113;
+  static const penMarkThinScale = 0.5;
+  static const penMarkDotBase = 1.13;
+  static const penMarkDotPerLevel = 0.017;
+  static const penMarkDotSlope = 0.0857;
+  static const penMarkDotOffset = 0.43;
   static const penPanelRowsTop = 16.0; // `.snp .snrows`, line 577
   static const penPanelRowHeight = 46.0; // `.snp .srow`, line 578
   static const penPanelColorsTop = 4.0; // `.snp .sncolors` margin, line 589
@@ -604,6 +614,46 @@ abstract final class KitTokens {
     ),
     BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.07), spreadRadius: 0.5),
   ];
+
+  // The opacity slider (`.atrack`, lines 166 and 170, `SLD.alpha`, line
+  // 2125): a checkerboard of 4 px squares (`repeating-conic-gradient(#d7d9de
+  // 0 25%, #ffffff 0 50%) 0 0/8px 8px`) under a ramp from clear to the ink,
+  // no dots; the thumb is the ink mixed with white by 1 - value / 100, its
+  // number white with a 1 px shadow. 10 to 100 in tens, in percent of the
+  // pen's own opacity (the highlighter's 100 of 255 is 100).
+  static const opacityCheckerDark = Color(0xffd7d9de);
+  static const opacityCheckerLight = Color(0xffffffff);
+  static const opacityCheckerCell = 4.0;
+  static const opacityNumberInk = Color(0xffffffff);
+  // CSS `0 0 1px` is a blur of sigma 0.5. Flutter's sigma is radius x 0.577
+  // + 0.5, but only above 0 (a radius of 0 draws no blur, so no shadow): the
+  // smallest radius gives that sigma.
+  static const opacityNumberShadow = [
+    Shadow(color: Color.fromRGBO(0, 0, 0, 0.3), blurRadius: 0.01),
+  ];
+  static const opacityMin = 10;
+  static const opacityMax = 100;
+  static const opacityStep = 10;
+
+  // The fine pen's line styles (`.snp .pills`, lines 582-584): four pills 28
+  // high, 14 round, 7 apart, 9 above and below, the chosen one `--sn-pill`.
+  // In each a 44 x 8 drawing (`SP_LINES`, line 2102): its path, stroke
+  // width and dashes, round caps, in #1f2329.
+  static const penLinePadV = 9.0;
+  static const penLineGap = 7.0;
+  static const penLinePillHeight = 28.0;
+  static const penLinePillRadius = 14.0;
+  static const penLinePillBg = Color(0xfff6f7f9);
+  static const penLinePillOnBg = Color(0xffe8e9ed);
+  static const penLineInk = Color(0xff1f2329);
+  static const penLineDrawingWidth = 44.0;
+  static const penLineDrawingHeight = 8.0;
+  static const penLineDrawings = <String, (String, double, List<double>)>{
+    'solid': ('M3 4H41', 3.4, []),
+    'thin': ('M3 4C14 3 30 3 41 4', 1.8, []),
+    'dash': ('M3 4H41', 2.6, [7, 5]),
+    'dot': ('M3 4H41', 2.4, [0.1, 4.2]),
+  };
 
   // Shadows (preview 6th draft CSS, --shadow = rgba(12,22,44,.26))
   static const pillShadow = [

@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/components/canvas/image/editor_image.dart';
+import 'package:saber/data/editor/ink_swap.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/editor/page_link.dart';
 import 'package:sbn/canvas_background_pattern.dart';
 import 'package:sbn/change.dart';
 
-class EditorHistory {
+/// Listeners hear after a change is recorded, undone or redone (the
+/// editor's actions and the 노트 추가 notice). Rejecting an accidental
+/// stroke, clearing the redo stack and setting [canRedo] stay quiet: the
+/// editor builds after each, and the lasso's start sets [canRedo].
+class EditorHistory with ChangeNotifier {
   static const maxHistoryLength = 100;
 
   /// A stack of the changes that have been made in the editor.
@@ -31,10 +36,6 @@ class EditorHistory {
   /// reject strokes (i.e. accidental strokes when zooming).
   var _isRedoPossible = false;
 
-  /// Heard after a change is recorded, undone or redone. One listener only
-  /// (the editor's 노트 추가 notice); a second one would make it a list.
-  VoidCallback? onChange;
-
   /// Removes an element from the [_past] stack,
   /// adds it to the [_future] stack, and returns it.
   ///
@@ -44,7 +45,7 @@ class EditorHistory {
     if (_past.isEmpty) throw Exception('Nothing to undo');
     final item = _past.removeLast();
     _future.add(item);
-    onChange?.call();
+    notifyListeners();
     return item;
   }
 
@@ -57,7 +58,7 @@ class EditorHistory {
     if (_future.isEmpty) throw Exception('Nothing to redo');
     final item = _future.removeLast();
     _past.add(item);
-    onChange?.call();
+    notifyListeners();
     return item;
   }
 
@@ -91,7 +92,7 @@ class EditorHistory {
     _past.add(item);
     if (_past.length > maxHistoryLength) _past.removeAt(0);
     _isRedoPossible = false;
-    onChange?.call();
+    notifyListeners();
   }
 
   /// Marks the last change as saved to disk.
@@ -115,10 +116,12 @@ class EditorHistory {
   EditorHistoryItem? removeAccidentalStroke() {
     _isRedoPossible = true;
     if (_past.isEmpty) return null;
-    // The eraser's first finger of a pinch leaves an erase instead.
+    // The eraser's first finger of a pinch leaves a replace instead.
     assert(
-      _past.last.type == .draw || _past.last.type == .erase,
-      'Accidental stroke is not a draw or an erase',
+      _past.last.type == .draw ||
+          _past.last.type == .erase ||
+          _past.last.type == .replace,
+      'Accidental stroke is not a draw, an erase or a replace',
     );
     assert(
       _past.last.type != .draw || _past.last.strokes.length == 1,
@@ -134,9 +137,12 @@ class EditorHistory {
   /// Whether a change to undo or redo holds [page] (put it in, moved it,
   /// deleted it): undoing or redoing it finds that page, so the tidying of
   /// empty pages at the note's end stops there.
-  bool holds(EditorPage page) =>
-      _past.any((item) => identical(item.page, page)) ||
-      _future.any((item) => identical(item.page, page));
+  bool holds(EditorPage page) {
+    bool heldBy(EditorHistoryItem item) =>
+        identical(item.page, page) ||
+        (item.swaps?.any((swap) => identical(swap.page, page)) ?? false);
+    return _past.any(heldBy) || _future.any(heldBy);
+  }
 
   /// Returns true if there is something to undo.
   bool get canUndo {
@@ -172,6 +178,7 @@ class EditorHistoryItem {
     this.patternFollowers,
     this.link,
     this.replacedLink,
+    this.swaps,
   }) : assert(
          type != .move || offset != null,
          'Offset must be provided for move',
@@ -208,6 +215,10 @@ class EditorHistoryItem {
        assert(
          type != .backgroundPattern || backgroundPatternChange != null,
          'Background pattern change must be provided for backgroundPattern',
+       ),
+       assert(
+         type != .replace || (swaps?.isNotEmpty ?? false),
+         'Swaps must be provided for replace',
        );
 
   final EditorHistoryItemType type;
@@ -236,6 +247,10 @@ class EditorHistoryItem {
   /// in its place): undoing the edit puts it back.
   final PageLink? replacedLink;
 
+  /// The pages a [EditorHistoryItemType.replace] changed and how; undoing
+  /// it puts their strokes and pictures back at their places.
+  final List<PageSwap>? swaps;
+
   EditorHistoryItem copyWith({
     EditorHistoryItemType? type,
     int? pageIndex,
@@ -250,6 +265,7 @@ class EditorHistoryItem {
     PatternFollowers? patternFollowers,
     PageLink? link,
     PageLink? replacedLink,
+    List<PageSwap>? swaps,
   }) {
     return EditorHistoryItem(
       type: type ?? this.type,
@@ -266,6 +282,7 @@ class EditorHistoryItem {
       patternFollowers: patternFollowers ?? this.patternFollowers,
       link: link ?? this.link,
       replacedLink: replacedLink ?? this.replacedLink,
+      swaps: swaps ?? this.swaps,
     );
   }
 }
@@ -283,4 +300,9 @@ enum EditorHistoryItemType {
   backgroundPattern,
   addLink,
   removeLink,
+
+  /// Strokes and pictures swapped by their places on one or more pages
+  /// ([EditorHistoryItem.swaps]): the eraser, the lasso's delete and
+  /// clearing pages.
+  replace,
 }

@@ -10,9 +10,9 @@ import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
-import 'package:saber/data/tools/pen.dart';
 
-import 'pen_panel_harness.dart' show colourString, resetPenPanelState;
+import 'pen_panel_harness.dart'
+    show TestToolHost, colourString, resetPenPanelState;
 
 /// Tall enough for the pen panels opened from the upright bar's buttons.
 const barScreen = Size(800, 900);
@@ -30,13 +30,13 @@ Finder barKey(String k) => find.byKey(ValueKey(k));
 Finder inside(Finder of, Finder f) => find.descendant(of: of, matching: f);
 
 /// The editor's part in the floating bar tests: it holds the tool and builds
-/// again when the tool or the colour changes (as the editor does), records
-/// what the bar asks of it, counts its own builds, and draws a canvas under
-/// the bar that counts its paintings and taps.
-class BarHost {
-  new(this.tool);
+/// again when the tool changes (as the editor does; a colour or a width only
+/// reaches [toolState]), records what the bar asks of it, counts its own
+/// builds, and draws a canvas under the bar that counts its paintings and
+/// taps.
+class BarHost extends TestToolHost {
+  new(super.tool);
 
-  Tool tool;
   final tools = <Tool>[];
   final colors = <Color>[];
   var builds = 0;
@@ -55,6 +55,19 @@ class BarHost {
 
   /// Builds the host again with [next] in hand (the toolbar picking a tool).
   late void Function(Tool next) pick;
+
+  @override
+  void selectTool(Tool t) {
+    tools.add(t);
+    pick(t);
+  }
+
+  @override
+  void setColor(Color c) {
+    colors.add(c);
+    _keepRecent(c);
+    colourPen(c);
+  }
 
   AppAction undo({bool enabled = true}) => AppAction(
     id: AppActionIds.undo,
@@ -108,18 +121,7 @@ class _HostPageState extends State<_HostPage> {
           ),
           Positioned.fill(
             child: KitFloatingBar(
-              currentTool: host.tool,
-              setTool: (t) {
-                host.tools.add(t);
-                setState(() => host.tool = t);
-              },
-              setColor: (c) {
-                host.colors.add(c);
-                final t = host.tool;
-                if (t is Pen) t.color = c;
-                _keepRecent(c);
-                setState(() {});
-              },
+              host: host,
               actions: host.actions,
               penPanelCollapsed: host.collapsed,
               growFrom: host.growFrom,
@@ -279,47 +281,55 @@ const _undoAcross = {'floating-bar-undo-pill': Rect.fromLTWH(0, 0, 80, 40)};
 const _undoUpright = {'floating-bar-undo-pill': Rect.fromLTWH(0, 0, 40, 80)};
 
 /// The value sheet's boxes (task-12-values.md §7), from the bar's top left:
-/// the bar, its pills and buttons, the lines between groups, the dots.
+/// the bar, its pills and buttons, the lines between groups, the dots. Stage
+/// 2 puts the brush after the fine pen (the preview's `#toolPill`), so every
+/// box from there on is one pen button (34) further along.
 final barSheets = <String, BarSheet>{
   'pen-h': (
-    size: const Size(440, 40),
+    size: const Size(barAcross, 40),
     boxes: {
       ..._undoAcross,
-      'floating-bar-tool-pill': _b(86, 0, 354, 40),
+      'floating-bar-tool-pill': _b(86, 0, 388, 40),
       'floating-bar-undo': _b(7, 4),
       'floating-bar-redo': _b(41, 4),
       'floating-bar-pen-fountain': _b(93, 4),
       'floating-bar-pen-pen': _b(127, 4),
-      'floating-bar-pen-pencil': _b(161, 4),
-      'floating-bar-pen-hlchisel': _b(195, 4),
-      'toolbar-quick-ink-widths': _b(238, 4),
-      'floating-bar-custom-colour': _b(401, 4),
+      'floating-bar-pen-brush': _b(161, 4),
+      'floating-bar-pen-pencil': _b(195, 4),
+      'floating-bar-pen-hlchisel': _b(229, 4),
+      'toolbar-quick-ink-widths': _b(272, 4),
+      'floating-bar-custom-colour': _b(435, 4),
     },
-    lines: [_b(232, 9, 1, 22), _b(275, 9, 1, 22)],
+    lines: [_b(266, 9, 1, 22), _b(309, 9, 1, 22)],
     dots: [
-      for (final x in const <double>[284, 314, 344, 374]) _b(x, 9, 22, 22),
+      for (final x in const <double>[318, 348, 378, 408]) _b(x, 9, 22, 22),
     ],
   ),
   'pen-v': (
-    size: const Size(40, 416),
+    size: const Size(40, barUpright),
     boxes: {
       ..._undoUpright,
-      'floating-bar-tool-pill': _b(0, 86, 40, 330),
+      'floating-bar-tool-pill': _b(0, 86, 40, 364),
       'floating-bar-undo': _b(4, 7),
       'floating-bar-redo': _b(4, 41),
       'floating-bar-pen-fountain': _b(4, 93),
       'floating-bar-pen-pen': _b(4, 127),
-      'floating-bar-pen-pencil': _b(4, 161),
-      'floating-bar-pen-hlchisel': _b(4, 195),
-      'toolbar-quick-ink-widths': _b(4, 238),
-      'floating-bar-custom-colour': _b(4, 377),
+      'floating-bar-pen-brush': _b(4, 161),
+      'floating-bar-pen-pencil': _b(4, 195),
+      'floating-bar-pen-hlchisel': _b(4, 229),
+      'toolbar-quick-ink-widths': _b(4, 272),
+      'floating-bar-custom-colour': _b(4, 411),
     },
-    lines: [_b(9, 232, 22, 1), _b(9, 275, 22, 1)],
+    lines: [_b(9, 266, 22, 1), _b(9, 309, 22, 1)],
     dots: [
-      for (final y in const <double>[281, 305, 329, 353]) _b(9, y, 22, 22),
+      for (final y in const <double>[315, 339, 363, 387]) _b(9, y, 22, 22),
     ],
   ),
 };
+
+/// The pen bar's length across the top and standing at the side.
+const barAcross = 474.0;
+const barUpright = 450.0;
 
 /// The bar sits 10 in from the canvas area's top left, with the sizes and
 /// places of the value sheet's state [name].

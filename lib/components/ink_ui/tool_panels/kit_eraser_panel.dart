@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:saber/components/ink_ui/ink_engine_support.dart';
 import 'package:saber/components/ink_ui/pen_panel/size_level.dart';
 import 'package:saber/components/ink_ui/tool_panels/tool_panel_common.dart';
 import 'package:saber/components/kit/kit_controls.dart';
 import 'package:saber/components/kit/kit_icon.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
+import 'package:saber/data/ink/ink_engine.dart';
 import 'package:saber/data/prefs.dart';
+import 'package:saber/data/settings/app_settings.dart';
 import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/eraser_targets.dart';
 
@@ -117,8 +118,9 @@ class KitEraserAdvancedPanel extends StatefulWidget {
   /// What the document's ink engine has.
   final InkEngineSupport engine;
 
-  /// Why the last target on cannot be turned off.
-  static const keepOne = '지울 대상은 하나 이상 있어야 합니다. 다른 대상을 먼저 켜세요.';
+  /// Why the last target on cannot be turned off (the settings table's line).
+  static String get keepOne =>
+      settingsRegistry.keepOneText(stows.eraserTargets.key)!;
 
   @override
   State<KitEraserAdvancedPanel> createState() => _KitEraserAdvancedPanelState();
@@ -192,7 +194,13 @@ class _KitEraserAdvancedPanelState extends State<KitEraserAdvancedPanel> {
         builder: (context, _) {
           final on = EraserTargets.value;
           final shown = widget.engine.eraserTargets ?? StrokeKind.values;
-          final oneOn = shown.where(on.contains).length == 1;
+          final shownNames = [for (final k in shown) k.name];
+          String? lockedReason(StrokeKind kind) =>
+              settingsRegistry.keepOneReason(
+                stows.eraserTargets.key,
+                item: kind.name,
+                among: shownNames,
+              );
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -203,9 +211,7 @@ class _KitEraserAdvancedPanelState extends State<KitEraserAdvancedPanel> {
                     label: label,
                     icon: icon,
                     value: on.contains(kind),
-                    lockedReason: on.contains(kind) && oneOn
-                        ? KitEraserAdvancedPanel.keepOne
-                        : null,
+                    lockedReason: lockedReason(kind),
                     onLocked: () => setState(() => _refused = true),
                     onChanged: (v) {
                       if (EraserTargets.set(kind, v)) {

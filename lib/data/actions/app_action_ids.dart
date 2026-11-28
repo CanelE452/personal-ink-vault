@@ -112,6 +112,18 @@ abstract final class AppActionIds {
   // once, where and as the window last did.
   static const insertPageMenu = 'insertPageMenu';
 
+  // Stage 2 Task 4: what the toolbar's mode button, the ⋯ menu's 확대 잠금
+  // and the old toolbar keys did, published by the editor and by the infinite
+  // note (each screen has its own floating bar). None of them is `checked`:
+  // the state is in `stows.editorGestureMode` and `stows.lastZoomLock`, and the
+  // bar's open flag belongs to its screen. `eraserBar` writes again out of
+  // gesture mode, takes the eraser (the eraser in hand goes back to the tool
+  // before it, as the eraser button) and opens the floating bar.
+  static const gestureMode = 'gestureMode';
+  static const floatingBar = 'floatingBar';
+  static const zoomLock = 'zoomLock';
+  static const eraserBar = 'eraserBar';
+
   /// The tool actions in toolbar order.
   static const List<String> tools = [
     toolLasso,
@@ -208,5 +220,9 @@ abstract final class AppActionIds {
     record,
     quickNote,
     insertPageMenu,
+    gestureMode,
+    floatingBar,
+    zoomLock,
+    eraserBar,
   ];
 }

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:saber/components/ink_ui/audio/record_pill.dart';
 import 'package:saber/components/ink_ui/doc_menu/kit_doc_menu.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/toolbar_tools_layout.dart';
-import 'package:saber/components/ink_ui/ink_engine_support.dart';
 import 'package:saber/components/ink_ui/tool_panels/kit_lasso_panel.dart';
 import 'package:saber/components/kit/kit_icon.dart';
 import 'package:saber/components/kit/kit_menu.dart';
@@ -14,6 +13,7 @@ import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/components/kit/kit_toolbar.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
+import 'package:saber/data/ink/ink_engine.dart';
 import 'package:saber/data/prefs.dart';
 
 /// Sizes of the 9th draft c bar not in [KitTokens].
@@ -442,8 +442,11 @@ class _KitEditorToolbarState extends State<KitEditorToolbar> {
         icon: gesture ? KitIconName.palm : KitIconName.draw,
         tooltip: gesture ? '제스처 모드' : '필기 모드',
         ring: true,
+        // a screen publishes `gestureMode`; a bar built alone flips the stow
         onPressed: () {
-          stows.editorGestureMode.value = !gesture;
+          if (!_actions.run(AppActionIds.gestureMode, context)) {
+            stows.editorGestureMode.value = !gesture;
+          }
         },
       ),
       _line(const ValueKey('editor-mode-line')),

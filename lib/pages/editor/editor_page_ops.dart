@@ -55,18 +55,7 @@ extension EditorPageOps on EditorState {
   /// tidied away), empty pages fill the places up to it, and one follows it
   /// if it has something or a link on it, as the note ends with an empty
   /// page. A page not in the note is put in there.
-  void _movePageNow(EditorPage page, int to) {
-    final pages = coreInfo.pages;
-    final from = pages.indexOf(page);
-    if (from != -1) pages.removeAt(from);
-    final shorter = to > pages.length;
-    if (shorter) createPage(to - 2);
-    pages.insert(to, page);
-    _renumberPages(from != -1 && from < to ? from : to);
-    if (shorter && (page.isNotEmpty || page.links.isNotEmpty)) {
-      createPage(pages.length - 1);
-    }
-  }
+  void _movePageNow(EditorPage page, int to) => pageList.move(page, to);
 
   void insertPageBefore(int index) {
     if (_noteLocked || !_isPage(index)) return;
@@ -241,19 +230,19 @@ extension _EditorPageMenu on EditorState {
   /// Says [text] in the undo notice, its [action] button undoing the change
   /// just recorded if that is still the last one, then running [after]. The
   /// next change (or undo) takes the notice away: its button would have
-  /// nothing of its own to undo. Notices share the one `history.onChange`
-  /// slot, so a new one takes it over from the one before.
+  /// nothing of its own to undo. The notice listens to the history until
+  /// that change, or until it goes (a newer notice replacing it ends it).
   void _showUndoNotice(
     String text, {
     String action = KitTokens.undoNoticeAction,
     VoidCallback? after,
   }) {
     final notice = _side.notice;
+    // the history the change is in (a test may hand the editor another)
+    final history = this.history;
     final done = history.peekUndo();
     late final VoidCallback goes;
-    void stopListening() {
-      if (identical(history.onChange, goes)) history.onChange = null;
-    }
+    void stopListening() => history.removeListener(goes);
 
     void undoIt() {
       stopListening();
@@ -262,9 +251,10 @@ extension _EditorPageMenu on EditorState {
     }
 
     goes = () {
+      stopListening();
       if (identical(notice.notice?.onAction, undoIt)) notice.hide();
     };
     notice.show(text, action: action, onAction: undoIt, onEnd: stopListening);
-    history.onChange = goes;
+    history.addListener(goes);
   }
 }

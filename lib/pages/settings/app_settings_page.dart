@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:saber/components/kit/kit_motion.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
+import 'package:saber/data/settings/app_settings.dart';
 import 'package:saber/data/settings/setting_entry.dart';
 import 'package:saber/data/settings/settings_registry.dart';
 import 'package:saber/pages/settings/settings_chrome.dart';
-import 'package:saber/pages/settings/settings_entries.dart';
 import 'package:saber/pages/settings/settings_rows.dart';
 import 'package:saber/pages/settings/settings_text.dart';
 
@@ -221,6 +221,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   Widget _row(SettingEntry entry) => switch (entry) {
     ToggleSetting() => SettingsToggleRow(entry: entry, registry: _registry),
     ChoiceSetting<Object?>() => SettingsChoiceRow(entry: entry),
+    ListSetting() => const SizedBox.shrink(),
     ActionSetting() => Builder(
       builder: (context) => SettingsActionRow(
         entry: entry,

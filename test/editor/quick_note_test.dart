@@ -8,22 +8,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_vault_core/ink_vault_core.dart';
 import 'package:logging/logging.dart';
 import 'package:perfect_freehand/perfect_freehand.dart';
+import 'package:saber/components/canvas/_stroke.dart';
+import 'package:saber/components/kit/kit_pen_art.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/editor/quick_note.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/ink/pen_prefs.dart';
+import 'package:saber/data/ink/stroke_style.dart';
+import 'package:saber/data/prefs.dart';
+import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/stroke_properties.dart';
 import 'package:saber/data/vault/note_side_store.dart';
 import 'package:saber/data/vault/workspace_store.dart';
+import 'package:sbn/tool_id.dart';
 
 const _kind = NoteSideKind.quickNote;
 
 /// Long enough that only [QuickNote.flush] saves in these tests.
 const _noTimer = Duration(hours: 1);
 
-Pen _pen({Color color = Colors.black, double stabiliser = 0}) => Pen(
+Pen _pen({
+  Color color = Colors.black,
+  double stabiliser = 0,
+  ToolId tool = ToolId.ballpointPen,
+}) => Pen(
   name: 'test',
   sizeMin: 1,
   sizeMax: 25,
@@ -32,7 +43,7 @@ Pen _pen({Color color = Colors.black, double stabiliser = 0}) => Pen(
   options: StrokeOptions(size: 5, streamline: stabiliser),
   pressureEnabled: false,
   color: color,
-  toolId: .ballpointPen,
+  toolId: tool,
 );
 
 /// Whole page units, so the points survive the 32-bit save unchanged.
@@ -915,5 +926,212 @@ void main() {
     expect(await store.list(note.id, _kind), hasLength(1));
     await quick.flush();
     expect(quick.hasUnsavedChanges, isFalse);
+  });
+
+  test('strokes moved from a v21 head keep their new keys', () async {
+    final note = await workspace.create('Lecture');
+    // a head written by a pen engine build: a brush stroke at opacity 128
+    final remote = EditorCoreInfo(filePath: '/remote')..pages.add(EditorPage());
+    final stroke = _pen(tool: ToolId.brush)
+        .createStroke(remote.pages.single, 0);
+    for (final point in _line(0, 0)) {
+      stroke.addPoint(point);
+    }
+    stroke
+      ..options.isComplete = true
+      ..style = const StrokeStyle(alpha: 128);
+    remote.pages.single.insertStroke(stroke);
+    expect(remote.versionToWrite(), 21);
+    final (json, _) = remote.toJson();
+    remote.dispose();
+    await repository.commit(
+      entityId: newId(),
+      kind: EntityKind.attachment,
+      ownerNoteId: note.id,
+      files: {
+        _kind.markerFile: Uint8List.fromList(
+          utf8.encode(jsonEncode({'schemaVersion': 1})),
+        ),
+        'quick-note.sbn2': BsonCodec.serialize(json).byteList,
+      },
+      parentRevisionIds: [],
+    );
+
+    final quick = await open(note.id);
+    expect(quick.readOnly, isFalse);
+    final moved = quick.core.pages.single.strokes.single;
+    expect(moved.toolId, ToolId.brush);
+    expect(moved.style.alpha, 128);
+    // a stroke drawn on top makes it save again, with the moved one in it
+    _draw(quick, _line(0, 100));
+    await quick.flush();
+    final head = (await store.list(note.id, _kind)).first.heads.single;
+    final saved = BsonCodec.deserialize(BsonBinary.from(await sbnOf(head)));
+    expect(saved['v'], 21);
+    final strokes = ((saved['z'] as List).single['s'] as List).cast<Map>();
+    expect(strokes, hasLength(2));
+    final savedStroke = strokes.singleWhere((s) => s['ty'] == 'brush');
+    expect(savedStroke['ty'], 'brush');
+    expect(savedStroke['op'], 128);
+  });
+
+  test(
+    'a brush stroke in the quick note makes its marker sbnVersion 21',
+    () async {
+      final note = await workspace.create('Lecture');
+      final quick = await open(note.id);
+      _draw(quick, _line(0, 0), pen: Pen.brush());
+      expect(quick.core.pages.single.strokes.single.toolId, ToolId.brush);
+      await quick.flush();
+      final record = (await store.list(note.id, _kind)).single;
+      final files = await store.read(record);
+      final marker = jsonDecode(utf8.decode(files[_kind.markerFile]!)) as Map;
+      expect(marker['sbnVersion'], 21);
+      final bson = BsonCodec.deserialize(
+        BsonBinary.from(files['quick-note.sbn2']!),
+      );
+      expect(bson['v'], 21);
+      final saved = ((bson['z'] as List).single['s'] as List).single as Map;
+      expect(saved['ty'], 'brush');
+    },
+  );
+
+  List<Offset> pointsOf(Stroke stroke) => [
+    for (final p in stroke.points) Offset(p.x, p.y),
+  ];
+
+  /// A freehand zigzag from (100, 100), each move far apart.
+  const zigzag = [
+    Offset(100, 100),
+    Offset(130, 140),
+    Offset(160, 110),
+    Offset(190, 150),
+    Offset(220, 130),
+  ];
+
+  test('the quick note reads the straight line of the pen in hand', () async {
+    addTearDown(
+      () =>
+          stows.straightLineByPen.value = stows.straightLineByPen.defaultValue,
+    );
+    final note = await workspace.create('Lecture');
+    final quick = await open(note.id);
+    setStraightLine(KitPenKind.highlighterRound, true);
+    _draw(quick, zigzag, pen: Highlighter.round());
+    final round = quick.core.pages.single.strokes.last;
+    expect(pointsOf(round), const [
+      Offset(100, 100),
+      Offset(220, 130),
+      Offset(220, 130),
+    ]);
+    // the flat highlighter's straight line is still off
+    _draw(quick, zigzag, pen: Highlighter());
+    expect(quick.core.pages.single.strokes.last.length, zigzag.length);
+    // nor does the old highlighter setting count once that pen is set
+    stows.highlighterStraightLine.value = true;
+    addTearDown(() => stows.highlighterStraightLine.value = false);
+    setStraightLine(KitPenKind.highlighterChisel, false);
+    _draw(quick, zigzag, pen: Highlighter());
+    expect(quick.core.pages.single.strokes.last.length, zigzag.length);
+  });
+
+  test("the quick note straightens a pen's line when that pen's straight "
+      'line is on', () async {
+    addTearDown(
+      () =>
+          stows.straightLineByPen.value = stows.straightLineByPen.defaultValue,
+    );
+    final note = await workspace.create('Lecture');
+    final quick = await open(note.id);
+    // 80 points: the line recogniser needs at least 64
+    final nearlyStraight = [
+      for (var i = 0; i <= 80; i++) Offset(100 + 4.0 * i, i.isEven ? 200 : 201),
+    ];
+    _draw(quick, nearlyStraight);
+    expect(quick.core.pages.single.strokes.last.length, greaterThan(3));
+    setStraightLine(KitPenKind.finePen, true);
+    _draw(quick, nearlyStraight);
+    final line = quick.core.pages.single.strokes.last;
+    expect(line.length, 3);
+    expect(pointsOf(line).first, const Offset(100, 200));
+    // another pen's straight line does not count
+    _draw(quick, nearlyStraight, pen: _pen(tool: ToolId.fountainPen));
+    expect(quick.core.pages.single.strokes.last.length, greaterThan(3));
+  });
+
+  group('held strokes', () {
+    // opened here, outside the test's own clock, which a read of the vault
+    // would wait on
+    late QuickNote quick;
+    setUp(() async {
+      final note = await workspace.create('Lecture');
+      quick = await open(note.id);
+    });
+
+    testWidgets('holding at touch-down then writing keeps the freehand '
+        'stroke', (tester) async {
+      quick.penDown(zigzag.first, _pen(), null);
+      // the pen rests where it touched down, with a 1 px wobble
+      quick.penMove(const Offset(101, 100), null);
+      await tester.pump(const Duration(milliseconds: 600));
+      for (final point in zigzag.skip(1)) {
+        quick.penMove(point, null);
+      }
+      quick.penUp();
+      final stroke = quick.core.pages.single.strokes.single;
+      expect(stroke.length, zigzag.length + 1);
+      expect(pointsOf(stroke).first, zigzag.first);
+      // its save timer runs on the test's clock
+      quick.dispose();
+    });
+
+    testWidgets('the quick note turns a held stroke into a line', (
+      tester,
+    ) async {
+      // the window draws at twice the page's size: 8 px on screen is 4 here
+      quick.penDown(zigzag.first, _pen(), null, screenScale: 2);
+      for (final point in zigzag.skip(1)) {
+        quick.penMove(point, null);
+      }
+      final stroke = quick.currentStroke.value!;
+      await tester.pump(const Duration(milliseconds: 300));
+      // 5 page units are 10 px on screen: the pen moved, the wait starts again
+      quick.penMove(const Offset(225, 130), null);
+      await tester.pump(const Duration(milliseconds: 300));
+      quick.penMove(const Offset(227, 131), null);
+      await tester.pump(const Duration(milliseconds: 199));
+      expect(stroke.length, greaterThan(3));
+      var told = 0;
+      void tell() => told++;
+      quick.currentStroke.addListener(tell);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(told, 1);
+      quick.currentStroke.removeListener(tell);
+      expect(pointsOf(stroke), const [
+        Offset(100, 100),
+        Offset(227, 131),
+        Offset(227, 131),
+      ]);
+      // the end follows the pen, the start stays
+      quick.penMove(const Offset(300, 260), null);
+      expect(pointsOf(stroke), const [
+        Offset(100, 100),
+        Offset(300, 260),
+        Offset(300, 260),
+      ]);
+      quick.penUp();
+      final line = quick.core.pages.single.strokes.single;
+      expect(pointsOf(line), const [
+        Offset(100, 100),
+        Offset(300, 260),
+        Offset(300, 260),
+      ]);
+      expect(line.options.isComplete, isTrue);
+      expect(quick.history.canUndo, isTrue);
+      quick.undo();
+      expect(quick.core.pages.single.strokes, isEmpty);
+      // its save timer runs on the test's clock
+      quick.dispose();
+    });
   });
 }

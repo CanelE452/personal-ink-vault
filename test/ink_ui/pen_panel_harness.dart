@@ -8,6 +8,7 @@ import 'package:saber/components/kit/kit_icon.dart';
 import 'package:saber/components/kit/kit_pen_art.dart';
 import 'package:saber/components/kit/kit_popover.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
+import 'package:saber/data/ink/ink_tool_state.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/highlighter.dart';
@@ -16,12 +17,60 @@ import 'package:saber/data/tools/pencil.dart';
 
 const harnessScreen = Size(800, 900);
 
+/// The editor's side of the ink windows as the tests play it: it holds the
+/// tool, and a size or stabilisation goes to the pen in hand (a [CountingPen]
+/// records it), then to [toolState], as the editor's does. Each test host
+/// says what a tool and a colour do.
+abstract class TestToolHost implements InkToolHost {
+  new(Tool tool) : toolState = InkToolState(tool);
+
+  @override
+  final InkToolState toolState;
+
+  Tool get tool => toolState.tool;
+  set tool(Tool t) => toolState.update(tool: t);
+
+  /// Gives the pen in hand [c] and tells [toolState].
+  void colourPen(Color c) {
+    final t = tool;
+    if (t is Pen) t.color = c;
+    toolState.update(tool: t);
+  }
+
+  @override
+  void setSize(double size) {
+    final t = tool;
+    if (t is Pen) t.setSize(size);
+    toolState.update(tool: t);
+  }
+
+  @override
+  void setStabiliser(double value) {
+    final t = tool;
+    if (t is Pen) t.setStreamline(value);
+    toolState.update(tool: t);
+  }
+
+  @override
+  void setAlpha(int alpha) {
+    final t = tool;
+    if (t is Pen) t.setAlpha(alpha);
+    toolState.update(tool: t);
+  }
+
+  @override
+  void setLineStyle(KitPenDash style) {
+    final t = tool;
+    if (t is Pen) t.setLineStyle(style);
+    toolState.update(tool: t);
+  }
+}
+
 /// The editor's part in the pen panel tests: it holds the tool, records what
 /// the panel asks of it and counts its own builds. It never rebuilds the panel.
-class PanelHost {
-  new(this.tool);
+class PanelHost extends TestToolHost {
+  new(super.tool);
 
-  Tool tool;
   final tools = <Tool>[];
   final colors = <Color>[];
 
@@ -29,6 +78,20 @@ class PanelHost {
   final calls = <String>[];
   var builds = 0;
   final anchor = GlobalKey();
+
+  @override
+  void selectTool(Tool t) {
+    tools.add(t);
+    calls.add('tool');
+    tool = t;
+  }
+
+  @override
+  void setColor(Color c) {
+    colors.add(c);
+    calls.add('color');
+    colourPen(c);
+  }
 }
 
 class _HostPage extends StatelessWidget {
@@ -82,6 +145,33 @@ class CountingPen extends Pen {
   }
 }
 
+/// A host that only shows its tool: a screen capture asks it for nothing that
+/// changes the screen.
+class ShownToolHost implements InkToolHost {
+  new(Tool tool) : toolState = InkToolState(tool);
+
+  @override
+  final InkToolState toolState;
+
+  @override
+  void selectTool(Tool tool) {}
+
+  @override
+  void setColor(Color color) {}
+
+  @override
+  void setSize(double size) {}
+
+  @override
+  void setStabiliser(double value) {}
+
+  @override
+  void setAlpha(int alpha) {}
+
+  @override
+  void setLineStyle(KitPenDash style) {}
+}
+
 /// [pen] with its size at slider [level], without touching the settings.
 T levelled<T extends Pen>(T pen, int level) {
   pen.options = pen.options.copyWith(
@@ -129,18 +219,7 @@ Future<void> openPanel(
       anchor: host.anchor,
       builder: (context) => KitPenPanel(
         kind: kind,
-        currentTool: () => host.tool,
-        setTool: (t) {
-          host.tools.add(t);
-          host.calls.add('tool');
-          host.tool = t;
-        },
-        setColor: (c) {
-          host.colors.add(c);
-          host.calls.add('color');
-          final t = host.tool;
-          if (t is Pen) t.color = c;
-        },
+        host: host,
         onClose: () => Navigator.of(context).pop(),
         collapsed: notifier,
         actions: actions,
@@ -184,6 +263,8 @@ void resetPenPanelState() {
   stows.autoStraightenLines.value = stows.autoStraightenLines.defaultValue;
   stows.highlighterStraightLine.value =
       stows.highlighterStraightLine.defaultValue;
+  stows.straightLineByPen.value = stows.straightLineByPen.defaultValue;
+  stows.axisLockByPen.value = stows.axisLockByPen.defaultValue;
   stows.preferGreyscale.value = stows.preferGreyscale.defaultValue;
   stows.editorAutoInvert.value = stows.editorAutoInvert.defaultValue;
   stows.lastFountainPenOptions.value =
@@ -194,12 +275,29 @@ void resetPenPanelState() {
   stows.lastHighlighterOptions.value =
       stows.lastHighlighterOptions.defaultValue;
   stows.lastShapePenOptions.value = stows.lastShapePenOptions.defaultValue;
+  stows.lastCalligraphyPenOptions.value =
+      stows.lastCalligraphyPenOptions.defaultValue;
+  stows.lastBrushOptions.value = stows.lastBrushOptions.defaultValue;
+  stows.lastRoundHighlighterOptions.value =
+      stows.lastRoundHighlighterOptions.defaultValue;
+  stows.lastRoundHighlighterColor.value =
+      stows.lastRoundHighlighterColor.defaultValue;
+  for (final opacity in [
+    stows.highlighterOpacity,
+    stows.roundHighlighterOpacity,
+    stows.pencilOpacity,
+  ]) {
+    opacity.value = opacity.defaultValue;
+  }
+  stows.finePenLineStyle.value = stows.finePenLineStyle.defaultValue;
   for (final color in [
     stows.lastFountainPenColor,
     stows.lastBallpointPenColor,
     stows.lastPencilColor,
     stows.lastShapePenColor,
     stows.lastHighlighterColor,
+    stows.lastCalligraphyPenColor,
+    stows.lastBrushColor,
   ]) {
     color.value = color.defaultValue;
   }

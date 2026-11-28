@@ -8,6 +8,7 @@ import 'package:saber/components/kit/kit_pen_art.dart';
 import 'package:saber/components/kit/kit_text.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/ink/pen_prefs.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
@@ -171,8 +172,6 @@ void main() {
   testWidgets('axis lock is disabled until straight line is on', (
     tester,
   ) async {
-    stows.highlighterStraightLine.value = false;
-    stows.highlighterAxisLock.value = false;
     final host = await pumpHost(tester, Highlighter.currentHighlighter);
     await openPanel(tester, host, kind: KitPenPanelKind.highlighters);
     KitToggleRow axis() => tester.widget<KitToggleRow>(_axis);
@@ -183,7 +182,7 @@ void main() {
     expect(axis().onChanged, isNull);
     await tester.tap(_axis);
     await tester.pump();
-    expect(stows.highlighterAxisLock.value, isFalse);
+    expect(axisLockOf(KitPenKind.highlighterChisel), isFalse);
     // dim like `.tg.dis`: the name and the switch, not the note
     expect(
       _opacity(tester, _axis, _lines('수평/수직 그리기')),
@@ -200,7 +199,7 @@ void main() {
     final blocked = panel();
     await tester.tap(find.byKey(const ValueKey('toolbar-auto-straighten')));
     await tester.pump();
-    expect(stows.highlighterStraightLine.value, isTrue);
+    expect(straightLineOf(KitPenKind.highlighterChisel), isTrue);
     expect(axis().onChanged, isNotNull);
     expect(axis().description, _note);
     expect(_opacity(tester, _axis, _lines(_note)), 1);
@@ -208,24 +207,36 @@ void main() {
     expect(_opacity(tester, _axis, find.byType(KitSwitch)), 1);
     await tester.tap(_axis);
     await tester.pump();
-    expect(stows.highlighterAxisLock.value, isTrue);
+    expect(axisLockOf(KitPenKind.highlighterChisel), isTrue);
     expect(axis().value, isTrue);
     // the straight line turned off elsewhere: dim again, the lock is kept
-    stows.highlighterStraightLine.value = false;
+    setStraightLine(KitPenKind.highlighterChisel, false);
     await tester.pump();
     expect(axis().onChanged, isNull);
     expect(axis().description, _blockedNote);
     expect(axis().value, isTrue);
-    expect(stows.highlighterAxisLock.value, isTrue);
+    expect(axisLockOf(KitPenKind.highlighterChisel), isTrue);
     // the lock turned off elsewhere shows too
-    stows.highlighterAxisLock.value = false;
+    setAxisLock(KitPenKind.highlighterChisel, false);
     await tester.pump();
     expect(axis().value, isFalse);
-    // the pen panel has no such row
+    // the pen panel has the same row for its pen (the controller's ruling:
+    // every ink pen with the straight-line switch), dimmed while that pen's
+    // straight line is off
     await closePanel(tester);
     host.tool = Pen.currentPen;
     await openPanel(tester, host);
-    expect(_axis, findsNothing);
+    expect(_axis, findsOneWidget);
+    expect(axis().description, _blockedNote);
+    expect(axis().onChanged, isNull);
+    expect(
+      _opacity(tester, _axis, find.byType(KitSwitch)),
+      KitTokens.disabledOpacity,
+    );
+    setStraightLine(KitPenKind.fountain, true);
+    await tester.pump();
+    expect(axis().onChanged, isNotNull);
+    expect(axis().description, _note);
   });
 
   testWidgets(
@@ -245,14 +256,22 @@ void main() {
           .descendant(of: _lines(_stabNote), matching: find.byType(Text))
           .evaluate()
           .length;
+      // the 수평/수직 row under the straight-line row (the controller's
+      // ruling) moves what is below it down by its height
+      final penAxis = box(_axis);
+      expect(
+        penAxis.top,
+        closeTo(box(_key('toolbar-auto-straighten')).bottom, 1e-9),
+      );
+      final down = penAxis.height;
       expect(panel.width, 300);
-      expect(panel.height, closeTo(455.5 + 15.4 * noteLines, 1e-9));
+      expect(panel.height, closeTo(455.5 + down + 15.4 * noteLines, 1e-9));
       final stab = box(_stabiliser);
-      expect(stab.topLeft, const Offset(11, 349));
+      expect(stab.topLeft, Offset(11, 349 + down));
       expect(stab.width, 278);
       expect(stab.height, closeTo(76.5 + 15.4 * noteLines, 1e-9));
       final title = box(_in(_stabiliser, _lines('스트로크 안정화')));
-      expect(title.topLeft, const Offset(15, 349 + 1 + 4 + 6));
+      expect(title.topLeft, Offset(15, 349 + down + 1 + 4 + 6));
       expect(title.height, closeTo(17.5, 1e-9));
       // on the title's line: both rounded lines end at the line box's foot
       final value = box(_key('tool-panel-stabiliser-value'));
@@ -268,7 +287,7 @@ void main() {
       expect(track.left, 62);
       expect(track.center.dy, closeTo(note.bottom + 23, 1e-9));
       // the page dots keep their place above it
-      expect(box(pageDot(0)).center.dy, 330.5);
+      expect(box(pageDot(0)).center.dy, closeTo(330.5 + down, 1e-9));
       await closePanel(tester);
 
       host.tool = Highlighter.currentHighlighter;
@@ -277,21 +296,21 @@ void main() {
       // under the straight-line row: the name's 17.5 line and the switch at
       // the top (11 in, the switch 1 lower), the note's 15.4 lines 2 under
       // the name; blocked, the note is one line with the app's fonts: 56.9
-      // (v8f 56.89)
+      // (v8f 56.89); stage 2's opacity row (46) sits above it
       final axisLines = find
           .descendant(of: _lines(_blockedNote), matching: find.byType(Text))
           .evaluate()
           .length;
       final axis = box(_axis);
-      expect(axis.topLeft, const Offset(15, 265));
+      expect(axis.topLeft, const Offset(15, 265 + 46));
       expect(axis.width, 270);
       expect(axis.height, closeTo(11 + 17.5 + 2 + 15.4 * axisLines + 11, 1e-9));
       expect(
         box(_in(_axis, find.byType(KitSwitch))).topLeft,
-        const Offset(253, 277),
+        const Offset(253, 277 + 46),
       );
       final name = box(_in(_axis, _lines('수평/수직 그리기')));
-      expect(name.top, 276);
+      expect(name.top, 276 + 46);
       expect(
         box(_in(_axis, _lines(_blockedNote))).top,
         closeTo(name.bottom + 2, 1e-9),
@@ -301,7 +320,7 @@ void main() {
         box(find.byKey(const ValueKey('pen-panel-colors'))).top,
         closeTo(axis.bottom + KitTokens.penPanelColorsTop, 1e-9),
       );
-      expect(panel.height, closeTo(363 + axis.height, 1e-9));
+      expect(panel.height, closeTo(363 + 46 + axis.height, 1e-9));
     },
   );
 }

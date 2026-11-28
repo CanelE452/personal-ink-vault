@@ -19,7 +19,8 @@ import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/select.dart';
 
-import '../ink_ui/pen_panel_harness.dart' show resetPenPanelState;
+import '../ink_ui/pen_panel_harness.dart'
+    show ShownToolHost, resetPenPanelState;
 import '../utils/screen_capture.dart';
 
 /// Writes screenshots of the eraser bar and the eraser and lasso windows
@@ -164,9 +165,7 @@ void main() {
                       ),
                       Positioned.fill(
                         child: KitFloatingBar(
-                          currentTool: tool,
-                          setTool: (_) {},
-                          setColor: (_) {},
+                          host: ShownToolHost(tool),
                           actions: actions,
                           penPanelCollapsed: collapsed,
                           visible: tool is Eraser || tool is Pen,

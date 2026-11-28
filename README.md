@@ -12,6 +12,12 @@
 
 Android 8.0 이상과 ARM64 기기를 지원합니다. APK 크기는 약 405MB입니다. [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.234) · [Android 234 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.234)
 
+위 234가 최신 일반 빌드입니다.
+
+측정용 시험 빌드: **[Android 235 측정 1 APK](https://github.com/CanelE452/personal-ink-vault/releases/download/v0.2.0-android.235-measure1/personal-ink-vault-android-0.2.0-build235-136235-arm64-release.apk)** · [릴리스 정보](https://github.com/CanelE452/personal-ink-vault/releases/tag/v0.2.0-android.235-measure1)
+
+235 측정 1은 새 펜 엔진의 그리기·넘기기 속도를 재는 시험 빌드라 일반 사용에는 권하지 않습니다. 처음 켜면 보관함에 「측정」 폴더와 측정 노트를 만들고, 측정 노트를 열면 그리기를 자동으로 재생합니다. 새 펜으로 고친 노트는 판 21로 저장되어 233·234 앱에서는 열리지 않습니다.
+
 ### 233 이후 바뀐 점
 
 필기 화면 왼쪽 창의 쪽 탭에서 쪽을 바로 정리할 수 있게 했습니다.
@@ -111,10 +117,10 @@ Drive 자동 동기화와 독립 백업/복원을 함께 구현합니다. portab
 1. Flutter `3.47.7`의 [고정 소스](https://github.com/flutter/flutter/tree/abaf9c523780a608bd46686fd5e53740a07077f8), Dart `3.13.5`, JDK `25.0.4.1+1`, Android SDK 및 Python 3.11 이상을 준비합니다. Flutter SDK가 래퍼를 준비하고 `android/gradle/wrapper/gradle-wrapper.properties`에서 Gradle `9.5.0`을 선택합니다. Gradle 데몬에는 저장소의 JVM 설정에 따라 JetBrains JDK 21을 자동으로 준비하거나 기존 설치를 사용합니다.
 2. Android SDK의 `platforms;android-37.0`, `ndk;28.2.13676358`, `ndk;29.0.14206865`, `cmake;3.22.1`을 준비합니다. Rust `1.99.1`에 `aarch64-linux-android` 타깃을 추가합니다. Android SDK 경로를 `ANDROID_SDK_ROOT`로 지정하세요.
 3. 한글 PDF 엔진은 아직 출시되지 않은 rhwp 커밋을 씁니다. 먼저 [한글 엔진·편집 화면 빌드](docs/hwp-rhwp-build.md)에 따라 rhwp 원본을 받아 `packages/ink_hwp_native/Cargo.toml`의 임시 경로를 맞춥니다. 같은 문서에 따라 한글 편집 화면(rhwp-studio)을 빌드해 `android/app/src/main/assets/hwp-studio/`에 넣으면 APK의 `assets/hwp-studio/`로 들어갑니다.
-4. 소스 루트에서 `bash scripts/build-android-234.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
+4. 소스 루트에서 `bash scripts/build-android-235.sh`를 실행합니다. Android Gradle 작업이 두 Rust 라이브러리, 한글 렌더링·내보내기 글꼴, Office Android 라이브러리를 준비합니다. 출처는 Cargo 잠금 파일, 글꼴 manifest 및 [Office 엔진 잠금 파일](android/office_engine/engine.lock.json)에서 확인할 수 있습니다.
 5. 사용자 본인의 서명 키로 설치용 APK를 만들려면 `android/key.properties`에 `storeFile`, `storePassword`, `keyAlias`, `keyPassword`를 로컬로 지정합니다. 서명 전 빌드만 하려면 이 파일 없이 빌드할 수 있습니다. 본인의 OAuth 공개 클라이언트 ID로 테스트하려면 `DRIVE_ANDROID_SERVER_CLIENT_ID`를 설정합니다.
 
-스크립트는 ARM64의 빌드 번호를 `136234`로 지정합니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
+스크립트는 ARM64의 빌드 번호를 `136235`로 지정하고, 235 측정 1과 같이 측정 값 `PIV_INK_TIMING=true`를 넣어 빌드합니다. 234 일반 빌드는 [Android 234 대응 소스](https://github.com/CanelE452/personal-ink-vault/tree/v0.2.0-android.234)의 `scripts/build-android-234.sh`로 만듭니다. 공개 APK는 유지관리자의 기존 서명 키와 공개 OAuth 클라이언트 설정을 사용합니다. 로컬 재빌드는 키와 빌드 환경에 따라 APK 바이트가 달라질 수 있습니다.
 
 ## 고정된 업스트림 소스
 

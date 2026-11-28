@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:saber/components/ink_ui/pen_panel/pen_kinds.dart';
 import 'package:saber/components/kit/kit_pen_art.dart';
+import 'package:saber/data/ink/ink_tool_state.dart';
+import 'package:saber/data/ink/pen_kind.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/eraser_targets.dart';
@@ -8,11 +9,15 @@ import 'package:saber/data/tools/lasso_targets.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:stow_plain/stow_plain.dart';
 
+/// How many strokes of each kind the page in view holds (the eraser's
+/// 「켠 대상 지우기 (N개)」). The host gives it: the engine values are const.
+typedef InkTargetCounts = Map<StrokeKind, int> Function();
+
 /// What a host's ink engine can do, so the floating bar, the pen panel and
 /// the eraser and lasso windows show that and nothing more (design: the
 /// pens and rows the engine lacks are not shown). The editor's engine has
 /// everything ([editor]); the infinite note has its own pen and
-/// highlighter and fewer settings.
+/// highlighter and fewer settings; the quick note's is [quickNote].
 @immutable
 class InkEngineSupport {
   const new({
@@ -25,6 +30,13 @@ class InkEngineSupport {
 
   /// The editor's engine.
   static const editor = InkEngineSupport();
+
+  /// The quick note's engine: the editor's pens and pen settings, the
+  /// stroke eraser, and no lasso.
+  static const quickNote = InkEngineSupport(
+    eraserModes: [EraserMode.stroke],
+    lassoTargets: [],
+  );
 
   /// The host's own pens by kind, in the order they are offered; null: the
   /// editor's pens ([toolForPenKind]), every kind its engine has.
@@ -51,19 +63,39 @@ class InkEngineSupport {
         if (kind.inEngine) kind,
   ];
 
-  /// The tool to pick up for [kind].
-  Tool toolFor(KitPenKind kind) => pens?[kind] ?? toolForPenKind(kind);
+  /// The pens on the floating bar, in order: the host's own, or the
+  /// preview's (`#toolPill`) with one button for the highlighters.
+  List<KitPenKind> get barPenKinds => [
+    ...?pens?.keys,
+    if (pens == null) ...[
+      KitPenKind.fountain,
+      KitPenKind.finePen,
+      KitPenKind.brush,
+      KitPenKind.pencil,
+      KitPenKind.highlighterChisel,
+    ],
+  ];
+
+  /// The tool to pick up for [kind]: the host's own, or the one [state]
+  /// keeps for it.
+  Tool toolFor(KitPenKind kind, InkToolState state) =>
+      pens?[kind] ?? toolForPenKind(kind, state);
 
   /// Turns the first eraser and lasso target this engine shows on when none
   /// it shows is (the editor may have left only others on), so its windows
-  /// keep one on as the editor's do. Called as a window opens.
+  /// keep one on as the editor's do. Called as a window opens. An engine
+  /// that shows no targets of a kind (the quick note's lasso) leaves them.
   void keepTargetsOn() {
     final eraser = eraserTargets;
-    if (eraser != null && !eraser.any(EraserTargets.value.contains)) {
+    if (eraser != null &&
+        eraser.isNotEmpty &&
+        !eraser.any(EraserTargets.value.contains)) {
       EraserTargets.set(eraser.first, true);
     }
     final lasso = lassoTargets;
-    if (lasso != null && !lasso.any((target) => target.value)) {
+    if (lasso != null &&
+        lasso.isNotEmpty &&
+        !lasso.any((target) => target.value)) {
       LassoTargets.set(lasso.first, true);
     }
   }

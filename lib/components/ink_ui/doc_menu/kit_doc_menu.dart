@@ -94,7 +94,13 @@ KitMenuRow zoomSubmenu({
       lineAbove: true,
       label: '확대 잠금',
       value: stows.lastZoomLock.value,
-      onChanged: (on) => stows.lastZoomLock.value = on,
+      // the screen's `zoomLock` action; a menu built alone sets the stow
+      onChanged: (on) {
+        if (AppActionScope.read(context)?.run(AppActionIds.zoomLock, context) !=
+            true) {
+          stows.lastZoomLock.value = on;
+        }
+      },
     ),
   ],
 );

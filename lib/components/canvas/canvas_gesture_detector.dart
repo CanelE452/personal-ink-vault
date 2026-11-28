@@ -11,6 +11,7 @@ import 'package:saber/components/canvas/interactive_canvas.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
+import 'package:saber/data/ink/ink_input_policy.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/pages/editor/editor.dart';
 import 'package:vector_math/vector_math_64.dart';
@@ -650,10 +651,12 @@ class CanvasGestureDetectorState extends State<CanvasGestureDetector> {
     }
     widget.updatePointerData(event.kind, pressure);
 
-    if (isStylus &&
-        stows.autoDisableFingerDrawingWhenStylusDetected.value &&
-        // Don't change if the user has a fixed value for finger drawing
-        !stows.hideFingerDrawingToggle.value) {
+    if (stylusTurnsFingerDrawingOff(
+      device: event.kind,
+      autoDisable: stows.autoDisableFingerDrawingWhenStylusDetected.value,
+      // Don't change if the user has a fixed value for finger drawing
+      toggleHidden: stows.hideFingerDrawingToggle.value,
+    )) {
       stows.editorFingerDrawing.value = false;
     }
   }

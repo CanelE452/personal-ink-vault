@@ -12,7 +12,9 @@ import 'package:saber/components/canvas/_stroke.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_history.dart';
 import 'package:saber/data/editor/page.dart';
-import 'package:saber/data/prefs.dart';
+import 'package:saber/data/ink/hold_to_line.dart';
+import 'package:saber/data/ink/pen_kind.dart';
+import 'package:saber/data/ink/pen_prefs.dart';
 import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
@@ -98,6 +100,8 @@ class QuickNote {
 
   final _eraser = Eraser();
   Pen? _pen;
+  HoldToLine? _hold;
+  Timer? _holdTimer;
   Timer? _timer;
   Future<void> _queue = Future.value();
   var _disposed = false;
@@ -134,6 +138,13 @@ class QuickNote {
     _pen = pen;
     _stroke.value = pen.createStroke(page, 0, screenScale: screenScale)
       ..addPoint(position, pressure);
+    // 「멈추면 직선」 as on the note's pages: every ink pen, not the shape pen; [screenScale] makes it 8 px on screen.
+    // The wait starts once the pen leaves where it touched down, so a pause there before writing stays freehand.
+    _holdTimer?.cancel();
+    _hold = null;
+    if (isInkTool(pen)) {
+      _hold = HoldToLine(slop: holdToLineSlop / screenScale)..start(position);
+    }
   }
 
   void penMove(Offset position, double? pressure) {
@@ -141,17 +152,59 @@ class QuickNote {
     if (stroke == null) return;
     stroke.addPoint(position, pressure);
     // The highlighter's straight line, as Highlighter.onDragUpdate keeps it for the note.
-    if (_pen is Highlighter && stows.highlighterStraightLine.value) {
-      stroke.straightenWhileDrawing(axisLock: stows.highlighterAxisLock.value);
+    final pen = _pen;
+    if (pen is Highlighter) {
+      final kind = penKindOf(pen)!;
+      if (straightLineOf(kind)) {
+        stroke.straightenWhileDrawing(axisLock: axisLockOf(kind));
+      }
+    }
+    if (_hold case final hold?) {
+      if (hold.isLine) {
+        _straighten(stroke);
+      } else if (hold.moved(position)) {
+        _waitForHold();
+      }
     }
     _stroke.changed();
   }
 
+  /// Waits [holdToLineDelay] again for the pen to stay still; then the stroke is a line from its first point, and its
+  /// end follows the pen.
+  void _waitForHold() {
+    _holdTimer?.cancel();
+    _holdTimer = Timer(holdToLineDelay, () {
+      final stroke = _stroke.value;
+      if (stroke == null) return;
+      _hold?.turn();
+      stroke.stabilise(0);
+      _straighten(stroke);
+      _stroke.changed();
+    });
+  }
+
+  /// On an axis with the pen's 수평/수직, usable only with its straight line on.
+  void _straighten(Stroke stroke) {
+    final kind = penKindOf(_pen!);
+    stroke.straightenWhileDrawing(axisLock: kind != null && straightLineOf(kind) && axisLockOf(kind));
+  }
+
   /// Ends the stroke or the erasing touch, each one undo step.
   void penUp() {
+    _holdTimer?.cancel();
+    final held = _hold?.isLine ?? false;
+    _hold = null;
     final stroke = _stroke.value;
     if (stroke != null) {
       _stroke.value = null;
+      // A held line ends where the pen lifts; else a nearly straight line becomes straight when the pen's own
+      // straight line is on, as on the note's pages.
+      final kind = penKindOf(_pen!);
+      if (held) {
+        if (stroke.length >= 2) stroke.convertToLine();
+      } else if (kind != null && straightLineOf(kind) && stroke.isStraightLine()) {
+        stroke.convertToLine();
+      }
       // Finished as Pen.onDragEnd finishes the note's strokes.
       stroke
         ..stabilise(0)
@@ -248,6 +301,7 @@ class QuickNote {
     }
     _disposed = true;
     _timer?.cancel();
+    _holdTimer?.cancel();
     _stroke.dispose();
     _saveState.dispose();
     core.dispose();
@@ -406,7 +460,7 @@ class QuickNote {
           onPage[key] = (onPage[key] ?? 0) + 1;
           final copy = Stroke.fromJson(
             stroke.toJson(),
-            fileVersion: EditorCoreInfo.sbnVersion,
+            fileVersion: EditorCoreInfo.newestSbnVersion,
             pageIndex: 0,
             page: page,
           );

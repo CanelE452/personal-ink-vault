@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/toolbar_customize_sheet.dart';
 import 'package:saber/components/ink_ui/floating_bar/kit_floating_bar.dart';
-import 'package:saber/components/ink_ui/pen_panel/pen_kinds.dart';
 import 'package:saber/components/ink_ui/pen_panel/size_level.dart';
 import 'package:saber/components/kit/kit_icon.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
@@ -15,12 +14,14 @@ import 'package:saber/data/actions/app_action.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/ink/pen_kind.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/eraser.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/pages/editor/editor_side_host.dart';
 
+import '../ink_ui/pen_panel_harness.dart' show ShownToolHost;
 import '../utils/screen_capture.dart';
 
 /// Writes screenshots of the editor toolbar (9th draft c) to
@@ -175,9 +176,7 @@ void main() {
                       ),
                       Positioned.fill(
                         child: KitFloatingBar(
-                          currentTool: inHand,
-                          setTool: (_) {},
-                          setColor: (_) {},
+                          host: ShownToolHost(inHand),
                           actions: actions,
                           penPanelCollapsed: collapsed,
                           visible: floatingBar && !gesture,

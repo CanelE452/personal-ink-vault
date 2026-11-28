@@ -40,19 +40,22 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 60));
     var r = tester.getRect(floatingBar);
-    var s = r.width / 440;
+    var s = r.width / barAcross;
     expect(s, inExclusiveRange(0.92, 1));
     expect(r.left, moreOrLessEquals(10 + 215 * (1 - s)));
     expect(r.top, 10);
     await tester.pumpAndSettle();
-    expect(tester.getRect(floatingBar), const Rect.fromLTWH(10, 10, 440, 40));
+    expect(
+      tester.getRect(floatingBar),
+      const Rect.fromLTWH(10, 10, barAcross, 40),
+    );
 
     // it goes into the same place
     host.pick(LaserPointer.currentLaserPointer);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     r = tester.getRect(floatingBar);
-    s = r.width / 440;
+    s = r.width / barAcross;
     expect(s, inExclusiveRange(0.92, 1));
     expect(r.left, moreOrLessEquals(10 + 215 * (1 - s)));
     await tester.pumpAndSettle();
@@ -74,7 +77,10 @@ void main() {
     expect(stows.floatingBarPosition.value, 'top');
     await dragBar(tester, const Offset(-4, 6));
     expect(stows.floatingBarPosition.value, 'top');
-    expect(tester.getRect(floatingBar), const Rect.fromLTWH(10, 10, 440, 40));
+    expect(
+      tester.getRect(floatingBar),
+      const Rect.fromLTWH(10, 10, barAcross, 40),
+    );
     // upright, the same
     stows.floatingBarPosition.value = 'left';
     await tester.pumpAndSettle();
@@ -95,7 +101,10 @@ void main() {
     await g.moveBy(const Offset(900, 1200));
     await tester.pump();
     // values §9: kept inside the page area (800 x 900 here)
-    expect(tester.getRect(floatingBar), const Rect.fromLTWH(360, 860, 440, 40));
+    expect(
+      tester.getRect(floatingBar),
+      const Rect.fromLTWH(800 - barAcross, 860, barAcross, 40),
+    );
     await g.moveBy(const Offset(-2000, -2000));
     await tester.pump();
     expect(tester.getRect(floatingBar).topLeft, Offset.zero);
@@ -147,7 +156,7 @@ void main() {
     stows.floatingBarPosition.value = 'left';
     final host = await pumpBar(tester, Pen.fountainPen(), reduceMotion: true);
     final r = tester.getRect(floatingBar);
-    expect(r, const Rect.fromLTWH(10, 10, 40, 416));
+    expect(r, const Rect.fromLTWH(10, 10, 40, barUpright));
     host.strokeAt.value = Offset(r.right + 13, 200);
     await tester.pump();
     expect(_shown(tester), 1);

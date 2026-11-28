@@ -9,10 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback, SystemMouseCursors;
 import 'package:saber/components/ink_ui/floating_bar/floating_bar_parts.dart';
 import 'package:saber/components/ink_ui/hide_while_writing.dart';
-import 'package:saber/components/ink_ui/ink_engine_support.dart';
 import 'package:saber/components/ink_ui/pen_panel/kit_pen_color_row.dart';
 import 'package:saber/components/ink_ui/pen_panel/kit_pen_panel.dart';
-import 'package:saber/components/ink_ui/pen_panel/pen_kinds.dart';
 import 'package:saber/components/ink_ui/pen_panel/pen_panel_common.dart';
 import 'package:saber/components/ink_ui/pen_panel/size_level.dart';
 import 'package:saber/components/kit/kit_controls.dart';
@@ -24,6 +22,9 @@ import 'package:saber/components/kit/kit_swatches.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
+import 'package:saber/data/ink/ink_engine.dart';
+import 'package:saber/data/ink/ink_tool_state.dart';
+import 'package:saber/data/ink/pen_kind.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/eraser.dart';
@@ -39,8 +40,9 @@ import 'package:saber/data/tools/pen.dart';
 ///
 /// The host lays it over the canvas area with `Positioned.fill`; taps beside
 /// the pills reach the canvas. The bar follows the action registry, the
-/// recent colours and the eraser settings itself and opens its
-/// windows itself, so the host only hears of a new tool or colour. Held half
+/// recent colours, the eraser settings and the host's tool state
+/// ([InkToolHost.toolState]) itself and opens its windows itself, so the
+/// host only hears of a new tool, colour or width. Held half
 /// a second, anywhere on it, the bar is picked up (a light tap of the hand
 /// and a deeper shadow); a move of more than 10 before then lets it go.
 /// While it moves only the bar is drawn again, it stays on the page, and its
@@ -57,9 +59,7 @@ import 'package:saber/data/tools/pen.dart';
 class KitFloatingBar extends StatefulWidget {
   const new({
     super.key,
-    required this.currentTool,
-    required this.setTool,
-    required this.setColor,
+    required this.host,
     required this.actions,
     required this.penPanelCollapsed,
     this.visible = true,
@@ -68,9 +68,9 @@ class KitFloatingBar extends StatefulWidget {
     this.engine = InkEngineSupport.editor,
   });
 
-  final Tool currentTool;
-  final ValueChanged<Tool> setTool;
-  final ValueChanged<Color> setColor;
+  /// The document: the tool in hand, and where a tool, colour or width
+  /// chosen here goes.
+  final InkToolHost host;
 
   /// The document's actions: undo and redo come from here.
   final AppActionRegistry actions;
@@ -101,7 +101,7 @@ class KitFloatingBar extends StatefulWidget {
 bool _shows(Tool tool) => isInkTool(tool) || tool is Eraser;
 
 /// Whether [bar] is shown now.
-bool _on(KitFloatingBar bar) => bar.visible && _shows(bar.currentTool);
+bool _on(KitFloatingBar bar) => bar.visible && _shows(bar.host.toolState.tool);
 
 KitIconName _penIcon(KitPenKind kind) => switch (kind) {
   KitPenKind.fountain || KitPenKind.calligraphy => KitIconName.fountain,
@@ -212,6 +212,10 @@ class _KitFloatingBarState extends State<KitFloatingBar>
   /// bar, then the last such one while the bar goes.
   Tool? _shown;
 
+  /// Whether the bar showed when the tool or [KitFloatingBar.visible] last
+  /// changed: it grows in or goes when that changes.
+  var _wasOn = false;
+
   GlobalKey _anchor(String id) => _anchors.putIfAbsent(id, GlobalKey.new);
 
   @override
@@ -220,11 +224,16 @@ class _KitFloatingBarState extends State<KitFloatingBar>
     // The first time it is drawn (the editor opened with a pen in hand) it
     // is there at once; it grows in only when a tool brings it back.
     if (_on(widget)) {
-      _shown = widget.currentTool;
+      _shown = widget.host.toolState.tool;
+      _wasOn = true;
       _grow.value = 1;
     }
     _grow.addStatusListener(_gone);
+    widget.host.toolState.addListener(_toolChanged);
   }
+
+  /// Another tool, or the pen in hand changed (its colour, its width).
+  void _toolChanged() => setState(_follow);
 
   /// Takes the pills away once the bar has gone.
   void _gone(AnimationStatus status) {
@@ -247,21 +256,33 @@ class _KitFloatingBarState extends State<KitFloatingBar>
   @override
   void didUpdateWidget(KitFloatingBar old) {
     super.didUpdateWidget(old);
+    if (!identical(old.host.toolState, widget.host.toolState)) {
+      old.host.toolState.removeListener(_toolChanged);
+      widget.host.toolState.addListener(_toolChanged);
+    }
+    _follow();
+  }
+
+  /// Takes the tool in hand for the pills, and grows the bar in or lets it
+  /// go when it comes to show or stops showing.
+  void _follow() {
     final shows = _on(widget);
-    if (shows) _shown = widget.currentTool;
-    if (shows && !_on(old)) {
+    if (shows) _shown = widget.host.toolState.tool;
+    if (shows && !_wasOn) {
       _growX = _growFromX();
       unawaited(_grow.forward());
     }
-    if (!shows && _on(old)) {
+    if (!shows && _wasOn) {
       _putBack();
       _growX = _growFromX();
       unawaited(_grow.reverse());
     }
+    _wasOn = shows;
   }
 
   @override
   void dispose() {
+    widget.host.toolState.removeListener(_toolChanged);
     _swallowTimer?.cancel();
     _growCurve.dispose();
     _grow.dispose();
@@ -548,16 +569,20 @@ class _KitFloatingBarState extends State<KitFloatingBar>
     );
   }
 
-  /// The pens the engine has, the width, the four colours and 「색 만들기」.
+  /// The bar's pens ([InkEngineSupport.barPenKinds]; one button holds either
+  /// highlighter), the width, the four colours and 「색 만들기」.
   Widget _penPill(Pen pen, Axis axis, bool raised) {
-    final chosen = penKindOf(pen);
+    final inHand = penKindOf(pen);
+    bool chosen(KitPenKind kind) =>
+        kind == inHand ||
+        (kind.isHighlighter && (inHand?.isHighlighter ?? false));
     return KitPill(
       key: const ValueKey('floating-bar-tool-pill'),
       direction: axis,
       raised: raised,
       scrollController: _toolScroll,
       children: [
-        for (final kind in widget.engine.penKinds)
+        for (final kind in widget.engine.barPenKinds)
           FloatingBarAnchor(
             anchor: _anchor(kind.previewId),
             axis: axis,
@@ -565,12 +590,14 @@ class _KitFloatingBarState extends State<KitFloatingBar>
               key: ValueKey('floating-bar-pen-${kind.previewId}'),
               icon: _penIcon(kind),
               tooltip: kind.label,
-              selected: kind == chosen,
+              selected: chosen(kind),
               onPressed: () {
-                if (kind == chosen) {
+                if (chosen(kind)) {
                   unawaited(_openPenPanel(kind, axis));
                 } else {
-                  widget.setTool(widget.engine.toolFor(kind));
+                  widget.host.selectTool(
+                    widget.engine.toolFor(kind, widget.host.toolState),
+                  );
                 }
               },
             ),
@@ -650,7 +677,7 @@ class _KitFloatingBarState extends State<KitFloatingBar>
             color: visibleInk(c, invert),
             label: '색 ${i + 1}',
             selected: c.withValues(alpha: 1) == chosen,
-            onPressed: () => widget.setColor(c),
+            onPressed: () => widget.host.setColor(c),
           ),
       ],
     );
@@ -676,9 +703,7 @@ class _KitFloatingBarState extends State<KitFloatingBar>
         kind: kind.isHighlighter
             ? KitPenPanelKind.highlighters
             : KitPenPanelKind.pens,
-        currentTool: () => widget.currentTool,
-        setTool: (t) => widget.setTool(t),
-        setColor: (c) => widget.setColor(c),
+        host: widget.host,
         onClose: () => Navigator.of(context).pop(),
         collapsed: widget.penPanelCollapsed,
         actions: widget.actions,
@@ -711,7 +736,7 @@ class _KitFloatingBarState extends State<KitFloatingBar>
             ],
             value: chosen,
             onChanged: (p) {
-              pen.setSize(p!);
+              widget.host.setSize(p!);
               Navigator.of(context).pop();
             },
           ),
@@ -737,7 +762,7 @@ class _KitFloatingBarState extends State<KitFloatingBar>
           key: const ValueKey('floating-bar-colours'),
           selected: pen.color,
           onSelected: (c) {
-            widget.setColor(c);
+            widget.host.setColor(c);
             Navigator.of(context).pop();
           },
           onEyedropper: colourRowEyedropper(

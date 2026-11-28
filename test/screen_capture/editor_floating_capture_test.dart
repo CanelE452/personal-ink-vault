@@ -21,6 +21,7 @@ import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/pen.dart';
 
+import '../ink_ui/pen_panel_harness.dart' show ShownToolHost;
 import '../utils/screen_capture.dart';
 
 /// Writes screenshots of the things over the editor's page (Task 13B-2) to
@@ -201,9 +202,7 @@ void main() {
                       ),
                       Positioned.fill(
                         child: KitFloatingBar(
-                          currentTool: _finePen(),
-                          setTool: (_) {},
-                          setColor: (_) {},
+                          host: ShownToolHost(_finePen()),
                           actions: actions,
                           penPanelCollapsed: collapsed,
                           visible: floatingBar,

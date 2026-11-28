@@ -6,6 +6,7 @@ import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/canvas/interactive_canvas.dart';
 import 'package:saber/components/ink_ui/editor_toolbar/kit_editor_toolbar.dart';
+import 'package:saber/components/ink_ui/floating_bar/kit_floating_bar.dart';
 import 'package:saber/components/ink_ui/pen_panel/kit_pen_panel.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
@@ -22,6 +23,7 @@ import 'package:saber/pages/editor/editor.dart';
 import 'package:sbn/read_only_reason.dart';
 import 'package:sbn/tool_id.dart';
 
+import '../ink_ui/pen_panel_harness.dart' show swatch;
 import '../utils/paint_counts.dart';
 import '../utils/test_mock_channel_handlers.dart';
 
@@ -272,6 +274,33 @@ void main() {
     expectNotPainted(page, before);
     expect(strokes(editor), 0);
   });
+
+  testWidgets(
+    'changing the colour in the pen panel builds the editor 0 times',
+    (tester) async {
+      final editor = await mountEditor(tester);
+      await tester.tap(find.byKey(const ValueKey('floating-bar-pen-fountain')));
+      await tester.pumpAndSettle();
+      expect(find.byType(KitPenPanel), findsOneWidget);
+      final pen = editor.currentTool as Pen;
+      const blue = Color(0xff2f9bf0);
+      expect(pen.color, isNot(blue));
+      var editorBuilds = 0, barBuilds = 0, panelBuilds = 0;
+      debugOnRebuildDirtyWidget = (element, _) {
+        if (element.widget is Editor) editorBuilds++;
+        if (element.widget is KitFloatingBar) barBuilds++;
+        if (element.widget is KitPenPanel) panelBuilds++;
+      };
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+      await tester.tap(swatch(blue));
+      await tester.pumpAndSettle();
+      debugOnRebuildDirtyWidget = null;
+      expect(pen.color, blue);
+      expect(editorBuilds, 0);
+      expect(panelBuilds, greaterThanOrEqualTo(1));
+      expect(barBuilds, greaterThanOrEqualTo(1));
+    },
+  );
 
   testWidgets('the eraser and lasso windows do not repaint the page', (
     tester,

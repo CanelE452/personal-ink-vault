@@ -11,7 +11,9 @@ import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/ink/pen_prefs.dart';
 import 'package:saber/data/prefs.dart';
+import 'package:saber/data/settings/app_settings.dart';
 import 'package:saber/data/settings/setting_entry.dart';
 import 'package:saber/data/settings/settings_registry.dart';
 import 'package:saber/data/tools/shape_pen.dart';
@@ -234,7 +236,7 @@ void main() {
       stows.lastZoomLock.key,
       stows.lastSingleFingerPanLock.key,
       stows.lastAxisAlignedPanLock.key,
-      stows.autoStraightenLines.key,
+      straightLineInHandKey,
       stows.autoDisableFingerDrawingWhenStylusDetected.key,
       stows.shapeRecognitionDelay.key,
     ]);

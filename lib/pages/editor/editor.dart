@@ -7,7 +7,6 @@ import 'package:collapsible/collapsible.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
@@ -38,14 +37,13 @@ import 'package:saber/components/ink_ui/hover_badge.dart';
 import 'package:saber/components/ink_ui/kit_mode_pill.dart';
 import 'package:saber/components/ink_ui/pen_panel/kit_pen_color_row.dart'
     show KitPenColorRow;
-import 'package:saber/components/ink_ui/pen_panel/pen_kinds.dart'
-    show isInkTool, toolForPenKind;
 import 'package:saber/components/ink_ui/pen_panel/pen_panel_common.dart'
     show PenPanelSurface, inkInverted;
 import 'package:saber/components/ink_ui/selection_bars/kit_lasso_bar.dart';
 import 'package:saber/components/ink_ui/selection_bars/kit_text_bar.dart';
 import 'package:saber/components/kit/kit_icons.g.dart';
-import 'package:saber/components/kit/kit_pen_art.dart' show KitPenKind;
+import 'package:saber/components/kit/kit_pen_art.dart'
+    show KitPenDash, KitPenKind;
 import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/components/theming/adaptive_alert_dialog.dart';
 import 'package:saber/components/theming/dynamic_material_app.dart';
@@ -56,18 +54,25 @@ import 'package:saber/components/user_error_text.dart';
 import 'package:saber/data/actions/app_action.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
+import 'package:saber/data/actions/shortcut_keys.dart';
 import 'package:saber/data/app_external_screen.dart';
 import 'package:saber/data/editor/editor_core_info.dart';
 import 'package:saber/data/editor/editor_exporter.dart';
 import 'package:saber/data/editor/editor_history.dart';
+import 'package:saber/data/editor/ink_swap.dart';
 import 'package:saber/data/editor/page.dart';
 import 'package:saber/data/editor/page_clipboard.dart';
 import 'package:saber/data/editor/page_link.dart';
+import 'package:saber/data/editor/page_list.dart';
 import 'package:saber/data/editor/pdf_page_extract.dart';
 import 'package:saber/data/extensions/change_notifier_extensions.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/extensions/matrix4_extensions.dart';
 import 'package:saber/data/file_manager/file_manager.dart';
+import 'package:saber/data/ink/ink_tool_state.dart';
+import 'package:saber/data/ink/pen_kind.dart'
+    show isInkTool, penKindOf, toolForPenKind;
+import 'package:saber/data/ink/stroke_style.dart' show InkNib;
 import 'package:saber/data/nextcloud/saber_syncer.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
@@ -83,6 +88,7 @@ import 'package:saber/i18n/extensions/canvas_background_pattern_localized.dart';
 import 'package:saber/i18n/strings.g.dart';
 import 'package:saber/pages/editor/editor_add_page_host.dart';
 import 'package:saber/pages/editor/editor_chrome.dart';
+import 'package:saber/pages/editor/editor_ink_input.dart';
 import 'package:saber/pages/editor/editor_page_actions.dart';
 import 'package:saber/pages/editor/editor_side_host.dart';
 import 'package:saber/pages/editor/link_dialog.dart';
@@ -170,16 +176,34 @@ class Editor extends StatefulWidget {
   State<Editor> createState() => EditorState();
 }
 
-class EditorState extends State<Editor> {
+class EditorState extends State<Editor> implements EditorInkHost {
   final log = Logger('EditorState');
 
+  @override
   late var coreInfo = EditorCoreInfo.placeholder;
 
   final _canvasGestureDetectorKey = GlobalKey<CanvasGestureDetectorState>();
   final _transformationController = TransformationController();
   var _singlePageMode = false;
 
-  var history = EditorHistory();
+  /// Its listener publishes the actions; set, it moves to the new history.
+  @override
+  EditorHistory get history => _history;
+  set history(EditorHistory value) {
+    _history.removeListener(_publishActions);
+    _history = value..addListener(_publishActions);
+  }
+
+  var _history = EditorHistory();
+
+  /// The note's pages as a list: making, tidying, putting in, moving.
+  @override
+  late final pageList = PageList(
+    pages: () => coreInfo.pages,
+    history: () => history,
+    onPageAdded: (page) => listenToQuillChanges(page.quill),
+    onEndTidied: _scrollUpToLastPage,
+  );
 
   late bool needsNaming = widget.needsNaming && stows.editorPromptRename.value;
 
@@ -190,6 +214,16 @@ class EditorState extends State<Editor> {
       case .fountainPen:
         if (Pen.currentPen.toolId != stows.lastTool.value) {
           Pen.currentPen = Pen.fountainPen();
+        }
+        return Pen.currentPen;
+      case .calligraphyPen:
+        if (Pen.currentPen.toolId != stows.lastTool.value) {
+          Pen.currentPen = Pen.calligraphyPen();
+        }
+        return Pen.currentPen;
+      case .brush:
+        if (Pen.currentPen.toolId != stows.lastTool.value) {
+          Pen.currentPen = Pen.brush();
         }
         return Pen.currentPen;
       case .ballpointPen:
@@ -203,6 +237,11 @@ class EditorState extends State<Editor> {
         }
         return Pen.currentPen;
       case .highlighter:
+        // the round highlighter when it was the last one in hand
+        if (stows.lastHighlighterKind.value ==
+            KitPenKind.highlighterRound.previewId) {
+          return InkToolState.roundHighlighter();
+        }
         return Highlighter.currentHighlighter;
       case .pencil:
         return Pencil.currentPencil;
@@ -216,12 +255,18 @@ class EditorState extends State<Editor> {
         return LaserPointer.currentLaserPointer;
     }
   }());
+  @override
   Tool get currentTool => _currentTool;
+  @override
   set currentTool(Tool tool) {
     _currentTool = tool;
+    _ink.toolState.update(tool: tool);
     if (tool is! Eraser) _lastNonEraserTool = tool;
     if (isInkTool(tool)) _lastInkTool = tool;
     stows.lastTool.value = tool.toolId;
+    if (tool is Highlighter) {
+      stows.lastHighlighterKind.value = penKindOf(tool)!.previewId;
+    }
     _rememberPenFamily(tool);
   }
 
@@ -261,7 +306,7 @@ class EditorState extends State<Editor> {
   var _placingHintShown = false;
 
   /// The eyedropper waits for its tap on a page.
-  var _eyedropping = false;
+  bool get _eyedropping => _ink.toolState.eyedropper;
   Future<void>? _eyedropperPick;
 
   /// The eyedropper's last reading of the page, for tests to wait for.
@@ -351,9 +396,13 @@ class EditorState extends State<Editor> {
   @visibleForTesting
   AppActionRegistry get actions => _actions;
 
-  /// 「지금 저장」 dims when there is nothing to save; saving does not
-  /// always build the editor again.
-  void _savingChanged() => _actions.publish(this, _editorActions());
+  /// What the editor's ink windows read and ask of it.
+  late final _ink = _EditorInkHost(this);
+
+  /// 「지금 저장」 dims when there is nothing to save, and the tools and
+  /// undo follow the tool state and the history: saving, a colour and a
+  /// change do not always build the editor again.
+  void _publishActions() => _actions.publish(this, _editorActions());
 
   void _reportBusy() => widget.onBusyChanged?.call(
     _drawing || _initialImportPending || _snapshotSave != null,
@@ -368,21 +417,10 @@ class EditorState extends State<Editor> {
     await widget.onCancelImport?.call();
   }
 
-  // used to prevent accidentally drawing when pinch zooming
-  var lastSeenPointerCount = 0;
-  Timer? _lastSeenPointerCountTimer;
-
   ValueNotifier<QuillStruct?> quillFocus = ValueNotifier(null);
 
   /// The last non-Eraser [currentTool] value.
   late Tool _lastNonEraserTool = Pen.currentPenFamily;
-
-  /// If the stylus button is pressed, or was pressed, during the current draw gesture.
-  ///
-  /// For now, this also includes when an [PointerDeviceKind.inverseStylus] is
-  /// used since the stylus rear-end and stylus button currently act the same.
-  /// If we add customized button bindings, we may have to separate this again.
-  var stylusButtonWasPressed = false;
 
   @override
   void initState() {
@@ -390,7 +428,9 @@ class EditorState extends State<Editor> {
     // The finger toggle's action shows whether it is on.
     stows.editorFingerDrawing.addListener(_setState);
     stows.editorGestureMode.addListener(_gestureModeChanged);
-    savingState.addListener(_savingChanged);
+    savingState.addListener(_publishActions);
+    _ink.toolState.addListener(_publishActions);
+    _history.addListener(_publishActions);
 
     _initializing = _initAsync();
 
@@ -548,62 +588,32 @@ class EditorState extends State<Editor> {
 
   /// Creates pages until the given page index exists,
   /// plus an extra blank page
-  void createPage(int pageIndex, {String? firstPageId}) {
-    while (pageIndex >= coreInfo.pages.length - 1) {
-      final page = EditorPage(pageId: firstPageId);
-      firstPageId = null;
-      coreInfo.pages.add(page);
-      listenToQuillChanges(page.quill);
-    }
-  }
+  void createPage(int pageIndex, {String? firstPageId}) =>
+      pageList.fillTo(pageIndex, firstPageId: firstPageId);
 
-  void removeExcessPages() {
-    bool removedAPage = false;
+  void removeExcessPages() => pageList.tidyEnd();
 
-    // remove excess pages if all pages >= this one are empty
-    for (int i = coreInfo.pages.length - 1; i >= 1; --i) {
-      final thisPage = coreInfo.pages[i];
-      final prevPage = coreInfo.pages[i - 1];
-      // A page a change to undo or redo holds (put in, moved) stays, and
-      // so do those before it: that change finds it as a page, the changes
-      // around it count pages by their places, and no undo step records
-      // this tidying.
-      if (history.holds(thisPage)) break;
-      // Links are not content (isEmpty), but a page carrying one is kept,
-      // and so is the empty page after it, as the note ends with one:
-      // removing it here would lose the link without an undo step.
-      if (thisPage.isEmpty &&
-          thisPage.links.isEmpty &&
-          prevPage.isEmpty &&
-          prevPage.links.isEmpty) {
-        final page = coreInfo.pages.removeAt(i);
-        page.dispose();
-        removedAPage = true;
-      } else {
-        break;
-      }
-    }
-
-    if (removedAPage) {
-      // scroll to the last page (only if we're below the last page)
-      final canvas = _canvasGestureDetectorKey.currentState;
-      final width = canvas?.containerBounds.maxWidth;
-      if (canvas != null && width != null && width.isFinite && width > 0) {
-        final bottomOfLastPage =
-            CanvasGestureDetector.getTopOfPage(
-              pageIndex: coreInfo.pages.length,
-              pages: coreInfo.pages,
-              screenWidth: width,
-            ) -
-            Editor.gapBetweenPages;
-        if (_transformationController.toScene(Offset.zero).dy >
-            bottomOfLastPage) {
-          canvas.scrollToPage(coreInfo.pages.length - 1);
-        }
+  /// After pages went off the end: scroll to the last page (only if we are
+  /// below the last page).
+  void _scrollUpToLastPage() {
+    final canvas = _canvasGestureDetectorKey.currentState;
+    final width = canvas?.containerBounds.maxWidth;
+    if (canvas != null && width != null && width.isFinite && width > 0) {
+      final bottomOfLastPage =
+          CanvasGestureDetector.getTopOfPage(
+            pageIndex: coreInfo.pages.length,
+            pages: coreInfo.pages,
+            screenWidth: width,
+          ) -
+          Editor.gapBetweenPages;
+      if (_transformationController.toScene(Offset.zero).dy >
+          bottomOfLastPage) {
+        canvas.scrollToPage(coreInfo.pages.length - 1);
       }
     }
   }
 
+  @override
   void undo([EditorHistoryItem? item]) {
     if (coreInfo.readOnly) return;
     if (item == null) {
@@ -719,6 +729,9 @@ class EditorState extends State<Editor> {
             remove: item.replacedLink,
             put: item.link,
           );
+
+        case .replace:
+          pageList.undoSwaps(item.swaps!);
       }
 
       if (item.type != .move) {
@@ -778,9 +791,16 @@ class EditorState extends State<Editor> {
         undo(item.copyWith(type: .removeLink));
       case .removeLink:
         undo(item.copyWith(type: .addLink));
+      case .replace:
+        setState(() {
+          pageList.redoSwaps(item.swaps!);
+          Select.currentSelect.unselect();
+        });
+        autosaveAfterDelay();
     }
   }
 
+  @override
   int? onWhichPageIsFocalPoint(Offset focalPoint) {
     for (int i = 0; i < coreInfo.pages.length; ++i) {
       if (coreInfo.pages[i].renderBox == null) continue;
@@ -793,333 +813,47 @@ class EditorState extends State<Editor> {
     return null;
   }
 
-  /// The position of the previous draw gesture event.
-  /// Used to move a selection.
-  Offset previousPosition = .zero;
-
-  /// The total offset of the current move gesture.
-  /// Used to record a move in the history.
-  Offset moveOffset = .zero;
-
-  var isHovering = true;
+  @override
   int? dragPageIndex;
 
-  /// Whether the last pen or eraser gesture added a history item.
-  var _lastDrawRecorded = false;
-  PointerDeviceKind? currentPointerKind;
-  double? currentPressure;
-  bool isDrawGesture(ScaleStartDetails details) {
-    if (coreInfo.readOnly ||
-        _initialImportPending ||
-        _loadingSnapshot ||
-        _placingLink ||
-        _eyedropping ||
-        // gesture mode and 읽기 전용: pens and fingers move and zoom the page
-        stows.editorGestureMode.value ||
-        inkLocked.value)
-      return false;
+  late final inkInput = EditorInkInput(this);
 
-    CanvasImage.activeListener
-        .notifyListenersPlease(); // un-select active image
+  @override
+  bool get inkBlocked =>
+      coreInfo.readOnly ||
+      _initialImportPending ||
+      _loadingSnapshot ||
+      _placingLink ||
+      _eyedropping ||
+      // gesture mode and 읽기 전용: pens and fingers move and zoom the page
+      stows.editorGestureMode.value ||
+      inkLocked.value;
 
-    final acceptedStylus =
-        details.pointerCount == 1 &&
-        (details.kind == PointerDeviceKind.stylus ||
-            details.kind == PointerDeviceKind.invertedStylus);
-    _lastSeenPointerCountTimer?.cancel();
-    if (acceptedStylus) {
-      // The touch debounce must not delay a pen or undo its completed stroke.
-      lastSeenPointerCount = 0;
-    } else if (lastSeenPointerCount >= 2) {
-      // was a zoom gesture, ignore
-      return false;
-    } else if (details.pointerCount >= 2) {
-      // is a zoom gesture, remove accidental stroke
-      // Only the first finger's own change: a stroke or erase that changed
-      // nothing left no history, and the item before it is the user's.
-      if (lastSeenPointerCount == 1 &&
-          _lastDrawRecorded &&
-          stows.editorFingerDrawing.value &&
-          (currentTool is Pen || currentTool is Eraser)) {
-        _lastDrawRecorded = false;
-        final item = history.removeAccidentalStroke();
-        if (item != null) undo(item);
-      }
-      lastSeenPointerCount = details.pointerCount;
-      return false;
-    } else {
-      // is a stroke
-      lastSeenPointerCount = details.pointerCount;
-    }
+  @override
+  Tool get lastNonEraserTool => _lastNonEraserTool;
 
-    dragPageIndex = onWhichPageIsFocalPoint(details.focalPoint);
-    if (dragPageIndex == null) return false;
+  @override
+  set strokeAt(Offset? at) => _strokeAt.value = at;
 
-    if (currentTool == Tool.textEditing) {
-      return false;
-    } else if (acceptedStylus ||
-        stows.editorFingerDrawing.value ||
-        currentPointerKind == PointerDeviceKind.stylus ||
-        currentPointerKind == PointerDeviceKind.invertedStylus ||
-        currentPressure != null) {
-      return true;
-    } else {
-      log.fine('Non-stylus found, rejected stroke');
-      return false;
-    }
-  }
+  @override
+  void rebuild(VoidCallback fn) => setState(fn);
 
-  void onDrawStart(ScaleStartDetails details) {
-    _strokeAt.value = details.focalPoint;
+  @override
+  void drawBegan() {
     _drawing = true;
     _editGeneration++;
     _reportBusy();
     widget.onDirtyChanged?.call(true);
-    final page = coreInfo.pages[dragPageIndex!];
-    final position = page.renderBox!.globalToLocal(details.focalPoint);
-    history.canRedo = false;
-
-    if (currentTool is Pen) {
-      (currentTool as Pen).onDragStart(
-        position,
-        page,
-        dragPageIndex!,
-        currentPressure,
-        // The page's zoom and fit on screen, so the stabiliser smooths the
-        // same on screen however far the page is zoomed.
-        screenScale: page.renderBox!.getTransformTo(null).getMaxScaleOnAxis(),
-      );
-    } else if (currentTool is Eraser) {
-      final eraser = currentTool as Eraser;
-      if (stows.eraserMode.value == EraserMode.lasso) {
-        // Nothing is erased until the loop is closed (onDrawEnd).
-        eraser.startLasso(position, dragPageIndex!);
-      } else {
-        // Empty pages are tidied in onDrawEnd: removing the page under the
-        // eraser here would leave the drag on a page that is gone.
-        for (final stroke in eraser.checkForOverlappingStrokes(
-          position,
-          page.strokes,
-        )) {
-          page.strokes.remove(stroke);
-        }
-      }
-    } else if (currentTool is Select) {
-      final select = currentTool as Select;
-      if (select.doneSelecting &&
-          select.selectResult.pageIndex == dragPageIndex! &&
-          select.selectResult.path.contains(position)) {
-        // drag selection in onDrawUpdate
-      } else {
-        select.onDragStart(position, dragPageIndex!);
-        history.canRedo = true; // selection doesn't affect history
-      }
-    } else if (currentTool is LaserPointer) {
-      (currentTool as LaserPointer).onDragStart(position, page, dragPageIndex!);
-    }
-
-    previousPosition = position;
-    moveOffset = .zero;
-
-    if (currentTool is! Select) {
-      Select.currentSelect.unselect();
-    }
-
-    // setState to let canvas know about currentStroke
-    setState(() {});
   }
 
-  void onDrawUpdate(ScaleUpdateDetails details) {
-    _strokeAt.value = details.focalPoint;
-    final page = coreInfo.pages[dragPageIndex!];
-    final position = page.renderBox!.globalToLocal(details.focalPoint);
-    final offset = position - previousPosition;
-
-    if (currentTool is Pen) {
-      (currentTool as Pen).onDragUpdate(position, currentPressure);
-      page.redrawStrokes();
-    } else if (currentTool is Eraser) {
-      final eraser = currentTool as Eraser;
-      if (eraser.lassoPath != null) {
-        eraser.extendLasso(position);
-        page.redrawStrokes();
-      } else {
-        for (final stroke in eraser.checkForOverlappingStrokes(
-          position,
-          page.strokes,
-        )) {
-          page.strokes.remove(stroke);
-        }
-        page.redrawStrokes();
-      }
-    } else if (currentTool is Select) {
-      final select = currentTool as Select;
-      if (select.doneSelecting) {
-        for (final stroke in select.selectResult.strokes) {
-          stroke.shift(offset);
-        }
-        for (final image in select.selectResult.images) {
-          image.dstRect = image.dstRect.shift(offset);
-        }
-        select.selectResult.path = select.selectResult.path.shift(offset);
-      } else {
-        select.onDragUpdate(position);
-      }
-      page.redrawStrokes();
-    } else if (currentTool is LaserPointer) {
-      (currentTool as LaserPointer).onDragUpdate(position);
-      page.redrawStrokes();
-    }
-    previousPosition = position;
-    moveOffset += offset;
-  }
-
-  void onDrawEnd(ScaleEndDetails details) {
-    _strokeAt.value = null;
-    final page = coreInfo.pages[dragPageIndex!];
-    bool shouldSave = true;
-    _lastDrawRecorded = false;
-    setState(() {
-      if (currentTool is Pen) {
-        final newStroke = (currentTool as Pen).onDragEnd();
-        if (newStroke == null) return;
-        if (newStroke.isEmpty) return;
-
-        if (stows.autoStraightenLines.value &&
-            currentTool is! ShapePen &&
-            newStroke.isStraightLine()) {
-          newStroke.convertToLine();
-        }
-
-        createPage(newStroke.pageIndex);
-        page.insertStroke(newStroke);
-        history.recordChange(
-          EditorHistoryItem(
-            type: .draw,
-            pageIndex: dragPageIndex!,
-            strokes: [newStroke],
-            images: [],
-          ),
-        );
-        _lastDrawRecorded = true;
-      } else if (currentTool is Eraser) {
-        final eraser = currentTool as Eraser;
-        if (eraser.lassoPath != null) {
-          if (details.pointerCount > 0) {
-            // Another finger landed (a pinch), so the gesture ended with the
-            // loop unfinished: drop it rather than erase half a loop.
-            eraser.cancelLasso();
-          } else {
-            // The pen was lifted: erase what the loop holds, in one undo step.
-            final inside = eraser.finishLasso(page.strokes);
-            for (final stroke in inside) {
-              page.strokes.remove(stroke);
-            }
-            if (inside.isNotEmpty) page.redrawStrokes();
-          }
-        }
-        final erased = eraser.onDragEnd();
-        // Only once the eraser is lifted, never under it.
-        if (erased.isNotEmpty) removeExcessPages();
-        if (stylusButtonWasPressed || stows.disableEraserAfterUse.value) {
-          // restore previous tool
-          stylusButtonWasPressed = false;
-          currentTool = _lastNonEraserTool;
-        }
-        if (erased.isEmpty) return;
-        history.recordChange(
-          EditorHistoryItem(
-            type: .erase,
-            pageIndex: dragPageIndex!,
-            strokes: erased,
-            images: [],
-          ),
-        );
-        _lastDrawRecorded = true;
-      } else if (currentTool is Select) {
-        if (moveOffset == .zero) return;
-        final select = currentTool as Select;
-        if (select.doneSelecting) {
-          history.recordChange(
-            EditorHistoryItem(
-              type: .move,
-              pageIndex: dragPageIndex!,
-              strokes: select.selectResult.strokes,
-              images: select.selectResult.images,
-              offset: .fromLTRB(
-                moveOffset.dx,
-                moveOffset.dy,
-                moveOffset.dx,
-                moveOffset.dy,
-              ),
-            ),
-          );
-        } else {
-          shouldSave = false;
-          select.onDragEnd(page.strokes, page.images);
-
-          if (select.selectResult.isEmpty) {
-            Select.currentSelect.unselect();
-          }
-        }
-      } else if (currentTool is LaserPointer) {
-        shouldSave = false;
-        final newStroke = (currentTool as LaserPointer).onDragEnd(
-          page.redrawStrokes,
-          (Stroke stroke) {
-            page.laserStrokes.remove(stroke);
-          },
-        );
-        if (newStroke != null) page.laserStrokes.add(newStroke);
-      }
-    });
-
+  @override
+  void drawEnded({required bool save}) {
     _drawing = false;
-    if (shouldSave) autosaveAfterDelay();
+    if (save) autosaveAfterDelay();
     widget.onDirtyChanged?.call(
       !history.isCurrentStateSaved || _initialImportPending,
     );
     _reportBusy();
-  }
-
-  void onInteractionEnd(ScaleEndDetails details) {
-    // reset after 1ms to keep track of the same gesture only
-    _lastSeenPointerCountTimer?.cancel();
-    _lastSeenPointerCountTimer = Timer(const Duration(milliseconds: 10), () {
-      lastSeenPointerCount = 0;
-    });
-  }
-
-  void updatePointerData(PointerDeviceKind kind, double? pressure) {
-    currentPointerKind = kind;
-    currentPressure = pressure;
-  }
-
-  void onHovering() {
-    isHovering = true;
-  }
-
-  void onHoveringEnd() {
-    isHovering = false;
-  }
-
-  void onStylusButtonChanged(bool buttonIsPressed) {
-    stylusButtonWasPressed |= buttonIsPressed;
-
-    if (!isHovering) return;
-    if (buttonIsPressed) {
-      // button pressed while hovering, switch to Eraser
-      if (currentTool is! Eraser) {
-        currentTool = Eraser();
-      }
-    } else {
-      // button was released while hovering, switch back to non-Eraser
-      if (currentTool is Eraser) {
-        currentTool = _lastNonEraserTool;
-      }
-    }
-
-    if (mounted) setState(() {});
   }
 
   void onMoveImage(EditorImage image, Rect offset) {
@@ -1518,6 +1252,7 @@ class EditorState extends State<Editor> {
     final currentPageIndex = at ?? this.currentPageIndex;
 
     photoInfos ??= await _pickPhotosWithFilePicker();
+    if (!mounted) return 0;
     if (photoInfos.isEmpty) return 0;
 
     // use the Select tool so that the user can move the new image
@@ -1563,6 +1298,7 @@ class EditorState extends State<Editor> {
         pageIndex: currentPageIndex,
         strokes: [],
         images: images,
+        page: coreInfo.pages[currentPageIndex],
       ),
     );
     createPage(currentPageIndex);
@@ -1799,15 +1535,15 @@ class EditorState extends State<Editor> {
     final Widget canvas = CanvasGestureDetector(
       key: _canvasGestureDetectorKey,
       filePath: coreInfo.filePath,
-      isDrawGesture: isDrawGesture,
-      onInteractionEnd: onInteractionEnd,
-      onDrawStart: onDrawStart,
-      onDrawUpdate: onDrawUpdate,
-      onDrawEnd: onDrawEnd,
-      onHovering: onHovering,
-      onHoveringEnd: onHoveringEnd,
-      onStylusButtonChanged: onStylusButtonChanged,
-      updatePointerData: updatePointerData,
+      isDrawGesture: inkInput.isDrawGesture,
+      onInteractionEnd: inkInput.onInteractionEnd,
+      onDrawStart: inkInput.onDrawStart,
+      onDrawUpdate: inkInput.onDrawUpdate,
+      onDrawEnd: inkInput.onDrawEnd,
+      onHovering: inkInput.onHovering,
+      onHoveringEnd: inkInput.onHoveringEnd,
+      onStylusButtonChanged: inkInput.onStylusButtonChanged,
+      updatePointerData: inkInput.updatePointerData,
       undo: undo,
       redo: redo,
       pages: coreInfo.pages,
@@ -2054,7 +1790,7 @@ class EditorState extends State<Editor> {
 
   void _toggleFingerDrawing() {
     stows.editorFingerDrawing.value = !stows.editorFingerDrawing.value;
-    lastSeenPointerCount = 0;
+    inkInput.lastSeenPointerCount = 0;
   }
 
   void _openExportDialog() {
@@ -2304,49 +2040,40 @@ class EditorState extends State<Editor> {
     autosaveAfterDelay();
   });
 
+  /// Empties the page as one undo step, which puts everything back at its
+  /// place on this page; a page with nothing on it records nothing.
   void clearPage(int pageIndex) {
     if (_noteLocked) return;
     final page = coreInfo.pages[pageIndex];
+    if (page.strokes.isEmpty && page.images.isEmpty) return;
     setState(() {
-      final removedStrokes = page.strokes.toList();
-      final removedImages = page.images.toList();
-      page.strokes.clear();
-      page.images.clear();
-      removeExcessPages();
-      history.recordChange(
-        EditorHistoryItem(
-          type: .erase,
-          pageIndex: pageIndex,
-          strokes: removedStrokes,
-          images: removedImages,
-        ),
-      );
+      pageList.recordReplace([_emptied(page)]);
       autosaveAfterDelay();
     });
   }
 
+  /// Empties every page that has strokes or pictures, as one undo step.
   void clearAllPages() {
     if (_noteLocked) return;
     setState(() {
-      final removedStrokes = <Stroke>[];
-      final removedImages = <EditorImage>[];
-      for (final page in coreInfo.pages) {
-        removedStrokes.addAll(page.strokes);
-        removedImages.addAll(page.images);
-        page.strokes.clear();
-        page.images.clear();
-      }
-      removeExcessPages();
-      history.recordChange(
-        EditorHistoryItem(
-          type: .erase,
-          pageIndex: 0,
-          strokes: removedStrokes,
-          images: removedImages,
-        ),
-      );
+      pageList.recordReplace([
+        for (final page in coreInfo.pages)
+          if (page.strokes.isNotEmpty || page.images.isNotEmpty)
+            _emptied(page),
+      ]);
     });
     autosaveAfterDelay();
+  }
+
+  /// Takes [page]'s strokes and pictures off; the change, by places.
+  PageSwap _emptied(EditorPage page) {
+    final swap = InkSwap(
+      removedStrokes: [...page.strokes.indexed],
+      removedImages: [...page.images.indexed],
+    );
+    page.strokes.clear();
+    page.images.clear();
+    return (page: page, swap: swap);
   }
 
   Future<void> showVersionTooNewDialog() async {
@@ -2587,7 +2314,7 @@ class EditorState extends State<Editor> {
         ),
       );
       // The last change is no longer a stroke that a pinch may take back.
-      _lastDrawRecorded = false;
+      inkInput.lastDrawRecorded = false;
     });
     autosaveAfterDelay();
     return true;
@@ -2719,7 +2446,9 @@ class EditorState extends State<Editor> {
     DynamicMaterialApp.removeFullscreenListener(_setState);
     stows.editorFingerDrawing.removeListener(_setState);
     stows.editorGestureMode.removeListener(_gestureModeChanged);
-    savingState.removeListener(_savingChanged);
+    savingState.removeListener(_publishActions);
+    _ink.toolState.dispose();
+    _history.removeListener(_publishActions);
     // Only this editor's: a new editor in the same host may hold them now.
     widget.chrome?.actions.withdraw(this);
     widget.chrome?.detach(this);
@@ -2740,7 +2469,7 @@ class EditorState extends State<Editor> {
 
     _delayedSaveTimer?.cancel();
     _watchServerTimer?.cancel();
-    _lastSeenPointerCountTimer?.cancel();
+    inkInput.dispose();
 
     // manually save pen properties since the listeners don't fire if a property is changed
     stows.lastFountainPenOptions.notifyListeners();

@@ -19,6 +19,8 @@ class PenPanelColumn extends StatefulWidget {
     required this.ruler,
     required this.level,
     required this.onTap,
+    this.alpha = 1,
+    this.dash = KitPenDash.solid,
   });
 
   final KitPenKind kind;
@@ -31,6 +33,10 @@ class PenPanelColumn extends StatefulWidget {
   final bool ruler;
   final ValueListenable<int> level;
   final VoidCallback onTap;
+
+  /// The sample's opacity (1 is the pen's own) and line.
+  final double alpha;
+  final KitPenDash dash;
 
   @override
   State<PenPanelColumn> createState() => _PenPanelColumnState();
@@ -195,7 +201,9 @@ class _PenPanelColumnState extends State<PenPanelColumn>
     widget.kind,
     widget.ink,
     level: level,
+    alpha: widget.alpha,
     straight: widget.ruler,
+    dash: widget.dash,
   );
 }
 

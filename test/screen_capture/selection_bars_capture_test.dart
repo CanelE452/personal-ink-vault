@@ -9,6 +9,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/canvas/inner_canvas.dart';
 import 'package:saber/components/ink_ui/selection_bars/kit_lasso_bar.dart';
 import 'package:saber/components/ink_ui/selection_bars/kit_text_bar.dart';
+import 'package:saber/components/kit/kit_icon.dart';
+import 'package:saber/data/actions/app_action.dart';
+import 'package:saber/data/actions/app_action_ids.dart';
+import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/data/extensions/color_extensions.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:sbn/quill_styles.dart';
@@ -309,13 +313,26 @@ void main() {
         (tester) => shoot(
           tester,
           name,
-          bar: KitLassoBar(
-            duplicateSelection: () {},
-            deleteSelection: () {},
-            recolorSelection: (_) {},
-            linkSelection: () {},
-            selectionRect: lassoed,
-            selectionColor: const Color(0xfff7d708),
+          bar: AppActionScope(
+            actions: AppActionRegistry()
+              ..publish(Object(), [
+                for (final id in const [
+                  AppActionIds.duplicateSelection,
+                  AppActionIds.deleteSelection,
+                  AppActionIds.linkSelection,
+                ])
+                  AppAction(
+                    id: id,
+                    label: id,
+                    icon: KitIconName.dup,
+                    run: (_) {},
+                  ),
+              ]),
+            child: KitLassoBar(
+              recolorSelection: (_) {},
+              selectionRect: lassoed,
+              selectionColor: const Color(0xfff7d708),
+            ),
           ),
           then: tap(tester, keys),
         ),

@@ -7,14 +7,18 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/ink_ui/pen_panel/kit_pen_panel.dart';
+import 'package:saber/components/ink_ui/pen_panel/pen_column.dart';
 import 'package:saber/components/ink_ui/pen_panel/size_level.dart';
+import 'package:saber/components/kit/kit_controls.dart';
 import 'package:saber/components/kit/kit_icon.dart';
+import 'package:saber/components/kit/kit_pen_art.dart';
 import 'package:saber/components/kit/kit_popover.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/data/actions/app_action.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/ink/pen_prefs.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/_tool.dart';
 import 'package:saber/data/tools/highlighter.dart';
@@ -23,7 +27,7 @@ import 'package:saber/data/tools/pen_box.dart';
 import 'package:saber/data/tools/pencil.dart';
 import 'package:sbn/tool_id.dart';
 
-import '../ink_ui/pen_panel_harness.dart' show resetPenPanelState;
+import '../ink_ui/pen_panel_harness.dart' show PanelHost, resetPenPanelState;
 import '../utils/screen_capture.dart';
 
 /// Writes screenshots of the pen panel to build/screen-review/t10/ with the
@@ -36,14 +40,18 @@ const _korean = captureKorean;
 const _screen = Size(360, 640);
 
 /// The preview's own example state (`SP`, `CPAGES`, lines 2104-2121): the fine
-/// pen in red at 37, the fine-nib pen blue, the pencil grey, the chisel
-/// highlighter red at 51, and the example recent and pinned colours.
+/// pen in red at 37, the fine-nib pen blue, the pencil grey, the broad nib and
+/// the brush near black, the chisel highlighter red at 51, the round one
+/// yellow, and the example recent and pinned colours.
 void _previewState() {
   const red = 0xffe5323e;
   stows.lastFountainPenColor.value = 0xff2f55d4;
   stows.lastBallpointPenColor.value = red;
   stows.lastPencilColor.value = 0xff6f7278;
+  stows.lastCalligraphyPenColor.value = 0xff1f2023;
+  stows.lastBrushColor.value = 0xff1f2023;
   stows.lastHighlighterColor.value = red;
+  stows.lastRoundHighlighterColor.value = 0xfff7d708;
   stows.autoStraightenLines.value = false;
   stows.highlighterStraightLine.value = false;
   stows.recentColorsPositioned.value = [
@@ -172,7 +180,7 @@ Future<GlobalKey> _openPanel(
   addTearDown(notifier.dispose);
   final boundary = GlobalKey();
   final anchor = GlobalKey();
-  var current = tool;
+  final host = PanelHost(tool);
   await tester.pumpWidget(
     RepaintBoundary(
       key: boundary,
@@ -201,12 +209,7 @@ Future<GlobalKey> _openPanel(
       anchor: anchor,
       builder: (context) => KitPenPanel(
         kind: kind,
-        currentTool: () => current,
-        setTool: (t) => current = t,
-        setColor: (c) {
-          final t = current;
-          if (t is Pen) t.color = c;
-        },
+        host: host,
         onClose: () => Navigator.of(context).pop(),
         collapsed: notifier,
         actions: acts,
@@ -220,14 +223,18 @@ Future<GlobalKey> _openPanel(
 /// The preview's heights with the real fonts: the stage 1 panel is 363 high
 /// (head 22, pens 112, rows 46 + 46 + 4 + 46, dots, padding 20 / 29) before
 /// the rows Task 11 adds (build/screen-review/t11, preview v8f): the pens'
-/// stabiliser (16 + 91.89, so 470.89) and the highlighter's
-/// horizontal/vertical row (blocked here, its note one line: 56.89). The
+/// stabiliser (16 + 91.89, so 470.89) and the horizontal/vertical row
+/// (blocked here, its note one line: 56.89), which Task 13 shows for every
+/// ink pen, not only the highlighters (the controller's ruling). The
 /// collapsed one ends under the pen row (158). The page name's line is 11.
+/// [rows] is the height of the rows stage 2 shows under the size (46 for the
+/// fine pen's line styles or the opacity), which moves what is under them.
 void _expectPanel(
   WidgetTester tester,
   _Shot shot, {
   required bool collapsed,
   bool highlighter = false,
+  double rows = 0,
 }) {
   final off = <String>[];
   void check(String what, double now, double preview, [double within = 0.01]) {
@@ -237,13 +244,13 @@ void _expectPanel(
   }
 
   final panel = tester.getRect(find.byKey(const ValueKey('kit-pen-panel')));
-  // the horizontal/vertical row pushes the colours down on the highlighter
-  final axis = highlighter ? 56.89 : 0.0;
+  // the horizontal/vertical row pushes the colours down on every ink pen
+  const axis = 56.89;
   check('panel width', panel.width, 300);
   check(
     'panel height',
     panel.height,
-    collapsed ? 158 : (highlighter ? 363 + axis : 470.89),
+    collapsed ? 158 : (highlighter ? 363 : 470.89) + axis + rows,
     .02,
   );
   if (!collapsed) {
@@ -269,15 +276,15 @@ void _expectPanel(
     // 653 and the switch label's at 473; within one device pixel.
     final top = panel.top * 2;
     final nameInk = shot.inkRows(
-      Rect.fromLTWH(panel.left + 10, panel.top + 320 + axis, 65, 20),
+      Rect.fromLTWH(panel.left + 10, panel.top + 320 + axis + rows, 65, 20),
       600,
     );
     final labelInk = shot.inkRows(
-      Rect.fromLTWH(panel.left + 10, panel.top + 235, 140, 35),
+      Rect.fromLTWH(panel.left + 10, panel.top + 235 + rows, 140, 35),
       400,
     );
-    check('page name ink top', nameInk!.$1 - top, 653 + 2 * axis, 1);
-    check('switch label ink top', labelInk!.$1 - top, 473, 1);
+    check('page name ink top', nameInk!.$1 - top, 653 + 2 * axis + 2 * rows, 1);
+    check('switch label ink top', labelInk!.$1 - top, 473 + 2 * rows, 1);
   }
   expect(off, isEmpty, reason: off.join('\n'));
 }
@@ -327,8 +334,39 @@ void main() {
       tool: Pen.currentPen,
     );
     final shot = await _shoot(tester, boundary, 'pen-panel.png');
-    _expectPanel(tester, shot, collapsed: false);
+    // the fine pen's line styles under the size
+    _expectPanel(tester, shot, collapsed: false, rows: 46);
   }, skip: !_capture);
+
+  // The stage 2 pens chosen, each at the preview's size (`SP.size`), so the
+  // screen review can hold their samples against the preview's.
+  for (final (name, level, make) in <(String, int, Pen Function())>[
+    ('pen-panel-calli.png', 100, Pen.calligraphyPen),
+    ('pen-panel-brush.png', 60, Pen.brush),
+    ('pen-panel-pencil.png', 50, Pencil.new),
+  ]) {
+    testWidgets(name, (tester) async {
+      _previewState();
+      final pen = make();
+      pen.options = pen.options.copyWith(
+        size: levelToSize(level, min: pen.sizeMin, max: pen.sizeMax),
+      );
+      if (pen is Pencil) Pencil.currentPencil = pen;
+      final boundary = await _openPanel(
+        tester,
+        kind: KitPenPanelKind.pens,
+        tool: pen,
+      );
+      final shot = await _shoot(tester, boundary, name);
+      // the pencil's opacity under the size
+      _expectPanel(
+        tester,
+        shot,
+        collapsed: false,
+        rows: pen is Pencil ? 46 : 0,
+      );
+    }, skip: !_capture);
+  }
 
   testWidgets('highlighter panel', (tester) async {
     _previewState();
@@ -338,7 +376,78 @@ void main() {
       tool: Highlighter.currentHighlighter,
     );
     final shot = await _shoot(tester, boundary, 'highlighter-panel.png');
-    _expectPanel(tester, shot, collapsed: false, highlighter: true);
+    // the opacity under the size
+    _expectPanel(tester, shot, collapsed: false, highlighter: true, rows: 46);
+  }, skip: !_capture);
+
+  // Task 13: each pen's own straight line. The ruler is on only on the pen
+  // whose straight line is on, and its 수평/수직 row can be used.
+  bool ruler(WidgetTester tester, KitPenKind k) => tester
+      .widget<PenPanelColumn>(
+        find.byKey(ValueKey('pen-panel-pen-${k.previewId}')),
+      )
+      .ruler;
+  KitToggleRow axisRow(WidgetTester tester) => tester.widget<KitToggleRow>(
+    find.byKey(const ValueKey('tool-panel-axis-lock')),
+  );
+
+  testWidgets('highlighter panel, the flat one straight, the round one not', (
+    tester,
+  ) async {
+    _previewState();
+    setStraightLine(KitPenKind.highlighterChisel, true);
+    final boundary = await _openPanel(
+      tester,
+      kind: KitPenPanelKind.highlighters,
+      tool: Highlighter.currentHighlighter,
+    );
+    final shot = await _shoot(tester, boundary, 'hl-flat-on-round-off.png');
+    expect(ruler(tester, KitPenKind.highlighterChisel), isTrue);
+    expect(ruler(tester, KitPenKind.highlighterRound), isFalse);
+    expect(axisRow(tester).onChanged, isNotNull);
+    _expectPanel(tester, shot, collapsed: false, highlighter: true, rows: 46);
+  }, skip: !_capture);
+
+  testWidgets('pencil with its straight line on', (tester) async {
+    _previewState();
+    setStraightLine(KitPenKind.pencil, true);
+    final pencil = Pencil();
+    pencil.options = pencil.options.copyWith(
+      size: levelToSize(50, min: pencil.sizeMin, max: pencil.sizeMax),
+    );
+    Pencil.currentPencil = pencil;
+    final boundary = await _openPanel(
+      tester,
+      kind: KitPenPanelKind.pens,
+      tool: pencil,
+    );
+    final shot = await _shoot(tester, boundary, 'pen-panel-pencil-on.png');
+    expect(ruler(tester, KitPenKind.pencil), isTrue);
+    for (final k in KitPenKind.values) {
+      if (k.isHighlighter || k == KitPenKind.pencil) continue;
+      expect(ruler(tester, k), isFalse, reason: k.label);
+    }
+    expect(axisRow(tester).onChanged, isNotNull);
+    expect(axisRow(tester).value, isFalse);
+    // the opacity under the size; the axis note is one line on and off
+    _expectPanel(tester, shot, collapsed: false, rows: 46);
+  }, skip: !_capture);
+
+  testWidgets('highlighter panel with the round highlighter', (tester) async {
+    _previewState();
+    // the preview's round highlighter: yellow at 87, opacity 70
+    stows.roundHighlighterOpacity.value = 70;
+    final round = Highlighter.round();
+    round.options = round.options.copyWith(
+      size: levelToSize(87, min: round.sizeMin, max: round.sizeMax),
+    );
+    final boundary = await _openPanel(
+      tester,
+      kind: KitPenPanelKind.highlighters,
+      tool: round,
+    );
+    final shot = await _shoot(tester, boundary, 'highlighter-panel-round.png');
+    _expectPanel(tester, shot, collapsed: false, highlighter: true, rows: 46);
   }, skip: !_capture);
 
   testWidgets('collapsed pen panel', (tester) async {
@@ -393,7 +502,10 @@ void main() {
     final card = find.byKey(const ValueKey('pen-box-entry-0'));
     expect(tester.getSize(card).height, KitTokens.penBoxCardHeight);
     final panel = tester.getRect(find.byKey(const ValueKey('kit-pen-panel')));
-    expect(tester.getTopLeft(find.byKey(const ValueKey('kit-pen-box'))), panel.topLeft + const Offset(0, 45));
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('kit-pen-box'))),
+      panel.topLeft + const Offset(0, 45),
+    );
   }, skip: !_capture);
 
   testWidgets('recent colours with nothing pinned', (tester) async {

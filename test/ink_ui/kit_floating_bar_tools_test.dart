@@ -145,7 +145,10 @@ void main() {
     // the editor opened with a pen in hand: no growing (ruling 3)
     await pumpBar(tester, Pen.fountainPen(), settle: false);
     expect(barScale(tester), 1);
-    expect(tester.getRect(floatingBar), const Rect.fromLTWH(10, 10, 440, 40));
+    expect(
+      tester.getRect(floatingBar),
+      const Rect.fromLTWH(10, 10, barAcross, 40),
+    );
     // 「움직임 줄이기」: shown again and gone at once too
     final host = await pumpBar(tester, ShapePen(), reduceMotion: true);
     host.pick(Eraser());

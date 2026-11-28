@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:saber/components/ink_ui/pen_panel/kit_pen_panel.dart';
 import 'package:saber/components/ink_ui/pen_panel/size_level.dart';
 import 'package:saber/components/kit/kit_icon.dart';
+import 'package:saber/components/kit/kit_pen_art.dart';
 import 'package:saber/components/kit/kit_popover.dart';
 import 'package:saber/components/kit/kit_text.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
@@ -15,12 +16,13 @@ import 'package:saber/data/actions/app_action.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
 import 'package:saber/data/flavor_config.dart';
+import 'package:saber/data/ink/pen_prefs.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/highlighter.dart';
 import 'package:saber/data/tools/pen.dart';
 import 'package:saber/data/tools/pencil.dart';
 
-import '../ink_ui/pen_panel_harness.dart' show resetPenPanelState;
+import '../ink_ui/pen_panel_harness.dart' show PanelHost, resetPenPanelState;
 import '../utils/screen_capture.dart';
 
 /// Writes screenshots of the rows Task 11 adds to the pen panels (the eraser
@@ -173,16 +175,16 @@ Future<GlobalKey> _openPenPanel(WidgetTester tester, KitPenPanelKind kind) {
   ]);
   final collapsed = ValueNotifier(false);
   addTearDown(collapsed.dispose);
-  var current = kind == KitPenPanelKind.pens
-      ? Pen.currentPen
-      : Highlighter.currentHighlighter;
+  final host = PanelHost(
+    kind == KitPenPanelKind.pens
+        ? Pen.currentPen
+        : Highlighter.currentHighlighter,
+  );
   return _openPanel(
     tester,
     (close) => KitPenPanel(
       kind: kind,
-      currentTool: () => current,
-      setTool: (t) => current = t as Pen,
-      setColor: (c) => current.color = c,
+      host: host,
       onClose: close,
       collapsed: collapsed,
       actions: acts,
@@ -250,10 +252,14 @@ void main() {
     final stab = find.byKey(const ValueKey('tool-panel-stabiliser'));
     // v8f 516.89 less its line-type row (46) the stage hides; the stabiliser
     // 278 x 91.89 from 16 under the page dots: line, 4, title row 6 + 17.5,
-    // 2, the note's 15.4 line, the slider row 46
-    check('panel height', panel.height, 470.89, _chrome);
+    // 2, the note's 15.4 line, the slider row 46. Task 13 adds the pen's
+    // 수평/수직 row (56.89, blocked) under the straight line for every ink
+    // pen (the controller's ruling), which moves the rest down, as does
+    // the fine pen's line-style row (46) stage 2 shows (Task 12).
+    const axis = 56.89, lineStyles = 46.0;
+    check('panel height', panel.height, 470.89 + axis + lineStyles, _chrome);
     final box = tester.getRect(stab).shift(-panel.topLeft);
-    check('stabiliser top', box.top, 349);
+    check('stabiliser top', box.top, 349 + axis + lineStyles);
     check('stabiliser height', box.height, 91.89, _chrome);
     _expectLines(
       tester,
@@ -284,7 +290,9 @@ void main() {
       tester,
     ) async {
       _previewPens();
-      stows.highlighterStraightLine.value = straight;
+      // the flat highlighter's own straight line (Task 13); the old shared
+      // key would turn the round one's ruler on too until either is set
+      setStraightLine(KitPenKind.highlighterChisel, straight);
       final boundary = await _openPenPanel(
         tester,
         KitPenPanelKind.highlighters,
@@ -299,8 +307,9 @@ void main() {
       final axis = find.byKey(const ValueKey('tool-panel-axis-lock'));
       // v8k (user change 1): the row 56.89 on and blocked alike (11 + 17.5 +
       // 2 + one 15.4 line + 11); the panel 557.89 in both less the opacity,
-      // text-fit and T rows (138) the stage hides
-      check('panel height', panel.height, 419.89, _chrome);
+      // text-fit and T rows (138) the stage hides; stage 2 shows the opacity
+      // row (46, Task 12)
+      check('panel height', panel.height, 419.89 + 46, _chrome);
       check('axis row', tester.getSize(axis).height, 56.89, _chrome);
       _expectLines(
         tester,

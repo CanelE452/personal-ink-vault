@@ -29,8 +29,9 @@ class EditorCoreInfo {
   /// Increment this if earlier versions of the app can't satisfiably read the file.
   ///
   /// Version history:
-  /// - 21: Kept for the pen engine stage (new tool ids, new stroke keys,
-  ///   text boxes). Not written yet.
+  /// - 21: The pen engine stage: the tools `calligraphyPen` and `brush`, the
+  ///   stroke keys `op`, `ls`, `nb`, `na` ([EditorPage.needsV21]). Only notes
+  ///   that use them are written as 21, see [versionToWrite].
   /// - 20: A page's own background pattern (`bp`, a pattern other than the
   ///   note's: [EditorPage.hasOwnPattern]), and nothing else.
   ///   Only notes that use it are written as 20, see [versionToWrite].
@@ -59,9 +60,9 @@ class EditorCoreInfo {
   /// only when it uses something a [sbnVersion] app would drop on its next
   /// save; other notes stay [sbnVersion], so 232 and Windows 226 still open
   /// them (they cannot open a newer note at all).
-  /// The pen engine stage raises this to 21: this app (233) opens version 20
-  /// notes for editing, so it must not be given pen engine notes as 20.
-  static const newestSbnVersion = 20;
+  /// It is 21: this app (233) opens version 20 notes for editing, so it must
+  /// not be given pen engine notes as 20.
+  static const newestSbnVersion = 21;
 
   /// The version a note with a page of its own pattern is written as. It
   /// stays 20 when [newestSbnVersion] goes up.
@@ -90,6 +91,11 @@ class EditorCoreInfo {
 
   /// Stores the current page index so that it can be restored when the file is reloaded.
   int? initialPageIndex;
+
+  /// Whether the file had the note key `so` (its strokes are in the order
+  /// they were drawn): saving writes it again, as the strokes keep that
+  /// order. An older app drops it and groups them by tool.
+  final bool openedWithDrawnOrder;
 
   static final placeholder =
       EditorCoreInfo._(
@@ -120,6 +126,7 @@ class EditorCoreInfo {
       lineHeight = stows.lastLineHeight.value,
       lineThickness = stows.lastLineThickness.value,
       pages = [],
+      openedWithDrawnOrder = false,
       assetCache = AssetCache();
 
   new _({
@@ -133,6 +140,7 @@ class EditorCoreInfo {
     required this.pages,
     required this.initialPageIndex,
     required AssetCache? assetCache,
+    this.openedWithDrawnOrder = false,
   }) : assetCache = assetCache ?? AssetCache() {
     _handleEmptyImageIds();
   }
@@ -208,6 +216,7 @@ class EditorCoreInfo {
         ),
         initialPageIndex: json['c'] as int?,
         assetCache: assetCache,
+        openedWithDrawnOrder: json['so'] != null,
       )
       .._migrateOldStrokesAndImages(
         fileVersion: fileVersion,
@@ -219,7 +228,7 @@ class EditorCoreInfo {
             : null,
         onlyFirstPage: onlyFirstPage,
       )
-      .._sortStrokes();
+      .._sortStrokes(drawnOrder: fileVersion >= 21 || json['so'] != null);
   }
 
   /// Old json format is just a list of strokes
@@ -232,6 +241,7 @@ class EditorCoreInfo {
        lineHeight = stows.lastLineHeight.value,
        lineThickness = stows.lastLineThickness.value,
        pages = [],
+       openedWithDrawnOrder = false,
        assetCache = AssetCache() {
     _migrateOldStrokesAndImages(
       fileVersion: 0,
@@ -240,7 +250,7 @@ class EditorCoreInfo {
       inlineAssets: null,
       onlyFirstPage: onlyFirstPage,
     );
-    _sortStrokes();
+    _sortStrokes(drawnOrder: false);
   }
 
   static List<EditorPage> _parsePagesJson(
@@ -319,7 +329,11 @@ class EditorCoreInfo {
         while (stroke.pageIndex >= pages.length) {
           pages.add(EditorPage(size: fallbackPageSize));
         }
-        pages[stroke.pageIndex].insertStroke(stroke);
+        // The old order, so the List.sort after it gets what 234 gave it.
+        pages[stroke.pageIndex].insertStroke(
+          stroke,
+          compare: EditorPage.legacyCompare,
+        );
       }
     }
 
@@ -357,9 +371,9 @@ class EditorCoreInfo {
     }
   }
 
-  void _sortStrokes() {
+  void _sortStrokes({required bool drawnOrder}) {
     for (final page in pages) {
-      page.sortStrokes();
+      page.sortStrokes(drawnOrder: drawnOrder);
     }
   }
 
@@ -481,11 +495,12 @@ class EditorCoreInfo {
     }
   }
 
-  /// The version to save this note as: 20 if a page has a pattern of its
-  /// own ([EditorPage.hasOwnPattern]), else [sbnVersion].
-  /// The pen engine stage adds its conditions here (version 21); when several
-  /// conditions hold, the note is written as the highest version they need.
+  /// The version to save this note as, the highest one it needs: 21 if a page
+  /// holds a pen engine value ([EditorPage.needsV21]), else 20 if a page has a
+  /// pattern of its own ([EditorPage.hasOwnPattern]), else [sbnVersion].
+  /// The order in which strokes are drawn and the settings never raise it.
   int versionToWrite() {
+    if (pages.any((page) => page.needsV21)) return newestSbnVersion;
     final pageHasOwnPattern = pages.any(
       (page) => page.hasOwnPattern(backgroundPattern),
     );
@@ -498,8 +513,9 @@ class EditorCoreInfo {
     /// This will be populated in various [toJson] methods.
     final OrderedAssetCache assets = OrderedAssetCache();
 
+    final version = versionToWrite();
     final json = {
-      'v': versionToWrite(),
+      'v': version,
       'ni': nextImageId,
       'b': backgroundColor?.toARGB32(),
       'p': backgroundPattern.name,
@@ -512,6 +528,13 @@ class EditorCoreInfo {
           )
           .toList(),
       'c': initialPageIndex,
+      // The strokes are in the order they were drawn (not a version: an
+      // older app opens the note, grouping them by tool). Only when opening
+      // it the old way would change the order, so an untouched old note
+      // keeps its bytes; a version 21 note keeps its order without it.
+      if (version < newestSbnVersion &&
+          (openedWithDrawnOrder || pages.any((page) => page.drawnOrderChanged)))
+        'so': 1,
     };
 
     return (json, assets);
@@ -617,6 +640,7 @@ class EditorCoreInfo {
       pages: pages ?? this.pages,
       initialPageIndex: initialPageIndex,
       assetCache: assetCache,
+      openedWithDrawnOrder: openedWithDrawnOrder,
     );
   }
 }

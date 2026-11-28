@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:saber/components/ink_ui/ink_engine_support.dart';
 import 'package:saber/components/ink_ui/tool_panels/kit_eraser_panel.dart';
 import 'package:saber/components/kit/kit_icon.dart';
 import 'package:saber/components/kit/kit_pill.dart';
@@ -10,6 +9,7 @@ import 'package:saber/components/kit/kit_text.dart';
 import 'package:saber/components/kit/kit_tokens.dart';
 import 'package:saber/data/actions/app_action_ids.dart';
 import 'package:saber/data/actions/app_action_registry.dart';
+import 'package:saber/data/ink/ink_engine.dart';
 import 'package:saber/data/prefs.dart';
 import 'package:saber/data/tools/eraser.dart';
 

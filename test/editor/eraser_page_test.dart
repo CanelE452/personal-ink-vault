@@ -246,7 +246,12 @@ void main() {
       // Before, the page under the eraser was removed mid-drag (RangeError).
       expect(tester.takeException(), isNull);
       expect(editor.coreInfo.pages.expand((page) => page.strokes), hasLength(1));
-      expect(editor.coreInfo.pages, hasLength(2));
+      expect(
+        editor.coreInfo.pages,
+        hasLength(3),
+        reason: 'the record holds the page it emptied',
+      );
+      expect(editor.coreInfo.pages[2], same(page));
       editor.undo();
       await tester.pump();
       expect(editor.coreInfo.pages.expand((page) => page.strokes), hasLength(2));

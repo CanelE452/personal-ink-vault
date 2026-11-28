@@ -25,7 +25,7 @@ void main() {
 
         state.currentTool = Eraser();
         state.dragPageIndex = 0;
-        state.onDrawEnd(.new());
+        state.inkInput.onDrawEnd(.new());
         await tester.pump();
 
         if (disableEraserAfterUse) {

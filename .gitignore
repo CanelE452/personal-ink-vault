@@ -16,6 +16,8 @@
 *.sbn
 *.sbn2
 *.sbn2.[0-9]*
+!test/ink/legacy/*.sbn2
+!test/ink/legacy/*.sbn2.[0-9]*
 *.sba
 *.apk
 *.apks
@@ -71,7 +73,7 @@ windows/flutter/ephemeral/
 build/
 dist/
 coverage/
-test/failures/
+test/**/failures/
 .venv/
 venv/
 __pycache__/

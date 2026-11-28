@@ -252,22 +252,26 @@ void main() {
     expect(_colorLiterals('final f = KitTokens.toolbarOnBar;'), 0);
   });
 
-  test('data/settings imports only data/settings from lib', () {
-    final files = _dartFiles('lib/data/settings');
-    expect(files, isNotEmpty, reason: 'lib/data/settings has no files');
-    final violations = <String>[];
-    for (final f in files) {
-      for (final uri in _imports(f)) {
-        final bad = uri.startsWith('package:saber/')
-            ? !uri.startsWith('package:saber/data/settings/')
-            : !uri.startsWith('package:') &&
-                  !uri.startsWith('dart:') &&
-                  !_resolveRelative(f, uri).contains('/lib/data/settings/');
-        if (bad) violations.add('${_rel(f)} imports $uri');
+  test(
+    'data/settings imports only data/settings and data/prefs.dart from lib',
+    () {
+      final files = _dartFiles('lib/data/settings');
+      expect(files, isNotEmpty, reason: 'lib/data/settings has no files');
+      final violations = <String>[];
+      for (final f in files) {
+        for (final uri in _imports(f)) {
+          final bad = uri.startsWith('package:saber/')
+              ? !uri.startsWith('package:saber/data/settings/') &&
+                    uri != 'package:saber/data/prefs.dart'
+              : !uri.startsWith('package:') &&
+                    !uri.startsWith('dart:') &&
+                    !_resolveRelative(f, uri).contains('/lib/data/settings/');
+          if (bad) violations.add('${_rel(f)} imports $uri');
+        }
       }
-    }
-    expect(violations, isEmpty, reason: violations.join('\n'));
-  });
+      expect(violations, isEmpty, reason: violations.join('\n'));
+    },
+  );
 
   test(
     'data/actions imports only data/actions and kit_icons.g.dart from lib',
@@ -296,6 +300,45 @@ void main() {
       expect(violations, isEmpty, reason: violations.join('\n'));
     },
   );
+
+  // The ink layer (stage 2 Global Constraints): from lib only data/ink,
+  // data/tools, data/editor, prefs, user_error (logUserError) and the pen
+  // kinds' kit_pen_art.dart; from sbn only tool_id.dart. Direct imports only:
+  // a file it imports may import more (eraser_targets.dart imports
+  // components/canvas/), which this does not check.
+  test('data/ink imports only the allowed lib paths', () {
+    final files = _dartFiles('lib/data/ink');
+    expect(files, isNotEmpty, reason: 'lib/data/ink has no files');
+    const folders = ['data/ink/', 'data/tools/', 'data/editor/'];
+    const single = [
+      'data/prefs.dart',
+      'data/user_error.dart',
+      'components/kit/kit_pen_art.dart',
+    ];
+    final violations = <String>[];
+    for (final f in files) {
+      for (final uri in _imports(f)) {
+        final bool ok;
+        if (uri.startsWith('dart:')) {
+          ok = true;
+        } else if (uri.startsWith('package:saber/')) {
+          final path = uri.substring('package:saber/'.length);
+          ok = folders.any(path.startsWith) || single.contains(path);
+        } else if (uri.startsWith('package:sbn/')) {
+          ok = uri == 'package:sbn/tool_id.dart';
+        } else if (uri.startsWith('package:')) {
+          ok = true; // flutter and third-party packages
+        } else {
+          final path = _resolveRelative(f, uri);
+          ok =
+              folders.any((d) => path.contains('/lib/$d')) ||
+              single.any((s) => path.endsWith('/lib/$s'));
+        }
+        if (!ok) violations.add('${_rel(f)} imports $uri');
+      }
+    }
+    expect(violations, isEmpty, reason: violations.join('\n'));
+  });
 
   test('no keybinder import is left in lib', () {
     final violations = <String>[

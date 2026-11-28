@@ -80,7 +80,7 @@ extension on WidgetTester {
       if (buttons == kSecondaryButton) {
         // Right now, [TestPointer.hover] doesn't pass through [buttons],
         // so fake it until that gets fixed in Flutter.
-        editorState.onStylusButtonChanged(true);
+        editorState.inkInput.onStylusButtonChanged(true);
       }
     }
 

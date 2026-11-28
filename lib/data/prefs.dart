@@ -7,8 +7,10 @@ import 'package:logging/logging.dart';
 import 'package:perfect_freehand/perfect_freehand.dart';
 import 'package:saber/components/home/home_layout_button.dart';
 import 'package:saber/components/home/sort_button.dart';
+import 'package:saber/components/kit/kit_pen_art.dart';
 import 'package:saber/components/navbar/responsive_navbar.dart';
 import 'package:saber/data/codecs/base64_codec.dart';
+import 'package:saber/data/codecs/bool_map_codec.dart';
 import 'package:saber/data/codecs/name_list_codec.dart';
 import 'package:saber/data/flavor_config.dart';
 import 'package:saber/data/quota.dart';
@@ -231,6 +233,22 @@ class Stows {
     false,
     volatile: !_isOnMainIsolate,
   );
+
+  /// Each pen's 「직선 자동 보정」 and 「수평/수직 그리기」, by
+  /// `KitPenKind.previewId`; read through data/ink/pen_prefs.dart, where a
+  /// pen not in the map yet gets its first value.
+  final straightLineByPen = PlainStow(
+        'straightLineByPen',
+        const <String, bool>{},
+        codec: const BoolMapCodec(),
+        volatile: !_isOnMainIsolate,
+      ),
+      axisLockByPen = PlainStow(
+        'axisLockByPen',
+        const <String, bool>{},
+        codec: const BoolMapCodec(),
+        volatile: !_isOnMainIsolate,
+      );
 
   /// Whether the eraser rubs out the strokes it touches or the strokes
   /// inside a loop drawn around them (the eraser panel's cards).
@@ -480,7 +498,68 @@ class Stows {
         Pen.shapePenOptions,
         fromJson: _strokeOptionsFromJson,
         volatile: !_isOnMainIsolate,
+      ),
+      lastCalligraphyPenOptions = PlainStow.json(
+        'lastCalligraphyPenOptions',
+        Pen.calligraphyPenOptions,
+        fromJson: _strokeOptionsFromJson,
+        volatile: !_isOnMainIsolate,
+      ),
+      lastBrushOptions = PlainStow.json(
+        'lastBrushOptions',
+        Pen.brushPenOptions,
+        fromJson: _strokeOptionsFromJson,
+        volatile: !_isOnMainIsolate,
       );
+
+  /// The round highlighter's options and colour; null until it is first
+  /// made, which fills them once from the flat highlighter's (the round one
+  /// draws what the 232 highlighter button drew, at its width and colour).
+  final lastRoundHighlighterOptions = PlainStow<StrokeOptions?>.json(
+    'lastRoundHighlighterOptions',
+    null,
+    fromJson: _strokeOptionsFromJson,
+    volatile: !_isOnMainIsolate,
+  );
+  final lastRoundHighlighterColor = PlainStow<int?>(
+    'lastRoundHighlighterColor',
+    null,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// Which highlighter was last in hand ([KitPenKind.previewId]), so a note
+  /// opens with that one: [lastTool] is the same for both.
+  final lastHighlighterKind = PlainStow(
+    'lastHighlighterKind',
+    KitPenKind.highlighterChisel.previewId,
+    volatile: !_isOnMainIsolate,
+  );
+
+  /// The opacity (0 to 255) the flat highlighter, the round highlighter and
+  /// the pencil draw with; their defaults are what older apps draw.
+  final highlighterOpacity = PlainStow(
+        'highlighterOpacity',
+        Highlighter.alpha,
+        volatile: !_isOnMainIsolate,
+      ),
+      roundHighlighterOpacity = PlainStow(
+        'roundHighlighterOpacity',
+        Highlighter.alpha,
+        volatile: !_isOnMainIsolate,
+      ),
+      pencilOpacity = PlainStow(
+        'pencilOpacity',
+        255,
+        volatile: !_isOnMainIsolate,
+      );
+
+  /// The fine pen's line: solid, thin, dashed or dotted.
+  final finePenLineStyle = PlainStow(
+    'finePenLineStyle',
+    KitPenDash.solid,
+    codec: const EnumCodec(KitPenDash.values),
+    volatile: !_isOnMainIsolate,
+  );
   final lastFountainPenColor = PlainStow(
         'lastFountainPenColor',
         Colors.black.toARGB32(),
@@ -504,6 +583,16 @@ class Stows {
       ),
       lastShapePenColor = PlainStow(
         'lastShapePenColor',
+        Colors.black.toARGB32(),
+        volatile: !_isOnMainIsolate,
+      ),
+      lastCalligraphyPenColor = PlainStow(
+        'lastCalligraphyPenColor',
+        Colors.black.toARGB32(),
+        volatile: !_isOnMainIsolate,
+      ),
+      lastBrushColor = PlainStow(
+        'lastBrushColor',
         Colors.black.toARGB32(),
         volatile: !_isOnMainIsolate,
       );

@@ -480,4 +480,12 @@ void main() {
     expect(KitTokens.playerBarHeight, 54);
     expect(KitTokens.playerBarBg, const Color(0xfff2f2f4));
   });
+
+  test('the opacity number has the preview 1 px shadow', () {
+    // CSS `text-shadow: 0 0 1px` is a blur of sigma .5; a blur radius of 0
+    // draws no blur, and with no offset the shadow then hides under the text
+    final shadow = KitTokens.opacityNumberShadow.single;
+    expect(shadow.blurSigma, closeTo(.5, .01));
+    expect(shadow.offset, Offset.zero);
+  });
 }
